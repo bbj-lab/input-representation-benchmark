@@ -1,0 +1,129 @@
+flowchart TD
+    %% Define Styles
+    classDef standard fill:#dae8fc,stroke:#6c8ebf,color:black;
+    classDef custom fill:#fff2cc,stroke:#d6b656,color:black;
+    classDef intervention fill:#f8cecc,stroke:#b85450,stroke-dasharray: 5 5,color:black;
+    classDef modified fill:#d5e8d4,stroke:#82b366,color:black;
+    classDef raw fill:#ffffff,stroke:#000000,color:black;
+    classDef decision fill:#e1d5e7,stroke:#9673a6,color:black;
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% Phase 0: MEDS Extraction
+    %% ═══════════════════════════════════════════════════════════════════
+    subgraph P0 ["Phase 0: MEDS Extraction (Pre-Tokenization)"]
+        direction TB
+        Raw[MIMIC-IV v3.1 Raw Data]:::raw
+        Config[Custom event_configs_v3.1.yaml<br/>Adds: ref_range_lower, ref_range_upper]:::custom
+        A1[A1: MEDS_transform-runner]:::standard
+        A2[A2: MEDS Format .parquet files<br/>Contains ref_range metadata]:::standard
+        
+        Raw --> A1
+        Config --> A1
+        A1 --> A2
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% Phase 1: ETHOS-ARES Pipeline (Pre-Quantization)
+    %% ═══════════════════════════════════════════════════════════════════
+    subgraph P1 ["Phase 1: ETHOS-ARES Pipeline (Stages 1–6)"]
+        direction TB
+        S1[S1: filter_codes<br/>Remove infusion, weight, procedure codes]:::standard
+        S2[S2: preprocessing<br/>LabData, TransferData, InpatientData, HCPCSData]:::standard
+        S3[S3: CodeCounter<br/>Count frequency → code_counts.csv]:::standard
+        S4[S4: preprocessing_with_counts<br/>LabData.make_quantiles, Top 200 labs]:::custom
+        S5[S5: preprocessing<br/>DeathData, FluidOutput, BMI, EdData]:::standard
+        S6[S6: preprocessing_with_num_quantiles<br/>ICUStayData.process]:::standard
+
+        S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% Phase 2: Quantization Branch Point
+    %% ═══════════════════════════════════════════════════════════════════
+    subgraph P2 ["Phase 2: Quantization Method Selection"]
+        direction TB
+        
+        subgraph Baseline ["Baseline: ETHOS-ARES Decile"]
+            S7[S7: Quantizator<br/>Compute decile breaks → quantile_breaks.json]:::standard
+        end
+
+        subgraph Intervention ["Intervention: Clinically Anchored Ventile"]
+            C1[C1: 02_run_ventile_quantization.py]:::custom
+            C2[C2: QuantizationVentile.agg<br/>Method: 5-10-5 binning<br/>5 below / 10 within / 5 above ref range<br/>Strict filtering: ≥20 unique values]:::custom
+            C3[C3: ventile_breaks.json<br/>155 codes × 19 breaks for 20 bins]:::modified
+            
+            C1 --> C2 --> C3
+        end
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% Phase 3: ETHOS-ARES Pipeline (Post-Quantization)
+    %% ═══════════════════════════════════════════════════════════════════
+    subgraph P3 ["Phase 3: ETHOS-ARES Pipeline (Stages 8–14)"]
+        direction TB
+        S8[S8: transform_to_quantiles<br/>Map numeric values → quantile bins]:::standard
+        S9[S9: preprocessing<br/>BMI join, ICD-9→10, Medication ATC]:::standard
+        S10[S10: StaticDataCollector<br/>Extract MEDS_BIRTH, GENDER, MARITAL, RACE<br/>→ static_data.pickle]:::standard
+        S11[S11: filter_codes<br/>Remove static codes from timeline]:::standard
+        S12[S12: Inject_time_intervals<br/>Add temporal spacing tokens]:::standard
+        S13[S13: IntervalEstimator<br/>Estimate time interval distributions<br/>→ intervals.json]:::standard
+        S14[S14: CodeCounter<br/>Final code counts for vocabulary<br/>→ code_counts.csv]:::standard
+
+        S8 --> S9 --> S10 --> S11 --> S12 --> S13 --> S14
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% Phase 4: Vocabulary & Tensorization
+    %% ═══════════════════════════════════════════════════════════════════
+    subgraph P4 ["Phase 4: Vocabulary & Tensorization"]
+        direction TB
+        E1[E1: Vocabulary Construction<br/>Static + Timeline codes → vocab.txt]:::standard
+        E2[E2: Tensorization<br/>Parquet → Tensor format]:::standard
+        
+        E1 --> E2
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% Phase 5: Model Training & Inference
+    %% ═══════════════════════════════════════════════════════════════════
+    subgraph P5 ["Phase 5: Model Training & Inference"]
+        direction LR
+        TRAIN[TRAIN: ethos_train]:::standard
+        INFER[INFER: ethos_infer]:::standard
+        
+        TRAIN --> INFER
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% Cross-Phase Connections
+    %% ═══════════════════════════════════════════════════════════════════
+    
+    %% Phase 0 → Phase 1
+    A2 --> S1
+
+    %% Phase 1 → Phase 2 (branching)
+    S6 --> S7
+    S6 --> C1
+
+    %% Data dependencies for intervention
+    S4 -.->|Lab quantile data| C2
+    A2 -.->|ref_range metadata| C2
+
+    %% Phase 2 → Phase 3 (converging)
+    S7 -->|quantile_breaks.json| S8
+    C3 -->|ventile_breaks.json| S8
+
+    %% Phase 3 → Phase 4 → Phase 5
+    S14 --> E1
+    E2 --> TRAIN
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% Legend
+    %% ═══════════════════════════════════════════════════════════════════
+    subgraph Legend [" "]
+        direction LR
+        L1[Standard ETHOS-ARES Stage]:::standard
+        L2[Custom Configuration/Script]:::custom
+        L3[Intervention Point]:::intervention
+        L4[Modified/New Output]:::modified
+    end
