@@ -27,6 +27,11 @@ ENV/
 env/
 .venv
 
+# Environment files (private)
+.env
+.env.local
+.env.*.local
+
 # IDEs
 .vscode/
 .idea/

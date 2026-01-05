@@ -1,243 +1,280 @@
 # Input Representation Benchmark
 
-**EHR Input Representation Benchmarking Framework**. Extends [ETHOS-ARES](https://github.com/ipolharvard/ethos-ares).
+**Systematic Evaluation of Input Representations for EHR Foundation Models**
 
-> **Compatibility Warning**: This codebase is tested ONLY for compatibility with `ethos-ares` commit `2d54383` (https://github.com/ipolharvard/ethos-ares). Use with other versions may require adjustments.
+This repository benchmarks input representation methods for transformer-based EHR foundation models, evaluating how discretization granularity, value encoding strategies, and vocabulary semantics affect clinical prediction performance.
 
-This repository facilitates the comparison of different input representation strategies for Electronic Health Records (EHR), such as:
-1.  Deciles (Baseline)
-2.  **Ventile Quantization (Implemented)**: Reference range-aware binning.
-3.  Standard Deviations
-4.  Normal vs. Abnormal tokens
-5.  Time gap tokens / Positional encodings
+## Quick Links
 
-## 1. Ventile Quantization (Reference Range-Aware)
+- **Documentation**: `methods/proposal.md` (detailed methodology), `methods/paper.md` (manuscript)
+- **Sister Repository**: [fms-ehrs](../fms-ehrs) — tokenization, training, and evaluation framework
+- **Data Pipeline**: `benchmarks/mimic-meds-extraction/` — MIMIC-IV to MEDS conversion
 
-**Goal**: Incorporate clinical knowledge into tokenization by using reference ranges (`ref_range_lower`, `ref_range_upper`) to define bins (e.g., 5 bins below normal, 10 within, 5 above).
+## Experiments Overview
 
-**Results (MIMIC-IV v3.1)**:
-- **Dataset**: 364,627 patients, 142M lab events, 1,128 unique lab codes
-- **Reference Ranges**: 392 codes (34.8%) have paired bounds, covering 114M events (80.3%)
-- **Strict Filtering**: 155/203 candidate codes (76.4%) pass the strict 20-bin requirement
-- **All passing codes achieve exactly 20 bins**: ✓
-- **Glucose Example**: Verified 5 bins below [70], 10 within [70-105], 5 above [105]
+| Experiment | Focus | Configurations | Training Runs |
+|------------|-------|----------------|---------------|
+| **Exp 1** | Granularity & Clinical Anchoring | 12 (decile/ventile/trentile/centile × fused/unfused) | 60 (× 5 seeds) |
+| **Exp 2** | Representation Mechanics | 6 (discrete/soft/continuous × time_tokens/time2vec) | 30 (× 5 seeds) |
+| **Exp 3** | Vocabulary Semantics | 2 (MEDS native vs CLIF standardized) | 10 (× 5 seeds) |
+| **Total** | | **20 configurations** | **100 training runs** |
 
-**Details**: `benchmarks/quantization-ventile/SUMMARY.md`
+**Model**: LLaMA 3.2 (67.3M parameters, scaled-down configuration)
 
-## Edge Cases and Important Notes
-
-### 1. Vitals (BMI, SBP, DBP) Are Not Lab Codes
-
-**Finding**: The quantization pipeline processes 203 codes total:
-- 200 lab codes (`LAB//...`)
-- 3 vitals (`BMI//Q`, `VITAL//Q//SBP`, `VITAL//Q//DBP`)
-
-**Source**:
-- **BMI**: Calculated from patient demographics (weight/height), not from `labevents`.
-- **SBP/DBP**: Systolic and Diastolic Blood Pressure from ICU monitoring (`chartevents`), not from `labevents`.
-
-**Reference Ranges**:
-- **None of the vitals have reference ranges** in the MEDS data.
-- They are quantized using **Strategy B** (data-driven 20-bin ventile).
-- This is expected because reference ranges for BMI and BP are patient-specific and not stored in the database schema.
-
-**Implication**: When analyzing "lab codes with/without reference ranges", exclude these 3 vitals from the count or note them separately.
-
-### 2. Non-Numeric Lab Codes
-
-**Findings**:
-- **392 out of 1,128 lab codes (34.8%) have 0% numeric values**
-- **61 additional codes have <1% numeric values**
-- Total: 453 codes are mostly/completely non-numeric
-
-**Data Types** (from `text_value` column):
-- **Specimen metadata**: "HOLD. DISCARD GREATER THAN 4 HOURS OLD", "HOLD. DISCARD GREATER THAN 24 HRS OLD"
-- **Source indicators**: "ART." (arterial), "VEN." (venous)
-- **Qualitative results**: "NONE", "___" (placeholder), "Pos/Neg"
-- **NULL/Missing**: Most common - indicates no result recorded or test not applicable
-
-**Top Non-Numeric Codes** (examples):
-- `LAB//52033//UNK`: 757,259 events (specimen source: "ART." or "VEN.")
-- `LAB//51506//UNK`: 515,825 events (NULL/None - test not run)
-- `LAB//51487//UNK`: 515,813 events (NULL/None)
-- `LAB//50920//UNK`: 1,496,577 events (NULL/None)
-- `LAB//50933//UNK`: 351,982 events (specimen handling instructions)
-
-**Handling in Pipeline**:
-- These codes are **automatically filtered out** during preprocessing (`retain_only_test_with_numeric_result`).
-- They do **not** appear in the top 200 quantized codes.
-- The quantization process only considers codes with numeric values.
-
-**Note**: Many codes have `UNK` (unknown) or `N/A` units, indicating they are metadata fields, test orders, or specimen tracking rather than actual lab measurements.
-
-### 3. Reference Range Availability
-
-**Key Finding**: Reference ranges in MIMIC-IV v3.1 are **always paired** (both or neither).
-
-**Statistics**:
-- 392 codes (34.8%) have both `ref_range_lower` AND `ref_range_upper`
-- 736 codes (65.2%) have neither
-- 0 codes have only one bound
-
-**Implication**: The ventile quantization implementation was simplified from 4 strategies to 2:
-- Strategy A: Both bounds (5 below + 10 within + 5 above)
-- Strategy B: No bounds (standard 20-bin ventile)
-
-### 4. Top 200 Filtering
-
-**Ethos-ARES Implementation**: The standard tokenization pipeline filters to the top 200 most frequent lab codes.
-
-**Source**: `ethos-ares/src/ethos/tokenize/mimic/preprocessors.py` line 556:
-```python
-known_lab_names = list(counts.keys())[:200]
-```
-
-**Coverage**: Top 200 codes cover 97.06% of all lab events (137,951,527 out of 142,131,243 events).
-
-**Excluded**: 928 codes (rank 201-1,128) account for only 2.94% of events.
-
-**Consideration**: When comparing ventile quantization results, note that:
-- We only quantize the top 200 lab codes (not all 1,128).
-- Rare labs are not discretized, even if they have reference ranges.
-
-### 5. Filtering Rule
-
-**Policy**: If the number of unique numeric values for a lab code is less than the specified number of bins, we **do not use** that lab code.
-
-**Rationale**: To ensure statistical validity and avoid degenerate bins.
-
-**Consideration**:
-- Codes with sparse data (< specified bins) are excluded from the quantization map.
-
-For full details, see: `benchmarks/quantization-ventile/SUMMARY.md`
-
-## Installation
-
-```bash
-conda create -n ehr-benchmark python=3.12
-conda activate ehr-benchmark
-pip install "MEDS_transforms[local_parallelism]"
-pip install -e /path/to/ethos-ares
-pip install -e .
-```
-
-**Note**: The MIMIC-IV dataset (`physionet.org/`) is excluded from git. You must download it separately and place it under this repository.
-
-## Quick Start: Ventile Benchmark
-
-Run the complete pipeline from environment setup to analysis:
-
-```bash
-# 0. Environment Setup
-conda create -n ehr-benchmark python=3.12 -y
-conda activate ehr-benchmark
-pip install "MEDS_transforms[local_parallelism]"
-pip install -e ../ethos-ares  # Clone ethos-ares as a sibling directory
-pip install -e .
-
-# Navigate to benchmark directory
-cd benchmarks/ventile-quantization
-
-# 1. MEDS Extraction (ETL using ETHOS-ARES pipeline)
-# This extracts MIMIC-IV data with our custom event config that includes ref_ranges
-bash scripts/01_extract_meds.sh 3
-
-# 2. Standard Tokenization (ETHOS-ARES preprocessing)
-# This runs the standard ethos pipeline up to stage 14 (code counting)
-ethos_tokenize -m worker='range(0,3)' \
-    input_dir=data/meds/data/train \
-    output_dir=data/tokenized \
-    out_fn=train dataset=mimic num_quantiles=20
-
-# 3. Apply Ventile Quantization (Our custom strategy)
-# This reads stage 04 output and creates ventile_breaks.json with ref-range awareness
-python scripts/02_run_ventile_quantization.py
-
-# 4. Analyze Results
-python scripts/03_analyze_ventiles.py
-
-# Optional: Analyze non-numeric patterns
-python scripts/99_analyze_non_numeric.py
-```
-
-**Pipeline Outputs**:
-- `data/meds/data/`: MEDS format data with reference ranges
-- `data/tokenized/train/`: Standard ethos preprocessing outputs (stages 01-14)
-- `data/tokenized/train/ventile_breaks.json`: Reference range-aware quantile breaks
-- `analysis/ventile_breaks_summary.csv`: Detailed bin analysis per code
-- `analysis/reference_range_coverage.csv`: Reference range statistics per code
+**Evaluation**: 4 clinical prediction tasks (in-hospital mortality, long LOS, ICU admission, IMV event)
 
 ## Project Structure
 
 ```
 input-representation-benchmark/
-├── README.md                   # Project overview
-├── pyproject.toml              # Dependencies
-├── run_benchmark.sh            # Pipeline runner
+├── README.md                      # This file
+├── THIRD_PARTY_NOTICES.md         # Attribution for third-party code
+├── pyproject.toml                 # Python dependencies
+├── run_experiments.py             # Job generator (calls fms-ehrs scripts)
 │
-├── src/input_representation/   # Core library
-│   └── tokenize/common/
-│       └── quantization.py             # QuantizationVentile, etc.
+├── methods/
+│   ├── proposal.md                # Research proposal & methodology
+│   └── paper.md                   # Manuscript draft
 │
 ├── benchmarks/
-│   └── quantization-ventile/
-│       ├── SUMMARY.md          # Implementation & results
-│       ├── test_ventile_pipeline.py    # Automated tests
-│       ├── configs/            # MEDS event configs
-│       ├── scripts/            # Pipeline scripts
-│       ├── data/               # MEDS + tokenized data
-│       └── analysis/           # Statistical analysis outputs
+│   └── mimic-meds-extraction/     # MEDS data extraction pipeline
+│       ├── configs/               # MEDS event configurations
+│       ├── meds_pipeline/         # Extraction code (from ETHOS-ARES)
+│       ├── scripts/               # Pipeline scripts
+│       └── data/                  # Output (excluded from git)
+│           ├── pre_meds/          # Pre-processed MIMIC tables
+│           └── meds/              # MEDS-formatted events
 │
-└── methods/                    # Methodological notes
+├── scripts/                       # Utility scripts
+│   ├── extract_outcomes_meds.py   # Outcome label extraction for MEDS
+│   ├── normalize_meds_tokenized_layout.py  # MEDS → fms-ehrs layout adapter
+│   ├── align_cohorts.py           # Cohort alignment for Exp 3
+│   ├── validate_cohort_parity.py  # Data parity validation
+│   ├── minimal_e2e_dryrun.py      # Local pipeline smoke test
+│   └── smoke_test_exp2.py         # Exp2 representation smoke test
+│
+├── slurm/                         # SLURM job submission
+│   ├── preamble.sh                # Common SLURM setup
+│   └── run_from_jobfile.sh        # Array job runner
+│
+├── tests/                         # Unit tests
+│
+└── physionet.org/                 # Raw MIMIC-IV data (excluded from git)
 ```
 
-## Dependence on ETHOS-ARES
+## Installation
 
-This project is an extension of **[ETHOS-ARES](https://github.com/ipolharvard/ethos-ares)** (Renc et al., 2025). 
+### Prerequisites
 
-### What We Adopt from ETHOS-ARES
+- Python 3.11+
+- CUDA 11.8+ (for GPU training)
+- MIMIC-IV v3.1 access (PhysioNet credentialed)
 
-1.  **MEDS Extraction Pipeline**: Complete ETL using `MEDS_transform-runner`
-2.  **Standard Tokenization**: Preprocessing stages 01-14 using `ethos_tokenize`
-3.  **Infrastructure**: `LabData`, `DemographicData` classes and preprocessing logic
+### Setup
 
-### Our Contributions
+```bash
+# 1. Clone both repositories
+git clone https://github.com/your-org/input-representation-benchmark
+git clone https://github.com/your-org/fms-ehrs
 
-1.  **Custom Event Configurations**: Extended MEDS configs to include `ref_range_lower` and `ref_range_upper`
-2.  **Quantization Strategies**: Novel binning methods (e.g., `QuantizationVentile` with 5-10-5 reference range-aware binning)
-3.  **Strict Filtering**: Quality control ensuring all tokens have sufficient granularity
-4.  **Analysis Tools**: Validation scripts and automated testing
+# 2. Create environment
+conda create -n ehr-benchmark python=3.12 -y
+conda activate ehr-benchmark
 
-### Integration Philosophy
+# 3. Install fms-ehrs (sister repository)
+cd fms-ehrs
+pip install -e .
 
-**No modifications to `ethos-ares` repository**  
-**Uses standard ETHOS-ARES commands**  
-**Clean separation via custom configs and post-processing**  
-**Full compatibility maintained**
+# 4. Install MEDS transforms (for data extraction)
+pip install "MEDS_transforms[local_parallelism]"
 
-All credit for the underlying MEDS and tokenization infrastructure goes to the ETHOS-ARES team.
+# 5. Install benchmark dependencies
+cd ../input-representation-benchmark
+pip install -e .
+```
 
-## Contact
+### Data Setup
 
-Daniel Lee (ihlee@uchicago.edu), University of Chicago
+1. Download MIMIC-IV v3.1 from PhysioNet to `physionet.org/files/mimiciv/3.1/`
+2. Run MEDS extraction (see Pipeline section below)
+
+## Pipeline
+
+### Step 1: MEDS Extraction
+
+Convert MIMIC-IV to MEDS format with reference ranges for clinical anchoring:
+
+```bash
+cd benchmarks/mimic-meds-extraction
+bash scripts/01_extract_meds_full.sh 3  # 3 = parallel workers
+```
+
+**Output**: `data/meds/data/{train,tuning,held_out}/*.parquet`
+
+### Step 2: Generate Experiment Jobs
+
+```bash
+# Generate single-seed demo jobs for testing
+python run_experiments.py --mode demo
+
+# Generate full 5-seed jobs for statistical robustness
+python run_experiments.py --mode full
+
+# Generate for specific experiment
+python run_experiments.py --mode demo --exp 1  # Exp 1 only
+```
+
+**Output**: `slurm/exp{1,2,3}_{demo,full}_jobs.sh`
+
+### Step 3: Run Experiments
+
+Each generated job file contains a complete pipeline:
+1. **Tokenize** → `fms_ehrs/scripts/tokenize_w_config.py`
+2. **Train** → `fms_ehrs/scripts/train_representation.py` (Exp 2) or `tune_model.py` (Exp 1)
+3. **Extract Outcomes** → `scripts/extract_outcomes_meds.py`
+4. **Fine-tune Classifier** → `fms_ehrs/scripts/fine_tune_classification.py`
+
+```bash
+# Local execution (for testing)
+bash slurm/exp1_demo_jobs.sh
+
+# SLURM submission
+sbatch slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh
+```
+
+### Step 4: Local Smoke Tests
+
+```bash
+# End-to-end pipeline test (tiny subset)
+python scripts/minimal_e2e_dryrun.py --n_hadm 5
+
+# Exp2 representation mechanics test
+python scripts/smoke_test_exp2.py
+```
+
+## Key Implementation Details
+
+### Experiment 1: Discretization Granularity
+
+- **Quantizers**: Deciles (10), Ventiles (20), Trentiles (30), Centiles (100)
+- **Clinical Anchoring**: 5-10-5 (ventiles), 10-10-10 (trentiles) using reference ranges
+- **Token Layout**: Fused vs unfused `(code, quantile)` pairs
+
+### Experiment 2: Representation Mechanics
+
+- **Discrete**: Standard token embeddings (baseline)
+- **Soft Discretization**: Convex combinations of adjacent bin embeddings (ConSE-inspired)
+- **Continuous Encoder**: MLP projection of z-score normalized values (xVal-inspired)
+- **Time Tokens**: Discrete temporal intervals (`T_5m-15m`, `T_1h-2h`, etc.)
+- **Time2Vec**: Learned periodic + linear temporal encoding
+
+**Note**: Soft and continuous encoders require **unfused tokenization** (`fused_category_values=false`).
+
+### Experiment 3: Vocabulary Semantics
+
+- **MEDS**: Native MIMIC-IV codes (e.g., `LAB//50912//CREATININE`)
+- **CLIF**: Standardized clinical concepts (e.g., `creatinine`)
+- **Cohort**: ICU patients with ≥24h stays (matched between formats)
+
+### Temporal Encoding Policy
+
+Time2Vec uses **relative time** (hours since admission) rather than absolute timestamps. This respects MIMIC-IV's deidentification policy: "A single date shift was assigned to each subject_id. As a result, the data for a single patient are internally consistent... Conversely, distinct patients are not temporally comparable."
+
+### Outcome Extraction
+
+Labels are computed from **storetime** semantics (when data entered EHR) to prevent look-ahead bias:
+- `same_admission_death`: Discharge disposition = expired
+- `long_length_of_stay`: Hospital stay > 7 days
+- `icu_admission`: ICU transfer within hospitalization
+- `imv_event`: Invasive mechanical ventilation during stay
+- `icu_admission_24h`, `imv_event_24h`: Events within first 24 hours
+
+## Dependencies
+
+### Sister Repository: fms-ehrs
+
+Provides tokenization framework, representation methods, and training scripts:
+- `tokenizer.py`, `tokenizer_base.py`: Tokenization with quantization
+- `soft_discretization.py`: Soft discretization encoder
+- `continuous_encoder.py`: MLP-based continuous encoder
+- `time2vec.py`: Learned temporal embeddings
+- `model_wrapper.py`: Representation model wrapper
+- `train_representation.py`: Unified training script
+
+### MEDS Extraction: ETHOS-ARES
+
+The MEDS extraction pipeline in `benchmarks/mimic-meds-extraction/meds_pipeline/` is adapted from ETHOS-ARES:
+
+- **Repository**: https://github.com/ipolharvard/ethos-ares
+- **License**: MIT (Copyright © 2024 Paweł Renc)
+- **Citation**: Renc et al. (2025). GigaScience, 14, giaf107.
+
+See `THIRD_PARTY_NOTICES.md` for complete attribution.
+
+## Randi Cluster Deployment
+
+### Post-SSH Setup
+
+```bash
+# 1. Activate environment
+source ~/.bashrc
+conda activate ehr-benchmark
+
+# 2. Set environment variables
+export MIMIC_RAW_DIR=/gpfs/data/bbj-lab/users/$USER/input-representation-benchmark/physionet.org/files/mimiciv/3.1
+export MEDS_DATA_DIR=/gpfs/data/bbj-lab/users/$USER/input-representation-benchmark/benchmarks/mimic-meds-extraction/data/meds
+export MODEL_DIR=/gpfs/data/bbj-lab/users/$USER/input-representation-benchmark/models
+
+# 3. Verify fms-ehrs is accessible
+python -c "from fms_ehrs.framework.tokenizer import Tokenizer21; print('fms-ehrs OK')"
+```
+
+### Running Experiments
+
+```bash
+# Generate job scripts
+python run_experiments.py --mode demo --exp 1
+
+# Submit to SLURM (24h limit per job)
+sbatch --partition=gpuq --gres=gpu:1 --time=24:00:00 slurm/exp1_demo_jobs.sh
+
+# Monitor
+squeue -u $USER
+tail -f slurm/output/*.out
+```
 
 ## Citation
 
-If you use this benchmarking framework, please cite:
-
 ```bibtex
-@article{
-  TO-BE-ADDED
-}
-```
-
-Please also cite the underlying ETHOS-ARES framework:
-
-```bibtex
-@article{renc2025ethos,
-  title={Foundation model of electronic medical records for adaptive risk estimation},
-  author={Renc, Pawel and others},
-  journal={GigaScience},
+@article{lee2025input,
+  title={Input Representation Benchmark for EHR Foundation Models},
+  author={Lee, Daniel and others},
+  journal={arXiv preprint},
   year={2025}
 }
 ```
+
+Please also cite the underlying frameworks:
+
+```bibtex
+@article{10.1093/gigascience/giaf107,
+    author = {Renc, Pawel and others},
+    title = {Foundation model of electronic medical records for adaptive risk estimation},
+    journal = {GigaScience},
+    volume = {14},
+    pages = {giaf107},
+    year = {2025},
+    doi = {10.1093/gigascience/giaf107},
+}
+
+@article{burkhart2025quantifying,
+    author = {Burkhart, Michael C. and others},
+    title = {Quantifying surprise in clinical care},
+    journal = {arXiv preprint arXiv:2507.22798},
+    year = {2025}
+}
+```
+
+## Contact
+
+Inhyeok (Daniel) Lee (ihlee@uchicago.edu), University of Chicago

@@ -1,0 +1,254 @@
+# =============================================================================
+# MIMIC-IV v3.1 Event Configuration for MEDS Extraction
+# =============================================================================
+# This configuration extracts clinical events while EXCLUDING post-discharge
+# billing codes (ICD, CPT, DRG) to prevent data leakage.
+#
+# EXCLUDED TABLES (Data Leakage Risk):
+#   - hosp/diagnoses_icd: ICD diagnosis codes assigned by coders after discharge
+#   - hosp/procedures_icd: ICD procedure codes (billed post-discharge)
+#   - hosp/hcpcsevents: CPT/HCPCS billing codes
+#   - hosp/drgcodes: DRG reimbursement codes
+#
+# These billing codes may be added or modified by healthcare professionals who read
+# signed clinical notes AFTER discharge, potentially encoding outcome
+# information (e.g., death diagnosis codes assigned after death).
+# See: https://mimic.mit.edu/docs/iv/modules/hosp/diagnoses_icd/
+#
+# TIMESTAMP SEMANTICS:
+#   We use `storetime` (when data was entered into the EHR system) instead of
+#   `charttime`/`starttime`/`endtime` (when measurement/procedure actually occurred).
+#   This ensures event ordering reflects information availability, not occurrence.
+#
+#   Tables with storetime: labevents, emar, chartevents, inputevents, outputevents, procedureevents
+#   Tables without storetime: admissions, patients, transfers, icustays, omr (use native timestamps)
+# =============================================================================
+
+subject_id_col: subject_id
+
+# =============================================================================
+# HOSPITAL MODULE (hosp)
+# =============================================================================
+
+hosp/admissions:
+  ed_registration:
+    code: ED_REGISTRATION
+    time: col(edregtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  ed_out:
+    code: ED_OUT
+    time: col(edouttime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+  admission:
+    code:
+      - HOSPITAL_ADMISSION
+      - col(admission_type)
+      - col(admission_location)
+    time: col(admittime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    insurance: insurance
+    language: language
+    marital_status: marital_status
+    race: race
+    hadm_id: hadm_id
+  discharge:
+    code:
+      - HOSPITAL_DISCHARGE
+      - col(discharge_location)
+    time: col(dischtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+  # We omit the death event here as it is joined to the data in the subjects table in the pre-MEDS step.
+
+# EXCLUDED: hosp/diagnoses_icd (ICD codes assigned post-discharge - data leakage risk)
+# EXCLUDED: hosp/drgcodes (DRG reimbursement codes - data leakage risk)
+
+hosp/emar:
+  medication:
+    code:
+      - MEDICATION
+      - col(medication)
+      - col(event_txt)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+    emar_id: emar_id
+    emar_seq: emar_seq
+
+# EXCLUDED: hosp/hcpcsevents (CPT/HCPCS billing codes - data leakage risk)
+
+hosp/labevents:
+  lab:
+    code:
+      - LAB
+      - col(itemid)
+      - col(valueuom)
+    hadm_id: hadm_id
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    numeric_value: valuenum
+    text_value: value
+    priority: priority
+    ref_range_lower: ref_range_lower
+    ref_range_upper: ref_range_upper
+
+hosp/omr:
+  omr:
+    code: col(result_name)
+    text_value: col(result_value)
+    time: col(chartdate)
+    time_format: "%Y-%m-%d"
+
+hosp/patients:
+  gender:
+    code:
+      - GENDER
+      - col(gender)
+    time: null
+  dob:
+    code: MEDS_BIRTH # This is the MEDS official code for birth.
+    time: col(year_of_birth)
+    time_format: "%Y"
+  death:
+    code: MEDS_DEATH # This is the MEDS official code for death.
+    time: col(dod)
+    time_format:
+      - "%Y-%m-%d %H:%M:%S"
+      - "%Y-%m-%d"
+
+# EXCLUDED: hosp/procedures_icd (ICD procedure codes - data leakage risk)
+
+hosp/transfers:
+  transfer:
+    code:
+      - TRANSFER_TO
+      - col(eventtype)
+      - col(careunit)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+
+# =============================================================================
+# ICU MODULE (icu)
+# =============================================================================
+
+icu/icustays:
+  icu_admission:
+    code:
+      - ICU_ADMISSION
+      - col(first_careunit)
+    time: col(intime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+    icustay_id: stay_id
+  icu_discharge:
+    code:
+      - ICU_DISCHARGE
+      - col(last_careunit)
+    time: col(outtime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+    icustay_id: stay_id
+
+# =============================================================================
+# ICU CHARTEVENTS - Vital signs and other charted measurements
+# =============================================================================
+icu/chartevents:
+  vital:
+    code:
+      - VITAL
+      - col(itemid)
+      - col(valueuom)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    numeric_value: valuenum
+    text_value: value
+    hadm_id: hadm_id
+    icustay_id: stay_id
+
+# =============================================================================
+# ICU INPUTEVENTS - Infusions and fluid inputs
+# =============================================================================
+icu/inputevents:
+  input_start:
+    code:
+      - INFUSION_START
+      - col(itemid)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+    icustay_id: stay_id
+    order_id: orderid
+    link_order_id: linkorderid
+    numeric_value: rate
+    rateuom: rateuom
+    ordercategorydescription: ordercategorydescription
+  input_end:
+    code:
+      - INFUSION_END
+      - col(itemid)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+    icustay_id: stay_id
+    order_id: orderid
+    link_order_id: linkorderid
+    numeric_value: amount
+    ordercategorydescription: ordercategorydescription
+    statusdescription: statusdescription
+    amountuom: amountuom
+  subject_weight:
+    code:
+      - SUBJECT_WEIGHT_AT_INFUSION
+      - KG
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    numeric_value: patientweight
+    hadm_id: hadm_id
+    icustay_id: stay_id
+
+# =============================================================================
+# ICU OUTPUTEVENTS - Fluid outputs
+# =============================================================================
+icu/outputevents:
+  output:
+    code:
+      - FLUID_OUTPUT
+      - col(itemid)
+      - col(valueuom)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+    icustay_id: stay_id
+    numeric_value: value
+
+# =============================================================================
+# ICU PROCEDUREEVENTS - ICU procedures (ventilation, imaging, etc.)
+# =============================================================================
+# Note: Uses itemid (internal MIMIC identifier) NOT ICD/CPT codes.
+# These are real-time clinical documentation, not post-discharge billing.
+# See: https://mimic.mit.edu/docs/iv/modules/icu/procedureevents/
+# =============================================================================
+icu/procedureevents:
+  procedure_start:
+    code:
+      - PROCEDURE
+      - col(itemid)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+    icustay_id: stay_id
+    numeric_value: value  # Duration if applicable
+    valueuom: valueuom
+    location: location
+    locationcategory: locationcategory
+    ordercategoryname: ordercategoryname
+  procedure_end:
+    code:
+      - PROCEDURE_END
+      - col(itemid)
+    time: col(storetime)
+    time_format: "%Y-%m-%d %H:%M:%S"
+    hadm_id: hadm_id
+    icustay_id: stay_id
+    statusdescription: statusdescription

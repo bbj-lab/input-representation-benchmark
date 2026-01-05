@@ -1,0 +1,10 @@
+# =============================================================================
+# Local Parallelism Runner Configuration
+# =============================================================================
+# Adapted from ETHOS-ARES (https://github.com/ipolharvard/ethos-ares)
+# License: MIT (Copyright (c) 2024 Paweł Renc)
+# =============================================================================
+
+parallelize:
+  n_workers: ${oc.env:N_WORKERS}
+  launcher: "joblib"

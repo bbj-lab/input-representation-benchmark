@@ -1,0 +1,22 @@
+# =============================================================================
+# Pre-MEDS Configuration
+# =============================================================================
+# Adapted from ETHOS-ARES (https://github.com/ipolharvard/ethos-ares)
+# License: MIT (Copyright (c) 2024 Paweł Renc)
+# =============================================================================
+
+input_dir: ${oc.env:MIMICIV_RAW_DIR}
+cohort_dir: ${oc.env:MIMICIV_PRE_MEDS_DIR}
+
+do_overwrite: false
+
+log_dir: ${cohort_dir}/.logs
+
+# Hydra
+hydra:
+  job:
+    name: pre_MEDS_${now:%Y-%m-%d_%H-%M-%S}
+  run:
+    dir: ${log_dir}
+  sweep:
+    dir: ${log_dir}
