@@ -227,10 +227,10 @@ This learned representation is added to token embeddings before transformer proc
 - Random seeds: 5 per configuration (42, 123, 456, 789, 1024)
 
 **Infrastructure**:
-- Training framework: fms-ehrs (tokenization, model training, fine-tuning)
-- Job scheduling: SLURM with GPU allocation
+- Configuration management: Hydra
+- Job scheduling: SLURM arrays
 - Logging: Weights & Biases
-- Hardware: Randi cluster (NVIDIA A100 40GB PCIe GPUs)
+- Hardware: [PLACEHOLDER: Randi cluster GPU specifications]
 
 ---
 

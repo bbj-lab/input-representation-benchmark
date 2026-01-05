@@ -291,22 +291,28 @@ flowchart TB
 
 ### 4.2. Repository Structure
 
-**fms-ehrs** (Tokenization Framework):
+**fms-ehrs** (Tokenization and Training Framework):
 ```
 fms-ehrs/
 ├── fms_ehrs/
 │   ├── framework/
-│   │   ├── tokenizer_base.py      # Quantization strategies
-│   │   ├── tokenizer.py           # YAML-driven tokenizer
+│   │   ├── tokenizer_base.py      # Quantization strategies, padding, 24h truncation
+│   │   ├── tokenizer.py           # YAML-driven tokenizer with numeric_values support
 │   │   ├── vocabulary.py          # Token vocabulary management
-│   │   ├── soft_discretization.py # Convex combinations (Exp 2)
-│   │   ├── continuous_encoder.py  # MLP encoder (Exp 2)
-│   │   └── time2vec.py            # Time2Vec implementation (Exp 2)
+│   │   ├── dataset.py             # Dataset loader with numeric_values/relative_times
+│   │   ├── model_wrapper.py       # Wrapper for soft/continuous encoders + Time2Vec
+│   │   ├── soft_discretization.py # ConSE-inspired convex combinations (Exp 2)
+│   │   ├── continuous_encoder.py  # xVal-inspired MLP encoder (Exp 2)
+│   │   └── time2vec.py            # Learned temporal embeddings (Exp 2)
 │   ├── config/
-│   │   ├── mimic-meds-ed.yaml     # Base tokenization config
-│   │   └── clif-mappings.yaml     # CLIF vocabulary mappings (Exp 3)
+│   │   ├── mimic-meds-ed.yaml     # MEDS tokenization config (with PROC timing fix)
+│   │   └── clif-21.yaml           # CLIF tokenization config (Exp 3)
 │   └── scripts/
-│       └── tokenize_meds.py       # Tokenization entry point
+│       ├── tokenize_w_config.py   # Tokenization entry point
+│       ├── tune_model.py          # Pretraining script (Exp 1)
+│       ├── train_representation.py # Representation training (Exp 2)
+│       ├── extract_outcomes.py    # CLIF outcome extraction
+│       └── fine_tune_classification.py  # Outcome classifier fine-tuning
 └── slurm/
     └── 41_tokenize_meds_ed.sh     # SLURM job template
 ```
@@ -328,22 +334,18 @@ input-representation-benchmark/
 │       │   └── 01_extract_meds_full.sh      # Extraction entry point
 │       └── data/meds/             # MEDS-formatted data (validated: 20,882 vocab)
 ├── configs/
-│   └── experiment.yaml            # Single unified Hydra config (all params)
+│   └── experiment.yaml            # Hydra config with SLURM launcher
 ├── run_experiments.py             # Python launcher for job generation
-├── scripts/
+├── scripts/                       # MEDS-specific utility scripts
+│   ├── extract_outcomes_meds.py   # 4-outcome extraction from MEDS data
+│   ├── normalize_meds_tokenized_layout.py  # Layout normalization for fms-ehrs
 │   ├── align_cohorts.py           # ICU cohort extraction for Exp3 data parity
-│   └── validate_cohort_parity.py  # Verify MEDS/CLIF data equivalence
+│   ├── validate_cohort_parity.py  # Verify MEDS/CLIF data equivalence
+│   ├── smoke_test_exp2.py         # Exp2 configuration verification
+│   └── minimal_e2e_dryrun.py      # End-to-end pipeline test
 ├── slurm/                         # SLURM job orchestration
 │   ├── preamble.sh                # Environment setup
-│   ├── run_from_jobfile.sh        # Array job runner
-│   ├── submit_demo.sh             # Submit 20 single-seed runs
-│   └── submit_full.sh             # Submit 100 runs (5 seeds)
-├── src/
-│   ├── model.py                   # LLaMA 3.2 67.3M model config
-│   ├── dataset.py                 # Dataset loading + label generation
-│   ├── train.py                   # Training script (Hydra)
-│   ├── evaluate.py                # Evaluation metrics
-│   └── representations.py         # Soft/continuous encoder integration
+│   └── run_from_jobfile.sh        # Array job runner
 └── tests/                         # Unit tests
 ```
 
@@ -610,130 +612,55 @@ For tables with multiple timestamp columns, we use **storage time** (`storetime`
 
 ## 6. Compute Infrastructure and Orchestration
 
-### 6.1. Pipeline Architecture
+### 6.1. Hydra Configuration
 
-All training and evaluation is performed through the **fms-ehrs** framework. The `input-representation-benchmark` repository provides:
-- MEDS extraction pipeline (`benchmarks/mimic-meds-extraction/`)
-- Outcome extraction for MEDS data (`scripts/extract_outcomes_meds.py`)
-- Job generation calling fms-ehrs scripts (`run_experiments.py`)
-- Utility scripts for layout normalization and cohort alignment
+We use a single `experiment.yaml` with all parameters and SLURM launcher settings:
 
-**fms-ehrs** provides:
-- Tokenization: `fms_ehrs/scripts/tokenize_w_config.py`
-- Pretraining (Exp1): `fms_ehrs/scripts/tune_model.py`
-- Representation training (Exp2): `fms_ehrs/scripts/train_representation.py`
-- Classification fine-tuning: `fms_ehrs/scripts/fine_tune_classification.py`
-- CLIF outcome extraction: `fms_ehrs/scripts/extract_outcomes.py`
+```yaml
+# configs/experiment.yaml (simplified)
+defaults:
+  - _self_
+  - override hydra/launcher: submitit_slurm
+
+# Experiment parameters (swept via job file generation)
+quantizer: deciles          # deciles | ventiles | trentiles | centiles
+clinical_anchoring: none    # none | 5-10-5 | 10-10-10
+fused_category_values: false
+representation: discrete    # discrete | soft | continuous
+temporal_encoding: time_tokens  # time_tokens | time2vec
+vocabulary: mimic_native    # mimic_native | clif
+seed: 42
+
+# SLURM launcher config
+hydra:
+  launcher:
+    partition: gpu
+    gpus_per_node: 1
+    mem_gb: 64
+    timeout_min: 1440  # 24 hours
+    array_parallelism: 20
+```
 
 ### 6.2. Job Generation and Submission
 
-Since some parameter combinations are invalid (e.g., `5-10-5` only works with `ventiles`), we generate explicit job files:
+Since some parameter combinations are invalid (e.g., `5-10-5` only works with `ventiles`), we use a Python launcher to generate valid job files:
 
 ```bash
-# Generate job files for demo (single seed) or full (5 seeds)
-python run_experiments.py --mode demo          # Single-seed validation
-python run_experiments.py --mode full          # Full 5-seed runs
-python run_experiments.py --mode demo --exp 1  # Specific experiment
+# Generate job files for demo (single-seed) or full (5-seed)
+python run_experiments.py --mode demo --exp 1  # Exp 1: 12 configs
+python run_experiments.py --mode demo --exp 2  # Exp 2: 6 configs  
+python run_experiments.py --mode demo --exp 3  # Exp 3: 2 configs
 
-# Output: slurm/exp{1,2,3}_{demo,full}_jobs.sh
+# Output: slurm/exp{1,2,3}_demo_jobs.sh (executable bash scripts)
+
+# Run locally for testing
+bash slurm/exp1_demo_jobs.sh
+
+# Or submit as SLURM array job
+sbatch --array=0-11 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh
 ```
 
-Each generated job file contains a complete pipeline:
-
-```bash
-# Example job structure (from exp2_demo_jobs.sh):
-
-# Step 1: Tokenize data
-python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
-    --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --data_version_in raw \
-    --data_version_out ventiles_5-10-5_unfused \
-    --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
-    --include_24h_cut
-
-# Step 2: Train with representation mechanics
-python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
-    --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --data_version ventiles_5-10-5_unfused \
-    --representation soft \
-    --temporal time2vec \
-    --num_bins 20 \
-    --seed 42
-
-# Step 3: Extract outcomes
-python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized
-
-# Step 4: Fine-tune classifiers
-for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
-    python ../fms-ehrs/fms_ehrs/scripts/fine_tune_classification.py \
-        --model_loc models/exp2_*-soft-time2vec/model-soft-time2vec \
-        --data_version ventiles_5-10-5_unfused_first_24h \
-        --outcome $outcome
-done
-```
-
-### 6.3. Randi Cluster Deployment
-
-**Pre-requisites**:
-1. Both repositories cloned on Randi: `input-representation-benchmark/` and `fms-ehrs/` as siblings
-2. MIMIC-IV data in `input-representation-benchmark/physionet.org/files/mimiciv/3.1/`
-3. MEDS extraction completed: `benchmarks/mimic-meds-extraction/data/meds/`
-4. Conda environment with fms-ehrs installed
-
-**Post-SSH Setup**:
-
-```bash
-# 1. Navigate to workspace
-cd /gpfs/data/bbj-lab/users/$USER
-
-# 2. Activate environment
-source ~/.bashrc
-conda activate ehr-benchmark
-
-# 3. Set environment variables
-export MIMIC_RAW_DIR=/gpfs/data/bbj-lab/users/$USER/input-representation-benchmark/physionet.org/files/mimiciv/3.1
-export MEDS_DATA_DIR=/gpfs/data/bbj-lab/users/$USER/input-representation-benchmark/benchmarks/mimic-meds-extraction/data/meds
-export MODEL_DIR=/gpfs/data/bbj-lab/users/$USER/input-representation-benchmark/models
-export HF_HOME=/gpfs/data/bbj-lab/cache/huggingface
-
-# 4. Verify installations
-python -c "from fms_ehrs.framework.tokenizer import Tokenizer21; print('fms-ehrs OK')"
-python -c "from scripts.extract_outcomes_meds import main; print('benchmark scripts OK')"
-```
-
-**Running Experiments**:
-
-```bash
-# Change to benchmark directory
-cd input-representation-benchmark
-
-# Generate job scripts
-python run_experiments.py --mode demo --exp 1  # Exp 1 demo
-
-# Submit to SLURM (24h time limit)
-sbatch --partition=gpuq --gres=gpu:1 --mem=64G --time=24:00:00 slurm/exp1_demo_jobs.sh
-
-# Or run interactively for debugging
-srun --partition=gpuq --gres=gpu:1 --mem=64G --time=4:00:00 --pty bash
-bash slurm/exp1_demo_jobs.sh  # Inside interactive session
-```
-
-**Monitoring**:
-
-```bash
-# Check job status
-squeue -u $USER
-
-# View logs
-tail -f slurm/output/exp1_demo_*.out
-
-# GPU utilization (on compute node)
-nvtop
-```
-
-**Job Time Limit Note**: Randi enforces a 24-hour maximum job duration. Each experiment configuration is designed to complete within this limit. For longer runs, use SLURM job arrays with checkpointing.
+Each generated job file contains the complete pipeline: tokenize → train → extract_outcomes → fine_tune_classification, calling fms-ehrs scripts with appropriate CLI arguments.
 
 ### 6.3. Compute Estimation
 

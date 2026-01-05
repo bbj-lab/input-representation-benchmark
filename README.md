@@ -1,27 +1,78 @@
 # Input Representation Benchmark
 
-**Systematic Evaluation of Input Representations for EHR Foundation Models**
+**EHR Input Representation Benchmarking Framework**. Works with [fms-ehrs](https://github.com/your-org/fms-ehrs) as a sister repository.
 
-This repository benchmarks input representation methods for transformer-based EHR foundation models, evaluating how discretization granularity, value encoding strategies, and vocabulary semantics affect clinical prediction performance.
+## Overview
 
-## Quick Links
-
-- **Documentation**: `methods/proposal.md` (detailed methodology), `methods/paper.md` (manuscript)
-- **Sister Repository**: [fms-ehrs](../fms-ehrs) — tokenization, training, and evaluation framework
-- **Data Pipeline**: `benchmarks/mimic-meds-extraction/` — MIMIC-IV to MEDS conversion
-
-## Experiments Overview
+This repository evaluates input representation methods for EHR foundation models across three experimental axes:
 
 | Experiment | Focus | Configurations | Training Runs |
 |------------|-------|----------------|---------------|
-| **Exp 1** | Granularity & Clinical Anchoring | 12 (decile/ventile/trentile/centile × fused/unfused) | 60 (× 5 seeds) |
-| **Exp 2** | Representation Mechanics | 6 (discrete/soft/continuous × time_tokens/time2vec) | 30 (× 5 seeds) |
-| **Exp 3** | Vocabulary Semantics | 2 (MEDS native vs CLIF standardized) | 10 (× 5 seeds) |
-| **Total** | | **20 configurations** | **100 training runs** |
+| **Exp 1** | Granularity & Semantic Anchoring | Decile, Ventile, Trentile, Centile × Fused tokens | 60 (12 × 5 seeds) |
+| **Exp 2** | Representation Mechanics | Discrete, Soft, Continuous × Time tokens/Time2Vec | 30 (6 × 5 seeds) |
+| **Exp 3** | Vocabulary Semantics | MIMIC-IV native vs. CLIF standardized | 10 (2 × 5 seeds) |
+| **Total** | | 20 configurations | **100 training runs** |
 
-**Model**: LLaMA 3.2 (67.3M parameters, scaled-down configuration)
+**Model**: LLaMA 3.2 (67.3M parameters, 128K context window)
 
-**Evaluation**: 4 clinical prediction tasks (in-hospital mortality, long LOS, ICU admission, IMV event)
+## Installation
+
+```bash
+# Create environment
+conda create -n ehr-benchmark python=3.12 -y
+conda activate ehr-benchmark
+
+# Install MEDS transforms (for data extraction)
+pip install "MEDS_transforms[local_parallelism]"
+
+# Install fms-ehrs (sister repository - for tokenization and representation methods)
+git clone https://github.com/your-org/fms-ehrs ../fms-ehrs
+pip install -e ../fms-ehrs
+
+# Install this benchmark
+pip install -e .
+```
+
+**Note**: The MIMIC-IV dataset (`physionet.org/`) is excluded from git. You must download it separately and place it under this repository.
+
+## Quick Start
+
+```bash
+# 0. Environment Setup (see Installation above)
+
+# 1. MEDS Extraction (converts MIMIC-IV to MEDS format)
+cd benchmarks/mimic-meds-extraction
+bash scripts/01_extract_meds_full.sh 3  # 3 = number of parallel workers
+
+# 2. Generate job files for experiments
+cd ../..  # Back to repo root
+python run_experiments.py --mode demo --exp 1  # Exp 1 (single seed)
+python run_experiments.py --mode demo --exp 2  # Exp 2 (single seed)
+python run_experiments.py --mode demo --exp 3  # Exp 3 (single seed)
+
+# 3. Run locally (for testing) or submit to SLURM
+bash slurm/exp1_demo_jobs.sh                   # Local execution
+# OR
+sbatch --array=0-11 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh  # SLURM
+```
+
+## Architecture
+
+This benchmark uses a **two-repository architecture**:
+
+### `input-representation-benchmark/` (this repo)
+- **Data**: MEDS extraction pipeline, MIMIC-IV data
+- **Configuration**: Experiment parameters (`configs/experiment.yaml`)
+- **Orchestration**: Job generation (`run_experiments.py`)
+- **MEDS-specific scripts**: Outcome extraction, layout normalization
+- **Documentation**: Methods, proposal, paper
+
+### `fms-ehrs/` (sister repo)
+- **Tokenization**: `fms_ehrs/scripts/tokenize_w_config.py`
+- **Pretraining (Exp 1)**: `fms_ehrs/scripts/tune_model.py`
+- **Representation Training (Exp 2)**: `fms_ehrs/scripts/train_representation.py`
+- **Classification Fine-tuning**: `fms_ehrs/scripts/fine_tune_classification.py`
+- **Framework**: Vocabulary, dataset, model wrapper, encoders
 
 ## Project Structure
 
@@ -29,234 +80,173 @@ This repository benchmarks input representation methods for transformer-based EH
 input-representation-benchmark/
 ├── README.md                      # This file
 ├── THIRD_PARTY_NOTICES.md         # Attribution for third-party code
-├── pyproject.toml                 # Python dependencies
-├── run_experiments.py             # Job generator (calls fms-ehrs scripts)
+├── pyproject.toml                 # Dependencies
+├── run_experiments.py             # Job generation for all experiments
 │
 ├── methods/
-│   ├── proposal.md                # Research proposal & methodology
-│   └── paper.md                   # Manuscript draft
+│   ├── proposal.md                # Research proposal
+│   ├── paper.md                   # Paper draft
+│   └── overall-pipeline.mmd       # Pipeline diagram (Mermaid)
 │
-├── benchmarks/
-│   └── mimic-meds-extraction/     # MEDS data extraction pipeline
-│       ├── configs/               # MEDS event configurations
-│       ├── meds_pipeline/         # Extraction code (from ETHOS-ARES)
-│       ├── scripts/               # Pipeline scripts
-│       └── data/                  # Output (excluded from git)
-│           ├── pre_meds/          # Pre-processed MIMIC tables
-│           └── meds/              # MEDS-formatted events
+├── configs/
+│   └── experiment.yaml            # Hydra config with SLURM launcher
 │
-├── scripts/                       # Utility scripts
-│   ├── extract_outcomes_meds.py   # Outcome label extraction for MEDS
-│   ├── normalize_meds_tokenized_layout.py  # MEDS → fms-ehrs layout adapter
+├── scripts/                       # MEDS-specific utility scripts
+│   ├── extract_outcomes_meds.py   # 4-outcome extraction from MEDS data
+│   ├── normalize_meds_tokenized_layout.py  # Layout normalization for fms-ehrs
 │   ├── align_cohorts.py           # Cohort alignment for Exp 3
 │   ├── validate_cohort_parity.py  # Data parity validation
-│   ├── minimal_e2e_dryrun.py      # Local pipeline smoke test
-│   └── smoke_test_exp2.py         # Exp2 representation smoke test
+│   ├── validate_imv_detection.py  # IMV detection cross-validation
+│   ├── minimal_e2e_dryrun.py      # Minimal end-to-end test
+│   └── smoke_test_exp2.py         # Exp 2 configuration smoke test
 │
 ├── slurm/                         # SLURM job submission
-│   ├── preamble.sh                # Common SLURM setup
+│   ├── preamble.sh                # Environment setup for jobs
 │   └── run_from_jobfile.sh        # Array job runner
 │
 ├── tests/                         # Unit tests
+│   ├── test_extract_outcomes_meds.py
+│   └── test_validate_imv_detection.py
 │
-└── physionet.org/                 # Raw MIMIC-IV data (excluded from git)
+├── benchmarks/
+│   └── mimic-meds-extraction/     # MEDS data pipeline
+│       ├── configs/               # MEDS event configs
+│       │   └── event_configs_v3.1_full.yaml  # With storetime semantics
+│       ├── meds_pipeline/         # MEDS extraction code (from ETHOS-ARES)
+│       ├── scripts/               # Pipeline scripts
+│       └── data/                  # Output data (not in git)
+│           ├── pre_meds/          # Pre-processed MIMIC data
+│           └── meds/              # MEDS-formatted data
+│
+└── physionet.org/                 # MIMIC-IV data (not in git)
+    └── files/mimiciv/3.1/
 ```
 
-## Installation
+## Experiment Pipeline
 
-### Prerequisites
+Each experiment follows this pipeline (orchestrated by `run_experiments.py`):
 
-- Python 3.11+
-- CUDA 11.8+ (for GPU training)
-- MIMIC-IV v3.1 access (PhysioNet credentialed)
-
-### Setup
-
-```bash
-# 1. Clone both repositories
-git clone https://github.com/your-org/input-representation-benchmark
-git clone https://github.com/your-org/fms-ehrs
-
-# 2. Create environment
-conda create -n ehr-benchmark python=3.12 -y
-conda activate ehr-benchmark
-
-# 3. Install fms-ehrs (sister repository)
-cd fms-ehrs
-pip install -e .
-
-# 4. Install MEDS transforms (for data extraction)
-pip install "MEDS_transforms[local_parallelism]"
-
-# 5. Install benchmark dependencies
-cd ../input-representation-benchmark
-pip install -e .
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Tokenization  │ ──> │    Training     │ ──> │   Evaluation    │
+│  (fms-ehrs)     │     │  (fms-ehrs)     │     │  (fms-ehrs)     │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │                       │
+        v                       v                       v
+  tokenize_w_config.py    tune_model.py OR       extract_outcomes +
+                          train_representation.py fine_tune_classification.py
 ```
 
-### Data Setup
-
-1. Download MIMIC-IV v3.1 from PhysioNet to `physionet.org/files/mimiciv/3.1/`
-2. Run MEDS extraction (see Pipeline section below)
-
-## Pipeline
-
-### Step 1: MEDS Extraction
-
-Convert MIMIC-IV to MEDS format with reference ranges for clinical anchoring:
-
-```bash
-cd benchmarks/mimic-meds-extraction
-bash scripts/01_extract_meds_full.sh 3  # 3 = parallel workers
-```
-
-**Output**: `data/meds/data/{train,tuning,held_out}/*.parquet`
-
-### Step 2: Generate Experiment Jobs
-
-```bash
-# Generate single-seed demo jobs for testing
-python run_experiments.py --mode demo
-
-# Generate full 5-seed jobs for statistical robustness
-python run_experiments.py --mode full
-
-# Generate for specific experiment
-python run_experiments.py --mode demo --exp 1  # Exp 1 only
-```
-
-**Output**: `slurm/exp{1,2,3}_{demo,full}_jobs.sh`
-
-### Step 3: Run Experiments
-
-Each generated job file contains a complete pipeline:
-1. **Tokenize** → `fms_ehrs/scripts/tokenize_w_config.py`
-2. **Train** → `fms_ehrs/scripts/train_representation.py` (Exp 2) or `tune_model.py` (Exp 1)
-3. **Extract Outcomes** → `scripts/extract_outcomes_meds.py`
-4. **Fine-tune Classifier** → `fms_ehrs/scripts/fine_tune_classification.py`
-
-```bash
-# Local execution (for testing)
-bash slurm/exp1_demo_jobs.sh
-
-# SLURM submission
-sbatch slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh
-```
-
-### Step 4: Local Smoke Tests
-
-```bash
-# End-to-end pipeline test (tiny subset)
-python scripts/minimal_e2e_dryrun.py --n_hadm 5
-
-# Exp2 representation mechanics test
-python scripts/smoke_test_exp2.py
-```
-
-## Key Implementation Details
-
-### Experiment 1: Discretization Granularity
-
-- **Quantizers**: Deciles (10), Ventiles (20), Trentiles (30), Centiles (100)
-- **Clinical Anchoring**: 5-10-5 (ventiles), 10-10-10 (trentiles) using reference ranges
-- **Token Layout**: Fused vs unfused `(code, quantile)` pairs
+### Experiment 1: Granularity
+- **Tokenization**: Varies quantizer (deciles/ventiles/trentiles/centiles) and clinical anchoring
+- **Training**: `tune_model.py` with packed collation
+- **Evaluation**: 4 outcomes (mortality, LOS, ICU admission, IMV)
 
 ### Experiment 2: Representation Mechanics
-
-- **Discrete**: Standard token embeddings (baseline)
-- **Soft Discretization**: Convex combinations of adjacent bin embeddings (ConSE-inspired)
-- **Continuous Encoder**: MLP projection of z-score normalized values (xVal-inspired)
-- **Time Tokens**: Discrete temporal intervals (`T_5m-15m`, `T_1h-2h`, etc.)
-- **Time2Vec**: Learned periodic + linear temporal encoding
-
-**Note**: Soft and continuous encoders require **unfused tokenization** (`fused_category_values=false`).
+- **Tokenization**: Uses Exp 1 winner's quantizer settings
+- **Training**: `train_representation.py` with padded collation (required for soft/continuous encoders and Time2Vec)
+- **Configurations**: 3 representations × 2 temporal encodings = 6 configs
 
 ### Experiment 3: Vocabulary Semantics
+- **Comparison**: MEDS (native MIMIC) vs. CLIF (standardized) vocabularies
+- **Training**: Uses Exp 2 winner's representation settings
+- **Cohort**: Aligned ICU patients (≥24h stays) for data parity
 
-- **MEDS**: Native MIMIC-IV codes (e.g., `LAB//50912//CREATININE`)
-- **CLIF**: Standardized clinical concepts (e.g., `creatinine`)
-- **Cohort**: ICU patients with ≥24h stays (matched between formats)
-
-### Temporal Encoding Policy
-
-Time2Vec uses **relative time** (hours since admission) rather than absolute timestamps. This respects MIMIC-IV's deidentification policy: "A single date shift was assigned to each subject_id. As a result, the data for a single patient are internally consistent... Conversely, distinct patients are not temporally comparable."
-
-### Outcome Extraction
-
-Labels are computed from **storetime** semantics (when data entered EHR) to prevent look-ahead bias:
-- `same_admission_death`: Discharge disposition = expired
-- `long_length_of_stay`: Hospital stay > 7 days
-- `icu_admission`: ICU transfer within hospitalization
-- `imv_event`: Invasive mechanical ventilation during stay
-- `icu_admission_24h`, `imv_event_24h`: Events within first 24 hours
-
-## Dependencies
+## Dependencies and Attribution
 
 ### Sister Repository: fms-ehrs
 
-Provides tokenization framework, representation methods, and training scripts:
-- `tokenizer.py`, `tokenizer_base.py`: Tokenization with quantization
-- `soft_discretization.py`: Soft discretization encoder
-- `continuous_encoder.py`: MLP-based continuous encoder
-- `time2vec.py`: Learned temporal embeddings
-- `model_wrapper.py`: Representation model wrapper
-- `train_representation.py`: Unified training script
+All tokenization, model training, and evaluation is performed through **fms-ehrs**, which provides:
 
-### MEDS Extraction: ETHOS-ARES
+- `fms_ehrs/framework/tokenizer.py`: Configurable tokenizer with time-spacing, 24h truncation
+- `fms_ehrs/framework/dataset.py`: Dataset loader with numeric_values and relative_times support
+- `fms_ehrs/framework/model_wrapper.py`: Wrapper for soft/continuous encoders and Time2Vec
+- `fms_ehrs/framework/soft_discretization.py`: ConSE-inspired convex combination encoder
+- `fms_ehrs/framework/continuous_encoder.py`: xVal-inspired MLP encoder
+- `fms_ehrs/framework/time2vec.py`: Learned temporal embeddings
 
-The MEDS extraction pipeline in `benchmarks/mimic-meds-extraction/meds_pipeline/` is adapted from ETHOS-ARES:
+**Setup**: Clone `fms-ehrs` as a sibling directory and install with `pip install -e ../fms-ehrs`.
+
+### MEDS Extraction Pipeline: ETHOS-ARES
+
+The MEDS extraction pipeline in `benchmarks/mimic-meds-extraction/meds_pipeline/`
+is adapted from the **ETHOS-ARES** repository.
 
 - **Repository**: https://github.com/ipolharvard/ethos-ares
-- **License**: MIT (Copyright © 2024 Paweł Renc)
-- **Citation**: Renc et al. (2025). GigaScience, 14, giaf107.
+- **License**: MIT (Copyright (c) 2024 Paweł Renc)
+- **Citation**:
 
-See `THIRD_PARTY_NOTICES.md` for complete attribution.
-
-## Randi Cluster Deployment
-
-### Post-SSH Setup
-
-```bash
-# 1. Activate environment
-source ~/.bashrc
-conda activate ehr-benchmark
-
-# 2. Set environment variables
-export MIMIC_RAW_DIR=/gpfs/data/bbj-lab/users/$USER/input-representation-benchmark/physionet.org/files/mimiciv/3.1
-export MEDS_DATA_DIR=/gpfs/data/bbj-lab/users/$USER/input-representation-benchmark/benchmarks/mimic-meds-extraction/data/meds
-export MODEL_DIR=/gpfs/data/bbj-lab/users/$USER/input-representation-benchmark/models
-
-# 3. Verify fms-ehrs is accessible
-python -c "from fms_ehrs.framework.tokenizer import Tokenizer21; print('fms-ehrs OK')"
+```bibtex
+@article{10.1093/gigascience/giaf107,
+    author = {Renc, Pawel and Grzeszczyk, Michal K and Oufattole, Nassim and Goode, Deirdre and Jia, Yugang and Bieganski, Szymon and McDermott, Matthew B A and Was, Jaroslaw and Samir, Anthony E and Cunningham, Jonathan W and Bates, David W and Sitek, Arkadiusz},
+    title = {Foundation model of electronic medical records for adaptive risk estimation},
+    journal = {GigaScience},
+    volume = {14},
+    pages = {giaf107},
+    year = {2025},
+    doi = {10.1093/gigascience/giaf107},
+}
 ```
 
-### Running Experiments
+See `THIRD_PARTY_NOTICES.md` for complete attribution details.
 
-```bash
-# Generate job scripts
-python run_experiments.py --mode demo --exp 1
+### Model Architecture
 
-# Submit to SLURM (24h limit per job)
-sbatch --partition=gpuq --gres=gpu:1 --time=24:00:00 slurm/exp1_demo_jobs.sh
+The scaled-down LLaMA 3.2 configuration (67.3M parameters) is borrowed from:
 
-# Monitor
-squeue -u $USER
-tail -f slurm/output/*.out
-```
+- **Burkhart et al. (2025)**: "Quantifying surprise in clinical care" (arXiv:2507.22798)
+  - Source of scaled-down configuration: hidden=1024, intermediate=2048, layers=8, heads=8
+- **Grattafiori et al. (2024)**: "The Llama 3 Herd of Models" (arXiv:2407.21783)
+  - Source of base LLaMA 3.2 architecture
+
+## Technical Notes
+
+### Ventile Quantization (Reference Range-Aware)
+
+**Goal**: Incorporate clinical knowledge into tokenization by using reference ranges (`ref_range_lower`, `ref_range_upper`) to define bins (e.g., 5 bins below normal, 10 within, 5 above).
+
+**Results (MIMIC-IV v3.1)**:
+- **Dataset**: 364,627 patients, 142M lab events, 1,128 unique lab codes
+- **Reference Ranges**: 392 codes (34.8%) have paired bounds, covering 114M events (80.3%)
+- **Strict Filtering**: 155/203 candidate codes (76.4%) pass the strict 20-bin requirement
+- **All passing codes achieve exactly 20 bins**: ✓
+- **Glucose Example**: Verified 5 bins below [70], 10 within [70-105], 5 above [105]
+
+### Time2Vec Temporal Encoding
+
+Time2Vec uses **relative time** (hours since admission) rather than absolute timestamps, respecting MIMIC-IV's deidentification policy:
+
+> "A single date shift was assigned to each subject_id. As a result, the data for a single patient are internally consistent... Conversely, distinct patients are not temporally comparable."
+
+This preserves clinically meaningful temporal patterns while avoiding spurious cross-patient correlations.
+
+### 4 Evaluation Outcomes
+
+1. **same_admission_death**: In-hospital mortality
+2. **long_length_of_stay**: Hospital stay > 7 days
+3. **icu_admission**: ICU admission after first 24 hours
+4. **imv_event**: Invasive mechanical ventilation after first 24 hours
+
+All outcomes use `storetime` semantics to prevent look-ahead bias.
+
+## Contact
+
+Daniel Lee (ihlee@uchicago.edu), University of Chicago
 
 ## Citation
 
+If you use this benchmarking framework, please cite:
+
 ```bibtex
-@article{lee2025input,
-  title={Input Representation Benchmark for EHR Foundation Models},
-  author={Lee, Daniel and others},
-  journal={arXiv preprint},
-  year={2025}
+@article{
+  TO-BE-ADDED
 }
 ```
 
 Please also cite the underlying frameworks:
 
 ```bibtex
+% ETHOS-ARES (MEDS extraction pipeline)
 @article{10.1093/gigascience/giaf107,
     author = {Renc, Pawel and others},
     title = {Foundation model of electronic medical records for adaptive risk estimation},
@@ -267,6 +257,7 @@ Please also cite the underlying frameworks:
     doi = {10.1093/gigascience/giaf107},
 }
 
+% Model architecture reference
 @article{burkhart2025quantifying,
     author = {Burkhart, Michael C. and others},
     title = {Quantifying surprise in clinical care},
@@ -274,7 +265,3 @@ Please also cite the underlying frameworks:
     year = {2025}
 }
 ```
-
-## Contact
-
-Inhyeok (Daniel) Lee (ihlee@uchicago.edu), University of Chicago
