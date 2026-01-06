@@ -27,7 +27,10 @@ description: |-
 event_conversion_config_fp: ${oc.env:EVENT_CONVERSION_CONFIG_FP}
 
 input_dir: ${oc.env:MIMICIV_PRE_MEDS_DIR}
-cohort_dir: ${oc.env:MIMICIV_MEDS_COHORT_DIR}
+# MEDS_transforms runner expects `output_dir` in the pipeline config.
+# We keep `cohort_dir` as an alias for backwards compatibility with ETHOS-ARES naming.
+output_dir: ${oc.env:MIMICIV_MEDS_COHORT_DIR}
+cohort_dir: ${output_dir}
 
 etl_metadata:
   dataset_name: MIMIC-IV
