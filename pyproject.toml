@@ -19,7 +19,8 @@ requires-python = ">=3.12"
 dependencies = [
     "loguru",
     "numpy",
-    "polars >= 1.26.0, <= 1.27.9",
+    # Keep compatible with clifpy (required by fms-ehrs), which requires polars>=1.33.1.
+    "polars >= 1.33.1",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,7 @@ dev = ["pre-commit<4"]
 tests = ["pytest"]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["scripts"]
 
 

@@ -20,6 +20,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out deciles_none_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer deciles \
+    --clinical_anchoring none \
+    --include_ref_ranges false \
+    --include_time_spacing_tokens true \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -34,9 +39,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/deciles_none_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/deciles_none_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/deciles_none_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -62,6 +67,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out deciles_none_fused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer deciles \
+    --clinical_anchoring none \
+    --include_ref_ranges false \
+    --include_time_spacing_tokens true \
+    --fused_category_values true \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -76,9 +86,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/deciles_none_fused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/deciles_none_fused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/deciles_none_fused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -104,6 +114,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_none_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring none \
+    --include_ref_ranges false \
+    --include_time_spacing_tokens true \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -118,9 +133,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_none_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_none_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_none_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -146,6 +161,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_none_fused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring none \
+    --include_ref_ranges false \
+    --include_time_spacing_tokens true \
+    --fused_category_values true \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -160,9 +180,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_none_fused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_none_fused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_none_fused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -188,6 +208,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens true \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -202,9 +227,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -230,6 +255,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_fused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens true \
+    --fused_category_values true \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -244,9 +274,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_fused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_fused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_fused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -272,6 +302,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out trentiles_none_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer trentiles \
+    --clinical_anchoring none \
+    --include_ref_ranges false \
+    --include_time_spacing_tokens true \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -286,9 +321,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_none_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_none_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_none_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -314,6 +349,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out trentiles_none_fused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer trentiles \
+    --clinical_anchoring none \
+    --include_ref_ranges false \
+    --include_time_spacing_tokens true \
+    --fused_category_values true \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -328,9 +368,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_none_fused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_none_fused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_none_fused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -356,6 +396,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out trentiles_10-10-10_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer trentiles \
+    --clinical_anchoring 10-10-10 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens true \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -370,9 +415,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_10-10-10_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_10-10-10_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_10-10-10_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -398,6 +443,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out trentiles_10-10-10_fused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer trentiles \
+    --clinical_anchoring 10-10-10 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens true \
+    --fused_category_values true \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -412,9 +462,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_10-10-10_fused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_10-10-10_fused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/trentiles_10-10-10_fused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -440,6 +490,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out centiles_none_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer centiles \
+    --clinical_anchoring none \
+    --include_ref_ranges false \
+    --include_time_spacing_tokens true \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -454,9 +509,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/centiles_none_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/centiles_none_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/centiles_none_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -482,6 +537,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out centiles_none_fused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer centiles \
+    --clinical_anchoring none \
+    --include_ref_ranges false \
+    --include_time_spacing_tokens true \
+    --fused_category_values true \
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -496,9 +556,9 @@ python ../fms-ehrs/fms_ehrs/scripts/tune_model.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/centiles_none_fused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/centiles_none_fused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/centiles_none_fused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do

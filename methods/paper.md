@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Electronic Health Record (EHR) foundation models require principled methods for representing continuous physiological measurements within discrete token vocabularies. While discretization via population-based quantile binning has become standard practice, the optimal encoding of continuous laboratory values—balancing clinical semantics, numeric precision, and computational efficiency—remains an open question. We present a systematic evaluation framework examining three representation axes: (1) quantization granularity with clinically-anchored bin boundaries informed by laboratory reference ranges, (2) representation mechanics comparing discrete tokens, convex combinations of bin embeddings, and learned continuous encoders, and (3) vocabulary semantics contrasting institution-specific codes against standardized clinical concepts. Evaluated on MIMIC-IV v3.1 across four clinical prediction tasks (in-hospital mortality, length of stay, ICU admission, mechanical ventilation), our benchmark comprises 100 training runs using a scaled-down LLaMA 3.2 architecture (67.3M parameters). [PLACEHOLDER: Key quantitative findings with specific AUROC/AUPRC improvements]. These results establish empirical guidelines for input representation design in clinical foundation models, with implications for predictive performance, model calibration, and cross-site generalizability.
+Electronic Health Record (EHR) foundation models require principled methods for representing continuous physiological measurements within token sequences consumed by transformer architectures. Population-based quantile binning (e.g., deciles) has become a de facto choice in prior pipelines (e.g., ETHOS-ARES [1]), but it imposes an arbitrary categorical structure on intrinsically continuous measurements and may obscure clinically meaningful thresholds defined by reference intervals [5]. We present a systematic benchmark that isolates *input representation* as the primary experimental variable along three axes: (1) quantization granularity and clinical anchoring of bin boundaries using laboratory reference ranges, (2) representation mechanics that either treat binned values as discrete tokens or preserve numeric precision via soft discretization (convex combinations of bin embeddings [14]) and learned continuous encoders inspired by xVal-style numeric embeddings [7], and (3) vocabulary semantics contrasting institution-specific codes against standardized clinical concepts (CLIF; operationalized via Burkhart et al. [9]). We evaluate these design choices on MIMIC-IV v3.1 [13] across four prediction tasks (same-admission mortality, long length of stay, ICU admission after 24 hours, invasive mechanical ventilation after 24 hours), reporting discrimination (AUROC/AUPRC), calibration (Brier score/ECE), fairness (subgroup AUROC gaps), and efficiency (token counts, FLOPs, inference latency) in the style of clinically meaningful evaluation frameworks (FoMoH [10]) and benchmark practice (EHRSHOT [11]). Across 100 training runs using a scaled-down LLaMA 3.2 configuration (67.3M parameters; RoPE [12]) and five random seeds per configuration, we will report mean±SD performance and paired statistical comparisons across representation variants. [PLACEHOLDER: Key quantitative findings with specific AUROC/AUPRC and calibration changes]. This benchmark is intended to yield empirically grounded guidelines for representation design in clinical foundation models.
 
 ---
 
@@ -14,11 +14,11 @@ Artificial intelligence applied to healthcare aims to transform clinical decisio
 
 ### Paragraph 2: Evaluation Framework (E = Clinical Prediction Performance)
 
-Clinical prediction tasks provide the primary evaluation framework for assessing EHR foundation models. These tasks encompass risk stratification for adverse outcomes (mortality, readmission), early warning for acute deterioration (sepsis, respiratory failure), and resource utilization forecasting (length of stay, ICU admission). The appropriateness of prediction tasks as an evaluation framework stems from their direct clinical relevance: accurate predictions enable proactive interventions, efficient bed management, and informed shared decision-making. Evaluation metrics have evolved from simple discrimination measures (AUROC) to comprehensive frameworks incorporating calibration (Brier score, ECE), subgroup fairness (demographic parity), and clinical utility (net benefit analysis). Standardized benchmarks including EHRSHOT [11] and FoMoH [10] have emerged to enable systematic comparison across models. We adopt this multi-dimensional evaluation approach, recognizing that discrimination alone is insufficient for clinical deployment where probabilistic predictions inform high-stakes decisions.
+Clinical prediction tasks provide the primary evaluation framework for assessing EHR foundation models. These tasks encompass risk stratification for adverse outcomes (mortality, readmission), early warning for acute deterioration (sepsis, respiratory failure), and resource utilization forecasting (length of stay, ICU admission). The appropriateness of prediction tasks as an evaluation framework stems from their direct clinical relevance: accurate predictions enable proactive interventions, efficient bed management, and informed shared decision-making. Evaluation practice has evolved from discrimination-only reporting (AUROC) to multi-axis assessment incorporating calibration (e.g., Brier score, ECE) and subgroup reliability via performance gap analyses across demographic strata [10,20]. Standardized benchmarks including EHRSHOT [11] and FoMoH [10] have emerged to enable systematic comparison across models. We adopt this multi-dimensional evaluation approach, recognizing that discrimination alone is insufficient for clinical deployment where probabilistic predictions inform high-stakes decisions.
 
 ### Paragraph 3: Methodological Landscape (D = EHR Foundation Model Architectures)
 
-The application of foundation models to longitudinal EHR data has progressed through several methodological paradigms. Early approaches adapted BERT-style masked language modeling to diagnosis code sequences (BEHRT [2], Med-BERT [3]), demonstrating that self-supervised pretraining yields transferable clinical representations. Subsequent work incorporated richer event types—laboratory results, medications, procedures—requiring decisions about how to tokenize continuous measurements alongside discrete codes. The ETHOS-ARES framework [1] represents the current state-of-the-art, employing a 14-stage preprocessing pipeline that discretizes laboratory values via decile quantization before autoregressive language modeling. Alternative architectures have explored bidirectional attention (CORE-BEHRT [4]), time-aware embeddings (BEHRT extensions), and hierarchical patient representations (Hi-BEHRT). Domain-specific pretraining consistently outperforms general-purpose language models on clinical benchmarks, as demonstrated by Lang1 [16] achieving superior performance over GPT-4 and Llama-70B on hospital operations tasks despite having fewer parameters. The common thread across these approaches is the need to transform raw clinical data into discrete token sequences—a transformation whose optimal design remains understudied.
+The application of foundation models to longitudinal EHR data has progressed through several methodological paradigms. Early approaches adapted BERT-style masked language modeling to diagnosis code sequences (BEHRT [2], Med-BERT [3]), demonstrating that self-supervised pretraining yields transferable clinical representations. Subsequent work incorporated richer event types—laboratory results, medications, procedures—requiring decisions about how to tokenize continuous measurements alongside discrete codes. The ETHOS-ARES framework [1] represents the current state-of-the-art, employing a 14-stage preprocessing pipeline that discretizes laboratory values via decile quantization before autoregressive language modeling. Alternative architectures have explored bidirectional attention (CORE-BEHRT [4]) and time-aware embedding strategies, among other extensions. Domain-specific pretraining consistently outperforms general-purpose language models on clinical benchmarks, as demonstrated by Lang1 [16] achieving superior performance over GPT-4 and Llama-70B on hospital operations tasks despite having fewer parameters. The common thread across these approaches is the need to transform raw clinical data into discrete token sequences—a transformation whose optimal design remains understudied.
 
 ### Paragraph 4: Specific Method Analysis (C = Discretization Methods)
 
@@ -34,7 +34,7 @@ We define our research focus as the systematic evaluation of input representatio
 
 ### Paragraph 7: Prior Work in A (Input Representation Methods)
 
-Prior work on input representation for EHR foundation models has explored various approaches without systematic comparison. ETHOS-ARES [1] employs decile quantization with separate tokens for laboratory codes and quantized values, chosen for simplicity and alignment with prior clinical NLP work. BEHRT [2] and Med-BERT [3] focus on diagnosis codes without continuous values, sidestepping the discretization question. CLMBR-T-base [11] uses hierarchical code representations but does not systematically vary discretization granularity. MedRep [8] addresses vocabulary standardization through OMOP alignment but evaluates on code-level rather than value-level representations. Burkhart et al. [9] analyze representation dynamics and transferability of ETHOS models across sites, revealing that institution-specific vocabularies limit generalization. These approaches represent points in a large design space; our contribution is to systematically map this space through controlled experimentation.
+Prior work on input representation for EHR foundation models has explored various approaches without systematic comparison. ETHOS-ARES [1] employs decile quantization with separate tokens for laboratory codes and quantized values, a pragmatic design aligned with the discrete token interface of standard language models. BEHRT [2] and Med-BERT [3] focus primarily on discrete clinical codes, limiting direct analysis of continuous value representations. EHRSHOT [11] provides standardized downstream tasks for few-shot evaluation, but does not by itself resolve upstream representation choices. MedRep [8] addresses vocabulary standardization through concept mapping (e.g., OMOP alignment) but does not systematically vary discretization granularity or continuous encoding mechanics. Burkhart et al. [9] analyze representation dynamics and transferability of EHR foundation models across institutions, highlighting that institution-specific vocabularies can limit generalization and motivating controlled vocabulary-semantic comparisons. These works define a broad design space; our contribution is to systematically map key axes of this space through controlled experiments that hold model architecture and training objectives fixed.
 
 ### Paragraph 8: Critical Assessment
 
@@ -94,7 +94,7 @@ Our work differs from prior literature in several key respects. Unlike ETHOS-ARE
 
 ### 3.1. Problem Formulation
 
-Let $\mathcal{P} = \{p_1, \ldots, p_N\}$ denote a set of patients, where each patient $p_i$ is associated with a longitudinal health timeline $\mathcal{T}_i = \{(e_1, t_1), \ldots, (e_{L_i}, t_{L_i})\}$ consisting of clinical events $e_j$ occurring at timestamps $t_j$. Events include laboratory measurements $(c, v)$ with code $c$ and numeric value $v$, as well as discrete events (diagnoses, procedures, medications) represented by categorical codes.
+Let $\mathcal{P} = \{p_1, \ldots, p_N\}$ denote a set of patients, where each patient $p_i$ is associated with a longitudinal health timeline $\mathcal{T}_i = \{(e_1, t_1), \ldots, (e_{L_i}, t_{L_i})\}$ consisting of clinical events $e_j$ occurring at timestamps $t_j$. Events include laboratory measurements $(c, v)$ with code $c$ and numeric value $v$, as well as other time-stamped clinical events (e.g., admissions/discharges, medication administrations, transfers, ICU vitals/inputs/outputs/procedures) represented as categorical codes and, when applicable, aligned scalar values in `numeric_value` under the MEDS schema.
 
 The input representation problem is to define a mapping $\phi: \mathcal{T}_i \rightarrow \mathcal{S}_i$ from raw timelines to token sequences $\mathcal{S}_i = (s_1, \ldots, s_M)$ suitable for transformer processing. This mapping encompasses:
 
@@ -106,20 +106,20 @@ The downstream task is clinical prediction: given a timeline prefix $\mathcal{T}
 
 ### 3.2. Preliminaries
 
-**MEDS Format**: The Medical Event Data Standard provides a unified schema for longitudinal health data, with columns `subject_id`, `time`, `code`, `numeric_value`, and optional metadata including `ref_range_lower` and `ref_range_upper`.
+**MEDS Format**: We represent longitudinal EHR data in the Medical Event Data Standard (MEDS) schema, where each event is a row with minimally required columns `subject_id`, `time`, and `code`, and optional value columns including `numeric_value` (for scalar measurements) and metadata such as `ref_range_lower` / `ref_range_upper` (for laboratory reference intervals). This schema supports mixed discrete and continuous event streams in a single chronologically ordered timeline.
 
 **Data Pipeline**: We use the MEDS extraction pipeline adapted from **ETHOS-ARES** [1] for MIMIC-IV → MEDS conversion. The original pipeline is available at https://github.com/ipolharvard/ethos-ares under the MIT License (Copyright © 2024 Paweł Renc). We have adapted this pipeline to our repository with:
 - Modified split fractions (70/10/20 vs. original 90/10)
-- Custom event configuration using `storetime` semantics to prevent look-ahead bias
+- Custom event configuration using `storetime` semantics (when available) to better approximate information availability and reduce temporal look-ahead
 - Extended MEDS fields (`ref_range_lower`, `ref_range_upper`) for clinical anchoring
 
 All downstream tokenization, training, and evaluation rely entirely on our independent `fms-ehrs` codebase. This separation ensures clean modularity: MEDS extraction (adapted from ETHOS-ARES) produces standardized parquet files, while `fms-ehrs` handles all representation experiments without upstream dependencies.
 
-**Tokenization (fms-ehrs)**: The `fms_ehrs/framework/` module provides YAML-configurable tokenization with pluggable quantization strategies (deciles, ventiles, trentiles, centiles), clinical anchoring, time spacing tokens, and fused category-value options. Validated on MEDS-formatted MIMIC data: vocabulary size 20,882, average timeline length 1,450 tokens, runtime ~70 minutes on <150GB memory.
+**Tokenization (fms-ehrs)**: We tokenize MEDS timelines using our `fms-ehrs` framework. Tokenization is YAML-configurable and supports: (i) quantization strategies (deciles/ventiles/trentiles/centiles), (ii) clinically anchored binning using reference intervals [5], (iii) optional fused code–value tokens (to reduce sequence length), (iv) time spacing tokens (as in ETHOS-ARES [1]) and Time2Vec temporal features [15], and (v) aligned auxiliary arrays for continuous-value representations (see §4.4). In our validation runs on MEDS-formatted MIMIC data, tokenization produced a vocabulary of 20,882 tokens and mean timeline length of 1,450 tokens per patient admission (Appendix D).
 
 **LLaMA Architecture**: Our base model is a decoder-only transformer with rotary position embeddings, using a scaled-down configuration (67.3M parameters) for computational tractability across 100 training runs.
 
-**Data Inclusion Criteria and Label Leakage Prevention**: Clinical billing codes—ICD diagnoses, ICD procedures, CPT/HCPCS codes, and DRG assignments may be added or modified **after hospital discharge** by healthcare professionals who review signed clinical notes [13]. Including these codes introduces temporal label leakage: outcome information encoded in post-discharge billing would not be available during real-time clinical decision-making. Following rigorous evaluation practices analogous to those employed in theoretical retrieval analysis [21], we exclude four MIMIC-IV tables with billing codes:
+**Data Inclusion Criteria and Label Leakage Prevention**: A central requirement for predictive evaluation is that model inputs reflect information that would be available at the prediction time. Several administrative/billing code tables in MIMIC-IV are known to be assigned or finalized at or after discharge (e.g., ICD diagnosis/procedure codes, DRG codes), making them high-risk sources of temporal leakage for within-admission prediction. Accordingly, we exclude four MIMIC-IV tables whose primary purpose is post hoc billing/administration and may encode outcome-related information not available during the admission [13]. This design choice aligns with clinically meaningful evaluation principles emphasizing temporal validity and deployment realism [10,20].
 
 | Excluded Table | Code Type | Reason |
 |----------------|-----------|--------|
@@ -130,7 +130,33 @@ All downstream tokenization, training, and evaluation rely entirely on our indep
 
 We include real-time clinical data from `hosp/admissions`, `hosp/labevents`, `hosp/emar`, `hosp/omr`, `hosp/patients`, `hosp/transfers`, and the ICU module tables (`icustays`, `chartevents`, `inputevents`, `outputevents`, `procedureevents`). Notably, `icu/procedureevents` uses internal MIMIC `itemid` identifiers—not billing codes—representing real-time clinical documentation. For timestamp semantics, we order all events by **storage time** (`storetime`) instead of event occurrence time (`charttime`, `starttime`, `endtime`). This ensures event ordering reflects information availability in the EHR system, preventing look-ahead bias where a measurement physically occurred before it was actionable to clinicians.
 
-### 3.3. Proposed Evaluation Framework (Z)
+**Included event types and columns**: The primary focus of Experiments 1–2 is on laboratory values (`hosp/labevents.valuenum`) and their reference intervals (`ref_range_lower`, `ref_range_upper`) [5]. Additional event streams (medications, transfers, ICU vitals/inputs/outputs/procedures) provide clinical context and enable downstream outcome labeling under consistent timestamp semantics. A complete table→column mapping used in this benchmark is provided in `methods/data-columns.md`.
+
+### 3.3. Representation Models, Hypotheses, and Falsifiable Consequences
+
+We frame input representation as a *model class* choice that induces measurable differences in (i) information preserved from raw clinical measurements, (ii) inductive biases presented to the transformer during pretraining, and (iii) computational and statistical properties of downstream evaluation. We pre-specify competing representation models and falsifiable hypotheses before observing benchmark outcomes.
+
+**Model classes (competing representations)**:
+
+- **M1: Population-quantile discretization (baseline)**: Continuous values are mapped to discrete quantile bins (e.g., deciles) and represented as categorical tokens, following prior pipelines such as ETHOS-ARES [1].
+- **M2: Clinically anchored discretization**: Bin boundaries incorporate laboratory reference intervals [5] by partitioning values into below-/within-/above-normal regions prior to quantile binning (Experiment 1).
+- **M3: Soft discretization (convex combinations)**: Values retain within-bin position information by interpolating between adjacent bin embeddings, adapting ConSE-style convex combination ideas [14] to ordered numeric bins (Experiment 2).
+- **M4: Learned continuous encoders**: Values are encoded via a learned projection of standardized measurements, inspired by continuous numeric embeddings (xVal [7]) while retaining the discrete code channel (Experiment 2).
+
+**Global hypothesis (H\*)**: Input representation choices upstream of model architecture yield statistically detectable differences in downstream discrimination and calibration, even when architecture and training objectives are held fixed.
+
+**Experiment-specific hypotheses and consequences**:
+
+- **H1 (clinical anchoring)**: Clinically anchored binning (M2) improves clinically relevant discrimination and/or calibration relative to population-quantile binning (M1), particularly for outcomes sensitive to abnormal physiology.  
+  - *Consequence*: Mean AUROC/AUPRC and/or Brier/ECE improves for M2 vs. M1 across tasks; null model is no difference beyond sampling variability (paired comparisons across seeds/configs).
+- **H2 (granularity tradeoff)**: Increasing bin granularity improves representation fidelity up to a point, after which performance saturates or degrades due to sparsity and longer sequences.  
+  - *Consequence*: Performance exhibits a non-monotone or saturating trend across deciles→ventiles→trentiles→centiles with measurable efficiency tradeoffs (token counts/FLOPs).
+- **H3 (soft/continuous value encoding)**: Preserving numeric precision via M3 or M4 improves calibration metrics and may improve discrimination relative to purely discrete value tokens (M1/M2), conditional on controlling for temporal encoding and tokenization.  
+  - *Consequence*: Lower Brier/ECE (primary) and potentially higher AUROC/AUPRC (secondary) for M3/M4 vs. discrete baselines.
+- **H4 (temporal encoding)**: Time2Vec [15] provides measurable benefit over discrete time spacing tokens [1] for outcomes requiring longer-range temporal patterning. For a clean either/or comparison, our Time2Vec condition **removes time-spacing tokens** at tokenization time and provides temporal information exclusively via Time2Vec embeddings added to the token representations.  
+  - *Consequence*: Improved metrics for Time2Vec vs. time spacing tokens within the same value representation model.
+
+### 3.4. Proposed Evaluation Framework (Z)
 
 Our systematic evaluation framework comprises three experiments examining orthogonal representation dimensions:
 
@@ -144,7 +170,9 @@ We evaluate six granularity configurations:
 - Clinically-anchored trentiles (10-10-10): Reference range partitioning
 - Centiles (100 bins): Population-based
 
-Each configuration is evaluated with and without fused tokens (combining laboratory code and quantized value into single tokens), yielding 12 configurations.
+The *granularity* parameter is applied to all MEDS event types that carry `numeric_value` (labs, vitals, fluid outputs, infusion rates/amounts, and other scalar measurements). *Clinical anchoring* is applied only to laboratory events with reference intervals (`ref_range_lower`, `ref_range_upper`) [5]; for non-laboratory numeric streams that lack reference ranges, bins are computed via population quantiles.
+
+Each configuration is evaluated with and without fused code–value tokens (combining a numeric event’s code token and its discretized bin token), yielding 12 configurations and enabling explicit measurement of the accuracy–efficiency tradeoff.
 
 **Experiment 2: Representation Mechanics**
 
@@ -171,9 +199,11 @@ Using optimal granularity and encoding from Experiments 1-2, we evaluate:
 
 Both pipelines in Experiment 3 operate on identical patient IDs extracted via a cohort alignment script, ensuring the comparison isolates vocabulary effects from cohort composition differences.
 
+**Reference ranges in CLIF (for clinically anchored binning)**: The base CLIF 2.1 labs schema includes `reference_unit` but does not provide lower/upper reference interval bounds by default. When Experiment 1 selects a clinically anchored winner, we augment CLIF lab tables (`clif_labs.parquet`) with `ref_range_lower` and `ref_range_upper` derived from MIMIC-IV `labevents` grouped by `(lab_loinc_code, reference_unit)` so that clinically anchored binning can be applied symmetrically in Experiment 3. See `scripts/augment_clif_labs_with_ref_ranges.py`.
+
 This yields 2 configurations.
 
-### 3.4. Representation Methods
+### 3.5. Representation Methods
 
 **Clinically-Anchored Quantization**
 
@@ -206,31 +236,29 @@ $$t2v(\tau) = \left[w_0 \tau + \phi_0, \sin(w_1 \tau + \phi_1), \ldots, \sin(w_k
 
 This learned representation is added to token embeddings before transformer processing. Relative time is computed as `τ = (event_time - admission_time).total_seconds() / 3600` hours, respecting MIMIC-IV's deidentification policy where "a single date shift was assigned to each subject_id" [13]. Using relative rather than absolute time ensures within-patient temporal patterns are preserved while avoiding spurious cross-patient temporal correlations.
 
-### 3.5. Implementation Details
+### 3.6. Implementation Details
 
 **Model Configuration**:
-- Architecture: LLaMA 3.2 1B (scaled down)
-- Parameters: 67.3M
+- Architecture: decoder-only transformer initialized from the LLaMA family configuration (RoPE positional encoding) [12], then scaled down for tractable experimentation
+- Parameters: ~67.3M (exact count depends on tokenizer vocabulary size)
 - Hidden dimension: 1024
 - Intermediate size: 2048
 - Layers: 8
 - Attention heads: 8
-- Context length: 128K tokens
-- Positional encoding: RoPE
+- Sequence length used in experiments: 1,024 tokens (padded/truncated per tokenizer configuration); longer-context capacity of the base architecture is not exercised in the present benchmark
 
 **Training Configuration**:
-- Optimizer: AdamW ($\beta_1=0.9$, $\beta_2=0.999$)
-- Learning rate: 1e-4 with linear warmup (10% of steps)
-- Weight decay: 0.01
-- Batch size: 32
-- Epochs: 100 with early stopping on validation perplexity
+- Pretraining objective: causal language modeling with cross-entropy loss (as in ETHOS-style autoregressive timeline modeling [1])
+- Pretraining implementation (Exp 1): `fms_ehrs/scripts/tune_model.py` (TRL SFT training with packed collation), run for 5 epochs per trial with Optuna tuning over learning rate (default range \(5\times10^{-5}\)–\(5\times10^{-4}\)) and gradient accumulation (default range 1–3)
+- Representation training (Exp 2): `fms_ehrs/scripts/train_representation.py` (5 epochs by default; per-device batch size 4; gradient accumulation 2 by default)
+- Downstream evaluation: supervised fine-tuning for sequence classification via `fms_ehrs/scripts/fine_tune_classification.py` (5 epochs by default; early stopping on validation AUROC; per-device batch size 4; gradient accumulation 2 by default)
 - Random seeds: 5 per configuration (42, 123, 456, 789, 1024)
 
 **Infrastructure**:
-- Configuration management: Hydra
-- Job scheduling: SLURM arrays
+- Experiment orchestration: bash job files + SLURM arrays (fms-ehrs pattern)
+- Job scheduling: SLURM arrays with capped concurrency (≤8 GPUs at a time)
 - Logging: Weights & Biases
-- Hardware: [PLACEHOLDER: Randi cluster GPU specifications]
+- Hardware: Randi cluster (gpuq partition; nodes advertise `gpu:8` via Slurm GRES). [PLACEHOLDER: insert GPU model from `nvidia-smi` once recorded]
 
 ---
 
@@ -274,6 +302,8 @@ This learned representation is added to token embeddings before transformer proc
 
 ### 4.3. Evaluation Metrics
 
+We define evaluation metrics consistent with clinically meaningful model assessment for structured EHRs (FoMoH [10]) and contemporary guidance on predictive model evaluation beyond discrimination (Van Calster et al. [20]). Metrics are computed from predicted probabilities on held-out splits and summarized as mean±SD across random seeds.
+
 ### 4.3.1. Outcome Definitions and Label Extraction
 
 We evaluate representation quality using the four prediction tasks used in `fms-ehrs` (Burkhart et al. [9]): **same-admission mortality**, **long length of stay** (\(>7\) days), **ICU admission**, and **invasive mechanical ventilation (IMV)**. We compute two auxiliary 24-hour window flags (`icu_admission_24h`, `imv_event_24h`) to define “after-24h” cohorts without label leakage, following the logic in `fms_ehrs/scripts/extract_outcomes.py`.
@@ -302,7 +332,7 @@ We evaluate representation quality using the four prediction tasks used in `fms-
 
 **Training**: Causal language modeling with cross-entropy loss. Early stopping on validation perplexity with patience of 5 epochs.
 
-**Evaluation**: Fine-tuned classification heads for each prediction task. Linear probe on pretrained representations with frozen backbone.
+**Evaluation**: For each pretrained checkpoint, we perform supervised sequence classification for each outcome by initializing `AutoModelForSequenceClassification` from the pretrained language model and fine-tuning end-to-end on 24h-truncated token sequences. We select the best checkpoint by validation AUROC with early stopping and compute downstream metrics (AUROC/AUPRC; Brier/ECE for calibration; subgroup gaps for fairness) from predicted probabilities, following the definitions in §4.3 and the evaluation principles in [10,20].
 
 **Experiment 2 numeric value channel**: For soft discretization and continuous encoders, the model consumes the raw per-event scalar measurement (`numeric_value`) aligned to token positions. Tokenization emits a parallel `numeric_values` array aligned to `tokens` (and `padded_numeric_values` aligned to `padded`) such that only quantile-token positions carry the measurement and all other positions are null/masked. This preserves true measurement values while keeping the discrete code-token channel unchanged.
 
@@ -482,8 +512,6 @@ Several directions merit further investigation:
 
 [20] Van Calster, B., Collins, G. S., Vickers, A. J., et al. (2025). Evaluation of performance measures in predictive artificial intelligence models to support medical decisions. *The Lancet Digital Health*.
 
-[21] Weller, O., Boratko, M., Naim, I., & Lee, J. (2025). On the Theoretical Limitations of Embedding-Based Retrieval. *arXiv preprint arXiv:2508.21038*.
-
 ---
 
 ## Appendix A: Extended Technical Details
@@ -601,8 +629,8 @@ Above (>105): [115, 127, 146, 184]         = 5 bins
 ## Appendix F: Code and Data Availability
 
 **Repositories**:
-- `input-representation-benchmark/`: Experiment orchestration, configs, training scripts
-- `fms-ehrs/`: Tokenization framework, model training utilities (sister repo)
+- `input-representation-benchmark/`: MEDS extraction adapter, experiment orchestration, MEDS-specific utilities, manuscript sources
+- `fms-ehrs/`: Tokenization framework, model training, representation mechanics, and evaluation utilities
 
 **License**: MIT
 
@@ -617,27 +645,74 @@ Above (>105): [115, 127, 146, 184]         = 5 bins
 git clone [URL]/input-representation-benchmark
 git clone [URL]/fms-ehrs
 
-# Install dependencies
+# (Optional) Configure Weights & Biases for live tracking
+echo 'export WANDB_API_KEY="YOUR_KEY_HERE"' >> ~/.bashrc
+echo 'export WANDB_ENTITY="YOUR_ENTITY_HERE"' >> ~/.bashrc
+source ~/.bashrc
+
+# Environments
+# We use TWO conda environments due to a hard dependency conflict:
+# - MEDS_transforms requires polars~=1.30 (as of v0.6.1)
+# - fms-ehrs/clifpy require polars>=1.33 (for CLIF support and modern Polars APIs)
+# Therefore, keep MEDS extraction isolated from training/tokenization.
+#
+# 1) Training/tokenization environment (used for Phases 1–3)
+conda create -n input-rep python=3.12 -y
+conda activate input-rep
 cd input-representation-benchmark
 pip install -e .
 pip install -e ../fms-ehrs
 
-# Extract MEDS data (if not already done)
-cd benchmarks/mimic-meds-extraction
-./scripts/01_extract_meds_full.sh
+# 2) MEDS extraction environment (used for Phase 0 only)
+conda create -n meds-extract python=3.12 -y
+conda activate meds-extract
+pip install "MEDS_transforms[local_parallelism]" loguru
 
-# Generate experiment jobs
-cd ../..
-python run_experiments.py --mode demo
+# Phase 0: Extract MEDS data from raw MIMIC-IV (CPU-heavy)
+# Precondition: MIMIC-IV v3.1 exists under physionet.org/files/mimiciv/3.1/
+# The SLURM wrapper `slurm/00_extract_meds.sh` activates `meds-extract` internally.
+sbatch slurm/00_extract_meds.sh
+# Output: benchmarks/mimic-meds-extraction/data/meds/
 
-# Run experiments
-./slurm/submit_demo.sh   # 20 single-seed runs
-./slurm/submit_full.sh   # 100 runs (5 seeds)
+# Phase 1: Generate experiment job files (bash scripts)
+# The remaining SLURM jobs activate `input-rep` internally.
+conda activate input-rep
+python run_experiments.py --mode demo --exp 1
+python run_experiments.py --mode demo --exp 2
+python run_experiments.py --mode demo --exp 3
+
+# (Experiment 3 prerequisite) Prepare CLIF data splits + reference ranges
+# 1) Convert MIMIC-IV → CLIF parquet tables using the CLIF-MIMIC pipeline (external).
+# 2) Build ICU cohort split lists from raw MIMIC-IV:
+python scripts/align_cohorts.py \
+  --mimic_dir physionet.org/files/mimiciv/3.1 \
+  --output_dir data/cohorts/exp3_icu_24h \
+  --data_seed 42
+# 3) Split the unsplit CLIF tables into data/clif/raw/{train,val,test}/:
+python scripts/split_clif_by_patient_splits.py \
+  --clif_in_dir /path/to/CLIF-parquet-output \
+  --splits_dir data/cohorts/exp3_icu_24h \
+  --clif_out_root data/clif
+# 4) Add lab reference range bounds to CLIF labs (enables clinically anchored binning in Exp3):
+python scripts/augment_clif_labs_with_ref_ranges.py \
+  --mimic_dir physionet.org/files/mimiciv/3.1 \
+  --clif_root data/clif \
+  --clif_version_in raw \
+  --inplace
+
+# Phase 2: Submit training/evaluation as SLURM arrays
+# We cap concurrency at 8 GPUs (array parallelism) to bound GPU usage.
+sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh
+# After Exp 1 completes:
+sbatch --array=0-5%8  slurm/run_from_jobfile.sh slurm/exp2_demo_jobs.sh
+# After Exp 2 completes:
+sbatch --array=0-1%8  slurm/run_from_jobfile.sh slurm/exp3_demo_jobs.sh
 ```
 
 **Computational Requirements**:
-- GPU: [PLACEHOLDER: Specification]
-- Memory: [PLACEHOLDER: RAM requirements]
-- Storage: [PLACEHOLDER: Disk space for data and checkpoints]
-- Estimated runtime: 4-8 hours per model on A100
+- **GPU (training)**: 1 GPU per job; max 8 concurrent jobs (policy). [PLACEHOLDER: insert GPU model(s) once recorded]
+- **CPU/RAM (MEDS extraction/tokenization)**: CPU-heavy; we provision 8 CPUs and ~150GB RAM for extraction/tokenization jobs.
+- **CPU/RAM (training jobs)**: we provision 4 CPUs and 64GB RAM per training job.
+- **Storage**: [PLACEHOLDER: quantify disk required for raw MIMIC + MEDS parquet + tokenized artifacts + checkpoints]
+- **Runtime**: hardware-dependent; we will report measured wall-clock time and GPU-hours per run alongside performance metrics.
 

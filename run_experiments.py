@@ -148,8 +148,17 @@ EXP2_CONFIGS = [
 
 
 # Experiment 3: Data Format / Vocabulary Semantics (2 configs)
-# Compares MEDS vs CLIF on same ICU cohort
-# Uses Exp2 winner (placeholder: soft + time2vec)
+# Compares MEDS vs CLIF on the same ICU cohort.
+#
+# NOTE on clinical anchoring:
+# The base CLIF 2.1 schema (as implemented by clifpy) does not include reference
+# range bounds by default (it includes `reference_unit` but not lower/upper bounds).
+# To enable clinically anchored binning symmetrically for MEDS vs CLIF (when Exp1
+# winner uses anchoring), we must augment CLIF lab tables with per-row
+# `ref_range_lower` / `ref_range_upper` columns derived from MIMIC lab metadata.
+# See: scripts/augment_clif_labs_with_ref_ranges.py
+#
+# Uses Exp2 winner for (representation, temporal) as a placeholder (update after Exp2).
 EXP3_CONFIGS = [
     # MEDS format (native MIMIC vocabulary)
     ExperimentConfig("ventiles", "5-10-5", False, "soft", "time2vec", "meds"),
@@ -202,6 +211,11 @@ def generate_exp1_job(
 
     job_name = f"exp1_{config.config_id}_s{seed}"
 
+    # Tokenizer overrides to ensure the job actually matches the experiment condition.
+    include_ref_ranges = "true" if config.clinical_anchoring != "none" else "false"
+    include_time_tokens = "true"  # Exp1 uses time-spacing tokens (baseline)
+    fused_flag = "true" if config.fused else "false"
+
     script = f"""
 # Job {job_idx}: {job_name}
 echo "=== Starting {job_name} ==="
@@ -212,6 +226,11 @@ python {FMS_EHRS_PATH}/fms_ehrs/scripts/tokenize_w_config.py \\
     --data_version_in raw \\
     --data_version_out {data_version} \\
     --config_loc {tokenizer_config} \\
+    --quantizer {config.quantizer} \\
+    --clinical_anchoring {config.clinical_anchoring} \\
+    --include_ref_ranges {include_ref_ranges} \\
+    --include_time_spacing_tokens {include_time_tokens} \\
+    --fused_category_values {fused_flag} \\
     --include_24h_cut
 
 # Step 2: Pretrain model (uses tune_model for Exp1 discrete)
@@ -226,9 +245,9 @@ python {FMS_EHRS_PATH}/fms_ehrs/scripts/tune_model.py \\
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \\
-    --meds_data_dir {data_dir} \\
-    --tokenized_data_dir {data_dir}/{data_version}-tokenized \\
-    --output_dir {data_dir}/{data_version}_first_24h-tokenized
+    --meds_events_dir {data_dir} \\
+    --tokenized_dir {data_dir}/{data_version}_first_24h-tokenized \\
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -261,6 +280,12 @@ def generate_exp2_job(
 
     job_name = f"exp2_{config.config_id}_s{seed}"
 
+    # Tokenizer overrides:
+    # - Soft/continuous require unfused tokenization (enforced by configs)
+    # - Temporal axis is clean either/or: time_tokens => spacing tokens ON; time2vec => spacing tokens OFF
+    include_ref_ranges = "true" if config.clinical_anchoring != "none" else "false"
+    include_time_tokens = "true" if config.temporal == "time_tokens" else "false"
+
     script = f"""
 # Job {job_idx}: {job_name}
 echo "=== Starting {job_name} ==="
@@ -271,6 +296,11 @@ python {FMS_EHRS_PATH}/fms_ehrs/scripts/tokenize_w_config.py \\
     --data_version_in raw \\
     --data_version_out {data_version} \\
     --config_loc {tokenizer_config} \\
+    --quantizer {config.quantizer} \\
+    --clinical_anchoring {config.clinical_anchoring} \\
+    --include_ref_ranges {include_ref_ranges} \\
+    --include_time_spacing_tokens {include_time_tokens} \\
+    --fused_category_values false \\
     --include_24h_cut
 
 # Step 2: Train with representation mechanics
@@ -288,9 +318,9 @@ python {FMS_EHRS_PATH}/fms_ehrs/scripts/train_representation.py \\
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \\
-    --meds_data_dir {data_dir} \\
-    --tokenized_data_dir {data_dir}/{data_version}-tokenized \\
-    --output_dir {data_dir}/{data_version}_first_24h-tokenized
+    --meds_events_dir {data_dir} \\
+    --tokenized_dir {data_dir}/{data_version}_first_24h-tokenized \\
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -323,6 +353,11 @@ def generate_exp3_job(
 
     job_name = f"exp3_{config.config_id}_s{seed}"
 
+    # Tokenizer overrides:
+    # - Clean either/or temporal comparison as in Exp2
+    include_ref_ranges = "true" if config.clinical_anchoring != "none" else "false"
+    include_time_tokens = "true" if config.temporal == "time_tokens" else "false"
+
     script = f"""
 # Job {job_idx}: {job_name}
 echo "=== Starting {job_name} ==="
@@ -333,6 +368,11 @@ python {FMS_EHRS_PATH}/fms_ehrs/scripts/tokenize_w_config.py \\
     --data_version_in raw \\
     --data_version_out {data_version} \\
     --config_loc {tokenizer_config} \\
+    --quantizer {config.quantizer} \\
+    --clinical_anchoring {config.clinical_anchoring} \\
+    --include_ref_ranges {include_ref_ranges} \\
+    --include_time_spacing_tokens {include_time_tokens} \\
+    --fused_category_values false \\
     --include_24h_cut
 
 # Step 2: Normalize layout (MEDS -> fms-ehrs compatible)
@@ -357,9 +397,9 @@ python {FMS_EHRS_PATH}/fms_ehrs/scripts/train_representation.py \\
 # Step 4: Extract outcomes (format-specific)
 if [ "{config.data_format}" = "meds" ]; then
     python scripts/extract_outcomes_meds.py \\
-        --meds_data_dir {data_dir} \\
-        --tokenized_data_dir {data_dir}/{data_version}-tokenized \\
-        --output_dir {data_dir}/{data_version}_first_24h-tokenized
+        --meds_events_dir {data_dir} \\
+        --tokenized_dir {data_dir}/{data_version}_first_24h-tokenized \\
+        --splits train,val
 else
     python {FMS_EHRS_PATH}/fms_ehrs/scripts/extract_outcomes.py \\
         --data_dir {data_dir} \\

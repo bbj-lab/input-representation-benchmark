@@ -1,9 +1,13 @@
 # =============================================================================
-# Input Representation Benchmark - Unified Experiment Configuration
+# Input Representation Benchmark - Experiment Configuration Reference
 # =============================================================================
-# This is the single source of truth for all experiment parameters.
-# Job files are generated via run_experiments.py which handles constrained
-# parameter combinations that Hydra's basic sweeper cannot express.
+# This file documents the experiment parameters and default configurations.
+# 
+# NOTE: This project uses fms-ehrs job management (not Hydra).
+# Job orchestration is handled by:
+#   - run_experiments.py: Generates bash job files with valid parameter combos
+#   - slurm/run_from_jobfile.sh: Executes jobs via SLURM arrays
+#   - fms-ehrs/slurm/preamble.sh: Environment setup
 #
 # Usage:
 #   # Generate job files
@@ -11,34 +15,35 @@
 #   python run_experiments.py --mode full   # 100 runs (5 seeds)
 #   
 #   # Submit via SLURM
-#   ./slurm/submit_demo.sh
-#   ./slurm/submit_full.sh
+#   sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh
 # =============================================================================
-
-defaults:
-  - _self_
-  - override hydra/launcher: submitit_slurm
 
 # =============================================================================
 # Experiment Parameters
 # =============================================================================
 
 # Experiment 1: Granularity and Semantic Anchoring
-quantizer: deciles                  # deciles | ventiles | trentiles | centiles
-clinical_anchoring: none            # none | 5-10-5 | 10-10-10
-fused_category_values: false        # true | false
+# Options: deciles | ventiles | trentiles | centiles
+quantizer: deciles
+
+# Clinical anchoring (only valid with ventiles or trentiles)
+# Options: none | 5-10-5 (ventiles only) | 10-10-10 (trentiles only)
+clinical_anchoring: none
+
+# Fused tokens (code + value as single token)
+# Options: true | false
+fused_category_values: false
 
 # Experiment 2: Representation Mechanics
-representation: discrete            # discrete | soft | continuous
-temporal_encoding: time_tokens      # time_tokens | time2vec
+# Value representation: discrete | soft | continuous
+representation: discrete
+
+# Temporal encoding: time_tokens | time2vec
+temporal_encoding: time_tokens
 
 # Experiment 3: Data Format / Vocabulary Semantics
-# This experiment compares training on the same data in two different formats:
-#   - meds: Native MIMIC representation using MEDS format
-#   - clif: CLIF standardized format (via CLIF-MIMIC converter)
-# Both pipelines use the SAME cohort (ICU patients with ≥24h stays) extracted
-# by scripts/align_cohorts.py to ensure data parity.
-data_format: meds                   # meds | clif
+# Options: meds (native MIMIC) | clif (standardized)
+data_format: meds
 
 # =============================================================================
 # Data Configuration
@@ -110,79 +115,38 @@ training:
   bf16: false
 
 # =============================================================================
-# Paths
+# Paths (Reference - actual paths set in slurm/preamble.sh)
 # =============================================================================
 
 paths:
-  # Base path: /gpfs/data/bbj-lab/users/$USER
-  base_dir: ${oc.env:HOME_DIR,/gpfs/data/bbj-lab/users}/${oc.env:USER,ihlee}
+  # Base path structure on Randi cluster
+  base_dir: /gpfs/data/bbj-lab/users/${USER}
   
   # Raw MIMIC-IV data (from PhysioNet)
-  mimic_raw_dir: ${oc.env:MIMIC_RAW_DIR,${paths.base_dir}/input-representation-benchmark/physionet.org/files/mimiciv/3.1}
+  mimic_raw_dir: ${base_dir}/input-representation-benchmark/physionet.org/files/mimiciv/3.1
   
-  # Data directories (format-dependent)
-  # MEDS format: Native MIMIC representation
-  meds_data_dir: ${oc.env:MEDS_DATA_DIR,${paths.base_dir}/input-representation-benchmark/benchmarks/mimic-meds-extraction/data/meds}
-  # CLIF format: Standardized clinical concepts
-  clif_data_dir: ${oc.env:CLIF_DATA_DIR,${paths.base_dir}/fms-ehrs/data/clif}
+  # MEDS format data (after extraction)
+  meds_data_dir: ${base_dir}/input-representation-benchmark/benchmarks/mimic-meds-extraction/data/meds
   
-  # Select data directory based on data_format
-  data_dir: ${paths.meds_data_dir}  # Override in Experiment 3 for CLIF
-  
-  # Cohort alignment (Experiment 3)
-  cohort_dir: ${oc.env:COHORT_DIR,${paths.base_dir}/input-representation-benchmark/data/cohorts}
+  # CLIF format data (for Experiment 3)
+  clif_data_dir: ${base_dir}/fms-ehrs/data/clif
   
   # Model and output directories
-  model_dir: ${oc.env:MODEL_DIR,${paths.base_dir}/input-representation-benchmark/models}
-  output_dir: ${oc.env:OUTPUT_DIR,${paths.base_dir}/input-representation-benchmark/outputs}
+  model_dir: ${base_dir}/input-representation-benchmark/models
+  output_dir: ${base_dir}/input-representation-benchmark/outputs
   
   # fms-ehrs tokenization framework
-  fms_ehrs_dir: ${oc.env:FMS_EHRS_DIR,${paths.base_dir}/fms-ehrs}
-  tokenizer_config: ${paths.fms_ehrs_dir}/fms_ehrs/config/mimic-meds-ed.yaml
+  fms_ehrs_dir: ${base_dir}/fms-ehrs
+  tokenizer_config: ${fms_ehrs_dir}/fms_ehrs/config/mimic-meds-ed.yaml
   
   # Cache directories
   hf_cache: /gpfs/data/bbj-lab/cache/huggingface/
-  wandb_cache: /scratch/${oc.env:USER,ihlee}/
-  
+  wandb_cache: /scratch/${USER}/
+
 # =============================================================================
 # Logging
 # =============================================================================
 
 logging:
   wandb_project: input-representation-benchmark
-  wandb_entity: ${oc.env:WANDB_ENTITY,null}
-  wandb_run_name: ${data_format}_${quantizer}_${clinical_anchoring}_fused${fused_category_values}_${representation}_${temporal_encoding}_ts${training_seed}
   log_every_n_steps: 100
-
-# =============================================================================
-# Hydra Configuration
-# =============================================================================
-
-hydra:
-  run:
-    # Single run output directory
-    dir: ${paths.output_dir}/runs/${now:%Y-%m-%d}/${now:%H-%M-%S}_${data_format}_${quantizer}_ts${training_seed}
-  
-  sweep:
-    # Multirun output directory
-    dir: ${paths.output_dir}/sweeps/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    subdir: ${hydra.job.num}_${data_format}_${quantizer}_${clinical_anchoring}_fused${fused_category_values}_ts${training_seed}
-  
-  launcher:
-    # SLURM configuration
-    submitit_folder: ${hydra.sweep.dir}/.submitit/%j
-    timeout_min: 1440               # 24 hours
-    cpus_per_task: 4
-    gpus_per_node: 1
-    tasks_per_node: 1
-    mem_gb: 64
-    nodes: 1
-    partition: gpu
-    array_parallelism: 20           # Max concurrent jobs
-    
-    # Job naming
-    name: irb_${data_format}_${quantizer}_ts${training_seed}
-    
-    # Additional SLURM settings
-    additional_parameters:
-      gres: gpu:1

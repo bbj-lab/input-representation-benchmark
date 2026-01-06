@@ -132,9 +132,9 @@ For both **soft discretization** and **continuous encoders**, the model consumes
 
 We encode **relative time differences** (hours since admission or time between events) rather than shifted absolute timestamps. This decision is grounded in MIMIC-IV's deidentification policy: "A single date shift was assigned to each subject_id. As a result, the data for a single patient are internally consistent... Conversely, distinct patients are not temporally comparable" [13]. Encoding relative time preserves clinically meaningful temporal patterns while avoiding spurious cross-patient correlations from arbitrary date shifts.
 
-- **Time Spacing Tokens**: Discrete temporal interval tokens following the ETHOS-ARES protocol, injected between events to encode time elapsed. The tokenizer computes `Δt = event_time[i+1] - event_time[i]` and maps to categorical bins (e.g., `T_5m-15m`, `T_1h-2h`, `T_1d-2d`).
+- **Time Spacing Tokens**: Discrete temporal interval tokens following the ETHOS-ARES protocol, injected between events to encode time elapsed [1]. The tokenizer computes `Δt = event_time[i+1] - event_time[i]` and maps to categorical bins (e.g., `T_5m-15m`, `T_1h-2h`, `T_1d-2d`).
 
-- **Time2Vec with RoPE**: Learned continuous temporal encoding via Time2Vec [15], which represents relative time `τ` (hours since admission) as:
+- **Time2Vec with RoPE**: Learned continuous temporal encoding via Time2Vec [15]. For a clean either/or comparison with time-spacing tokens, our Time2Vec condition **disables time-spacing tokens at tokenization time**, so temporal information is provided exclusively via Time2Vec (in addition to RoPE positional encoding). Time2Vec represents relative time `τ` (hours since admission) as:
   $$t2v(\tau) = [w_0 \cdot \tau + \phi_0, \sin(w_1 \cdot \tau + \phi_1), \ldots, \sin(w_k \cdot \tau + \phi_k)]$$
   where `τ = (event_time - admission_time).total_hours()`. This encoding is added to token embeddings prior to the transformer layers, while RoPE handles sequence position encoding natively.
 
@@ -266,7 +266,7 @@ flowchart TB
 
     subgraph P2["Phase 2: Training"]
         direction TB
-        CONFIG["Hydra Configs"]
+        CONFIG["fms-ehrs Scripts"]
         TRAIN["HuggingFace TRL"]
         MODEL["LLaMA 3.2 67M"]
         
@@ -334,7 +334,7 @@ input-representation-benchmark/
 │       │   └── 01_extract_meds_full.sh      # Extraction entry point
 │       └── data/meds/             # MEDS-formatted data (validated: 20,882 vocab)
 ├── configs/
-│   └── experiment.yaml            # Hydra config with SLURM launcher
+│   └── experiment.yaml            # Experiment parameter reference (not Hydra)
 ├── run_experiments.py             # Python launcher for job generation
 ├── scripts/                       # MEDS-specific utility scripts
 │   ├── extract_outcomes_meds.py   # 4-outcome extraction from MEDS data
@@ -349,13 +349,15 @@ input-representation-benchmark/
 └── tests/                         # Unit tests
 ```
 
-**Hydra Design: Single Config + Job File Generation**
+**Job Management Design: fms-ehrs Pattern**
 
-1. **One `experiment.yaml`** with all parameters and SLURM launcher settings
-2. **`run_experiments.py`** generates job files with valid parameter combinations
-3. **SLURM array jobs** execute each configuration in parallel
+1. **`experiment.yaml`** documents experiment parameters (reference only, not executable)
+2. **`run_experiments.py`** generates bash job files with valid parameter combinations
+3. **SLURM array jobs** execute fms-ehrs training scripts in parallel (max 8 concurrent GPUs)
 
-This approach handles constrained parameter combinations (e.g., `5-10-5` only valid for `ventiles`) that Hydra's basic sweeper cannot express.
+This approach handles constrained parameter combinations (e.g., `5-10-5` only valid for `ventiles`) and follows the proven fms-ehrs job orchestration pattern.
+
+**Data Columns Reference**: See `methods/data-columns.md` for detailed documentation of which MIMIC-IV tables and columns are used in each experiment.
 
 ## 5. Methodology: The Input Representation Framework
 
@@ -367,6 +369,8 @@ This project establishes a reproducible evaluation environment using two indepen
 - Modified split fractions (70/10/20 vs. original 90/10)
 - Custom event configuration (`event_configs_v3.1_full.yaml`) using `storetime` semantics
 - Extended MEDS fields (`ref_range_lower`, `ref_range_upper`) for clinical anchoring
+
+**Environment separation (required)**: We run MEDS extraction in a dedicated conda environment (`meds-extract`) because the `MEDS_transforms` dependency currently requires `polars~=1.30`, which conflicts with `fms-ehrs`/`clifpy` (used for tokenization/training/CLIF support), which require `polars>=1.33`. Downstream phases run in a separate environment (`input-rep`). Our SLURM `slurm/preamble.sh` selects the environment via `IRB_CONDA_ENV`; `slurm/00_extract_meds.sh` sets `IRB_CONDA_ENV=meds-extract`, while training/tokenization jobs set or default to `IRB_CONDA_ENV=input-rep`.
 
 **Attribution**: All pre-MEDS wrangling code (`pre_MEDS.py`) and MEDS extraction configurations are derived from the ETHOS-ARES codebase. We acknowledge and thank the original authors for making their pipeline publicly available. No further dependency on the ETHOS-ARES codebase exists beyond this extraction step; all tokenization, training, and evaluation are performed in our independent `fms-ehrs` framework.
 
@@ -528,23 +532,21 @@ mdl = AutoModelForCausalLM.from_config(config)
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| Base architecture | LLaMA 3.2 1B (decoder-only transformer) | Autoregressive modeling of patient timelines |
+| Base architecture | LLaMA 3.2 1B (decoder-only transformer; RoPE) [12] | Autoregressive modeling of patient timelines |
 | Parameters | ~67.3M (scaled-down) | Tractable experimentation across 100 runs |
 | Hidden dimension | 1024 | Scaled from LLaMA 3.2 1B |
 | Intermediate size | 2048 | Feed-forward hidden dimension |
 | Layers | 8 | Reduced depth for efficiency |
 | Attention heads | 8 | Matches hidden_dim / 128 head_dim |
-| Context length | 128K tokens | Covers full patient timeline distribution |
+| Max sequence length (training) | 1,024 tokens | Tokenizer/training truncation for tractability (`max_padded_len=1024`) |
+| Max position embeddings (architecture) | 128K tokens (RoPE-capable) | Architecture capacity; not exercised in the present benchmark |
 | Vocabulary size | ~21,000 | Derived from fms-ehrs tokenization pipeline |
-| Pretraining objective | Causal Language Modeling (CLM) | Autoregressive next-token prediction |
-| Positional encoding | Rotary Position Embeddings (RoPE) | Native LLaMA formulation |
-| Time encoding | Time spacing tokens or Time2Vec | Experimental condition |
-| Optimizer | AdamW (β₁=0.9, β₂=0.999, ε=1e-8) | Standard transformer optimization |
-| Learning rate | 1e-4 with linear warmup (10% of steps) | Empirically validated schedule |
-| Weight decay | 0.01 | Standard regularization |
-| Batch size | 32 | Constrained by GPU memory |
-| Training epochs | 100 (pretraining) | Early stopping on validation perplexity |
-| Dropout | 0.1 | Applied to attention and feed-forward layers |
+| Pretraining objective | Causal Language Modeling (CLM) | Autoregressive next-token prediction [1] |
+| Time encoding | Time spacing tokens or Time2Vec | Experimental condition [1,15] |
+| Optimization | AdamW (Transformers/TRL defaults) | Standard transformer optimization |
+| Learning rate | Exp1 tuned (Optuna); Exp2 fixed default 5e-5; classifier 2e-5 | Script defaults (`fms_ehrs/scripts/*`) |
+| Effective batch size | per-device batch=4 with gradient accumulation (Exp1 tuned 1–3; Exp2/classification default 2) | GPU-memory constrained; comparable across conditions |
+| Training epochs | 5 epochs per run (benchmark default) with early stopping | Tractable compute; early stop on validation metrics |
 | Random seeds | 5 per configuration (42, 123, 456, 789, 1024) | Statistical robustness |
 
 **Controlling for Confounders**:
@@ -612,34 +614,28 @@ For tables with multiple timestamp columns, we use **storage time** (`storetime`
 
 ## 6. Compute Infrastructure and Orchestration
 
-### 6.1. Hydra Configuration
+### 6.1. Job Management (fms-ehrs Pattern)
 
-We use a single `experiment.yaml` with all parameters and SLURM launcher settings:
+We use the **fms-ehrs job management pattern** (not Hydra) for experiment orchestration. This approach generates bash job files that directly call fms-ehrs training scripts:
 
 ```yaml
-# configs/experiment.yaml (simplified)
-defaults:
-  - _self_
-  - override hydra/launcher: submitit_slurm
+# configs/experiment.yaml (reference configuration)
+# Note: This is a reference document, NOT a Hydra config.
+# Job orchestration is handled by run_experiments.py
 
-# Experiment parameters (swept via job file generation)
 quantizer: deciles          # deciles | ventiles | trentiles | centiles
 clinical_anchoring: none    # none | 5-10-5 | 10-10-10
 fused_category_values: false
 representation: discrete    # discrete | soft | continuous
 temporal_encoding: time_tokens  # time_tokens | time2vec
-vocabulary: mimic_native    # mimic_native | clif
-seed: 42
-
-# SLURM launcher config
-hydra:
-  launcher:
-    partition: gpu
-    gpus_per_node: 1
-    mem_gb: 64
-    timeout_min: 1440  # 24 hours
-    array_parallelism: 20
+data_format: meds           # meds | clif
+training_seed: 42           # 42, 123, 456, 789, 1024
 ```
+
+**GPU Allocation**: 
+- Each job uses 1 GPU (`--gres=gpu:1`)
+- Maximum 8 concurrent jobs (`--array=0-N%8`)
+- Sequential execution as GPUs become available
 
 ### 6.2. Job Generation and Submission
 
@@ -672,15 +668,17 @@ Each generated job file contains the complete pipeline: tokenize → train → e
 - Avg 1,450 tokens/patient
 
 **Training Estimates (per model)**:
-- Batch size: 32, Epochs: 100 (with early stopping)
-- Estimated time: ~4-8 hours per run on A100
+- Sequence length: 1,024 tokens (padded/truncated)
+- Per-device batch: 4 with gradient accumulation (effective batch varies by script/config)
+- Default epochs: 5 with early stopping
+- Runtime is hardware-dependent; we will report measured wall-clock time and GPU-hours per run.
 
 **Total Compute Requirements**:
 
 | Phase | Configs | Seeds | Total Runs | GPU-Hours (est.) |
 |-------|---------|-------|------------|------------------|
-| Demo (single-seed) | 20 | 1 | 20 | 80–160 |
-| Full (5-seed) | 20 | 5 | 100 | 400–800 |
+| Demo (single-seed) | 20 | 1 | 20 | TBD (measure on Randi; scale from per-run GPU-hours) |
+| Full (5-seed) | 20 | 5 | 100 | TBD (scale from measured demo runs) |
 
 **Staged Execution Strategy**:
 1. **Phase 1**: Run 20 single-seed models as demo
@@ -723,6 +721,10 @@ We additionally compute two **24h window flags** (used to define “after 24h”
 
 - `scripts/validate_imv_detection.py` compares MEDS-derived vs CLIF-derived labels (all outcomes + 24h flags), treating CLIF as the reference, and writes a confusion-matrix-based report.
 
+**Reference ranges in CLIF (for clinically anchored binning)**:
+
+The base CLIF 2.1 labs schema includes `reference_unit` but does not provide lower/upper reference interval bounds by default. When Experiment 1 selects a clinically anchored winner (e.g., ventiles 5-10-5), we augment CLIF lab tables with `ref_range_lower` and `ref_range_upper` derived from MIMIC-IV `labevents` grouped by `(lab_loinc_code, reference_unit)` to enable symmetric anchored binning in Experiment 3. See `scripts/augment_clif_labs_with_ref_ranges.py`.
+
 ### 7.1. Primary Metrics
 
 Following FoMoH recommendations [10], we report a comprehensive metric suite spanning discrimination, calibration, and fairness:
@@ -748,7 +750,7 @@ Following FoMoH recommendations [10], we report a comprehensive metric suite spa
 We conduct ablations on:
 - Bin count granularity (10, 20, 30, 100) for population-based quantization
 - Anchor region allocation (5-10-5 for ventiles, 10-10-10 for trentiles) for clinically-anchored methods
-- Context length truncation (4K, 16K, 64K tokens) to assess sequence length sensitivity
+- Context length truncation (baseline 1K; extensions to longer lengths once tokenization/training supports >1K sequences) to assess sequence length sensitivity
 - Missing reference range handling strategies (exclude, default quantile, impute median range)
 
 ### 7.4. Statistical Analysis

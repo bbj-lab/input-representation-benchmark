@@ -20,6 +20,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens false \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Normalize layout (MEDS -> fms-ehrs compatible)
@@ -44,9 +49,9 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 # Step 4: Extract outcomes (format-specific)
 if [ "meds" = "meds" ]; then
     python scripts/extract_outcomes_meds.py \
-        --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized \
-        --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized
+        --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+        --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+        --splits train,val
 else
     python ../fms-ehrs/fms_ehrs/scripts/extract_outcomes.py \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
@@ -78,6 +83,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/clif-21.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens false \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Normalize layout (MEDS -> fms-ehrs compatible)
@@ -102,9 +112,9 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 # Step 4: Extract outcomes (format-specific)
 if [ "clif" = "meds" ]; then
     python scripts/extract_outcomes_meds.py \
-        --meds_data_dir data/clif \
-        --tokenized_data_dir data/clif/ventiles_5-10-5_unfused-tokenized \
-        --output_dir data/clif/ventiles_5-10-5_unfused_first_24h-tokenized
+        --meds_events_dir data/clif \
+        --tokenized_dir data/clif/ventiles_5-10-5_unfused_first_24h-tokenized \
+        --splits train,val
 else
     python ../fms-ehrs/fms_ehrs/scripts/extract_outcomes.py \
         --data_dir data/clif \

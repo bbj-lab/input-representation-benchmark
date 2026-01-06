@@ -52,8 +52,8 @@ python run_experiments.py --mode demo --exp 3  # Exp 3 (single seed)
 
 # 3. Run locally (for testing) or submit to SLURM
 bash slurm/exp1_demo_jobs.sh                   # Local execution
-# OR
-sbatch --array=0-11 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh  # SLURM
+# OR (with max 8 concurrent GPUs)
+sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh  # SLURM
 ```
 
 ## Architecture
@@ -86,10 +86,11 @@ input-representation-benchmark/
 ├── methods/
 │   ├── proposal.md                # Research proposal
 │   ├── paper.md                   # Paper draft
+│   ├── data-columns.md            # Data columns used in each experiment
 │   └── overall-pipeline.mmd       # Pipeline diagram (Mermaid)
 │
 ├── configs/
-│   └── experiment.yaml            # Hydra config with SLURM launcher
+│   └── experiment.yaml            # Experiment parameter reference
 │
 ├── scripts/                       # MEDS-specific utility scripts
 │   ├── extract_outcomes_meds.py   # 4-outcome extraction from MEDS data
@@ -101,8 +102,10 @@ input-representation-benchmark/
 │   └── smoke_test_exp2.py         # Exp 2 configuration smoke test
 │
 ├── slurm/                         # SLURM job submission
+│   ├── 00_extract_meds.sh         # Phase 0: MEDS extraction job
+│   ├── 01_tokenize.sh             # Phase 1: Tokenization job
 │   ├── preamble.sh                # Environment setup for jobs
-│   └── run_from_jobfile.sh        # Array job runner
+│   └── run_from_jobfile.sh        # Array job runner for training
 │
 ├── tests/                         # Unit tests
 │   ├── test_extract_outcomes_meds.py
@@ -198,6 +201,24 @@ The scaled-down LLaMA 3.2 configuration (67.3M parameters) is borrowed from:
   - Source of scaled-down configuration: hidden=1024, intermediate=2048, layers=8, heads=8
 - **Grattafiori et al. (2024)**: "The Llama 3 Herd of Models" (arXiv:2407.21783)
   - Source of base LLaMA 3.2 architecture
+
+## Weights & Biases Setup
+
+Training runs are logged to Weights & Biases for real-time monitoring. Set up your API key:
+
+```bash
+# Option 1: Add to ~/.bashrc (persistent)
+echo 'export WANDB_API_KEY="your-key-here"' >> ~/.bashrc
+echo 'export WANDB_ENTITY="your-username"' >> ~/.bashrc
+source ~/.bashrc
+
+# Option 2: Interactive login
+wandb login
+```
+
+Get your API key at: https://wandb.ai/authorize
+
+The training scripts automatically use W&B when `WANDB_API_KEY` is set. If not set, runs proceed in offline mode (see `slurm/preamble.sh`).
 
 ## Technical Notes
 

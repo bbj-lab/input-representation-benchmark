@@ -20,6 +20,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens true \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Train with representation mechanics
@@ -37,9 +42,9 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -65,6 +70,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens false \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Train with representation mechanics
@@ -82,9 +92,9 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -110,6 +120,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens true \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Train with representation mechanics
@@ -127,9 +142,9 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -155,6 +170,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens false \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Train with representation mechanics
@@ -172,9 +192,9 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -200,6 +220,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens true \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Train with representation mechanics
@@ -217,9 +242,9 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
@@ -245,6 +270,11 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_version_in raw \
     --data_version_out ventiles_5-10-5_unfused \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
+    --quantizer ventiles \
+    --clinical_anchoring 5-10-5 \
+    --include_ref_ranges true \
+    --include_time_spacing_tokens false \
+    --fused_category_values false \
     --include_24h_cut
 
 # Step 2: Train with representation mechanics
@@ -262,9 +292,9 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
-    --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_data_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized
+    --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --splits train,val
 
 # Step 4: Fine-tune for each outcome
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
