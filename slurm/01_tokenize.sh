@@ -21,10 +21,23 @@
 
 set -euo pipefail
 
-# Source environment
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Source environment (robust to SLURM script spooling into /var/spool/...)
+find_repo_root() {
+    local d="$1"
+    while [[ "$d" != "/" ]]; do
+        if [[ -f "$d/run_experiments.py" && -d "$d/slurm" ]]; then
+            echo "$d"
+            return 0
+        fi
+        d="$(dirname "$d")"
+    done
+    return 1
+}
+
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+IRB_HOME="$(find_repo_root "${SUBMIT_DIR}")"
 export IRB_CONDA_ENV="input-rep"
-source "${SCRIPT_DIR}/preamble.sh"
+source "${IRB_HOME}/slurm/preamble.sh"
 
 # Default data version (can be overridden)
 DATA_VERSION="${DATA_VERSION:-deciles_none_unfused}"

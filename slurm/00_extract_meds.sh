@@ -2,7 +2,7 @@
 #SBATCH --job-name=meds-extract
 #SBATCH --output=./slurm/output/%j-%x.stdout
 #SBATCH --partition=tier2q
-#SBATCH --time=1-00:00:00
+#SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=150GB
 
@@ -27,13 +27,26 @@
 
 set -euo pipefail
 
-# Source environment
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Source environment (robust to SLURM script spooling into /var/spool/...)
+find_repo_root() {
+    local d="$1"
+    while [[ "$d" != "/" ]]; do
+        if [[ -f "$d/run_experiments.py" && -d "$d/slurm" ]]; then
+            echo "$d"
+            return 0
+        fi
+        d="$(dirname "$d")"
+    done
+    return 1
+}
+
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+IRB_HOME="$(find_repo_root "${SUBMIT_DIR}")"
 export IRB_CONDA_ENV="meds-extract"
-source "${SCRIPT_DIR}/preamble.sh"
+source "${IRB_HOME}/slurm/preamble.sh"
 
 # Create output directory
-mkdir -p "${SCRIPT_DIR}/output"
+mkdir -p "${IRB_HOME}/slurm/output"
 
 echo "=============================================="
 echo "MEDS Extraction Job"

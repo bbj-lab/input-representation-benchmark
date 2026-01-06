@@ -45,7 +45,21 @@ if [[ ! -f "$JOBFILE" ]]; then
 fi
 
 # Source environment
-source "$(dirname "$0")/preamble.sh"
+find_repo_root() {
+    local d="$1"
+    while [[ "$d" != "/" ]]; do
+        if [[ -f "$d/run_experiments.py" && -d "$d/slurm" ]]; then
+            echo "$d"
+            return 0
+        fi
+        d="$(dirname "$d")"
+    done
+    return 1
+}
+
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+IRB_HOME="$(find_repo_root "${SUBMIT_DIR}")"
+source "${IRB_HOME}/slurm/preamble.sh"
 
 # Navigate to project root
 cd "$IRB_HOME"
