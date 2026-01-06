@@ -113,8 +113,10 @@ echo "Using custom event config: ${EVENT_CONVERSION_CONFIG_FP}"
 # Change to meds_pipeline directory for proper relative path resolution
 cd "${MEDS_PIPELINE_DIR}"
 
-MEDS_transform-pipeline "pipeline_config_fp=$PIPELINE_CONFIG_FP" \
-    stage_runner_fp=configs/local_parallelism_runner.yaml
+# MEDS_transforms>=0.6 uses a CLI where pipeline_config_fp is positional and
+# stage runner config is provided via --stage_runner_fp (not as a Hydra override).
+MEDS_transform-pipeline "$PIPELINE_CONFIG_FP" \
+    --stage_runner_fp configs/local_parallelism_runner.yaml
 
 echo ""
 echo "=============================================="
