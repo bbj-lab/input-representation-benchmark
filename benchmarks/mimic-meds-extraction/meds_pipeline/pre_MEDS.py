@@ -29,9 +29,53 @@ from pathlib import Path
 import hydra
 import polars as pl
 from loguru import logger
-from MEDS_transforms.extract.utils import get_supported_fp
-from MEDS_transforms.utils import get_shard_prefix, write_lazyframe
 from omegaconf import DictConfig
+
+
+def get_shard_prefix(input_dir: Path, fp: Path) -> str:
+    """Return a stable prefix for a raw input file path.
+
+    This matches the ETHOS-ARES / MEDS naming convention used throughout this script:
+    - `hosp/diagnoses_icd.csv.gz` -> `hosp/diagnoses_icd`
+    - `icu/chartevents.csv.gz`   -> `icu/chartevents`
+    - `hosp/admissions.parquet`  -> `hosp/admissions`
+    """
+    rel = fp.relative_to(input_dir).as_posix()
+    if rel.endswith(".csv.gz"):
+        return rel[: -len(".csv.gz")]
+    if rel.endswith(".csv"):
+        return rel[: -len(".csv")]
+    if rel.endswith(".parquet"):
+        return rel[: -len(".parquet")]
+    # Fallback: strip the final extension if any (e.g., `.txt`, `.html`)
+    return rel.rsplit(".", 1)[0] if "." in rel else rel
+
+
+def get_supported_fp(input_dir: Path, prefix: str) -> tuple[Path, callable]:
+    """Resolve a dataset file for a given prefix and return a Polars reader.
+
+    ETHOS-ARES and related pipelines often support multiple on-disk formats.
+    For MIMIC-IV raw downloads, we typically expect `.csv.gz`. We also support
+    `.csv` and `.parquet` for re-runs / cached inputs.
+    """
+    candidates: list[tuple[Path, callable]] = [
+        (input_dir / f"{prefix}.parquet", pl.scan_parquet),
+        (input_dir / f"{prefix}.csv.gz", pl.scan_csv),
+        (input_dir / f"{prefix}.csv", pl.scan_csv),
+    ]
+    for fp, read_fn in candidates:
+        if fp.is_file():
+            return fp, read_fn
+    raise FileNotFoundError(f"No supported dataframe file found for prefix={prefix!r} under {input_dir}")
+
+
+def write_lazyframe(df: pl.LazyFrame | pl.DataFrame, out_fp: Path) -> None:
+    """Write a Polars dataframe/lazyframe to parquet."""
+    out_fp.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(df, pl.LazyFrame):
+        df.sink_parquet(out_fp)
+    else:
+        df.write_parquet(out_fp, use_pyarrow=True)
 
 
 def add_dot(code: pl.Expr, position: int) -> pl.Expr:
