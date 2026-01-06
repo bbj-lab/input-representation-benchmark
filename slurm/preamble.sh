@@ -15,8 +15,8 @@ job_id="${SLURM_JOB_ID:-${SLURM_JOBID:-}}"
 name=$(
     if [[ -n "${job_id}" ]]; then
         scontrol show job "${job_id}" \
-            | grep -m 1 "Command=" \
-            | cut -d "=" -f2 \
+    | grep -m 1 "Command=" \
+    | cut -d "=" -f2 \
             | xargs -I {} basename {} .sh 2>/dev/null
     fi
 )

@@ -113,10 +113,20 @@ echo "Using custom event config: ${EVENT_CONVERSION_CONFIG_FP}"
 # Change to meds_pipeline directory for proper relative path resolution
 cd "${MEDS_PIPELINE_DIR}"
 
-# MEDS_transforms>=0.6 uses a CLI where pipeline_config_fp is positional and
-# stage runner config is provided via --stage_runner_fp (not as a Hydra override).
-MEDS_transform-pipeline "$PIPELINE_CONFIG_FP" \
-    --stage_runner_fp configs/local_parallelism_runner.yaml
+# ETHOS-ARES historically used `MEDS_transform-runner` (meds_transforms==0.1.1).
+# Newer MEDS_transforms versions expose `MEDS_transform-pipeline`.
+# Use whichever CLI is available in the current environment.
+if command -v MEDS_transform-runner >/dev/null 2>&1; then
+MEDS_transform-runner "pipeline_config_fp=$PIPELINE_CONFIG_FP" \
+    stage_runner_fp=configs/local_parallelism_runner.yaml
+elif command -v MEDS_transform-pipeline >/dev/null 2>&1; then
+    MEDS_transform-pipeline "pipeline_config_fp=$PIPELINE_CONFIG_FP" \
+        stage_runner_fp=configs/local_parallelism_runner.yaml
+else
+    echo "ERROR: No MEDS_transforms pipeline runner found in PATH."
+    echo "Expected one of: MEDS_transform-runner, MEDS_transform-pipeline"
+    exit 1
+fi
 
 echo ""
 echo "=============================================="

@@ -142,7 +142,7 @@ paths:
   # Cache directories
   hf_cache: /gpfs/data/bbj-lab/cache/huggingface/
   wandb_cache: /scratch/${USER}/
-
+  
 # =============================================================================
 # Logging
 # =============================================================================

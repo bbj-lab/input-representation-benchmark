@@ -652,7 +652,7 @@ source ~/.bashrc
 
 # Environments
 # We use TWO conda environments due to a hard dependency conflict:
-# - MEDS_transforms requires polars~=1.30 (as of v0.6.1)
+# - MEDS extraction (ETHOS-ARES-compatible) uses meds_transforms==0.1.1, which requires polars<=1.27.9
 # - fms-ehrs/clifpy require polars>=1.33 (for CLIF support and modern Polars APIs)
 # Therefore, keep MEDS extraction isolated from training/tokenization.
 #
@@ -666,7 +666,7 @@ pip install -e ../fms-ehrs
 # 2) MEDS extraction environment (used for Phase 0 only)
 conda create -n meds-extract python=3.12 -y
 conda activate meds-extract
-pip install "MEDS_transforms[local_parallelism]" loguru
+pip install "meds_transforms[local_parallelism,slurm_parallelism]==0.1.1" loguru
 
 # Phase 0: Extract MEDS data from raw MIMIC-IV (CPU-heavy)
 # Precondition: MIMIC-IV v3.1 exists under physionet.org/files/mimiciv/3.1/

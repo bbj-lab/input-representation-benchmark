@@ -4,7 +4,7 @@
 #SBATCH --partition=tier2q
 #SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=150GB
+#SBATCH --mem=300GB
 
 # =============================================================================
 # Phase 0: MEDS Data Extraction from MIMIC-IV
@@ -58,7 +58,14 @@ echo "=============================================="
 
 # Run the extraction script
 cd "${IRB_HOME}"
-bash benchmarks/mimic-meds-extraction/scripts/01_extract_meds_full.sh 8
+# NOTE: MEDS_transforms worker parallelism can be very memory-hungry.
+# Default to a conservative worker count unless overridden at submit time:
+#   sbatch --export=ALL,N_WORKERS=4 slurm/00_extract_meds.sh
+# Empirically, N_WORKERS=3 can exceed a 300GB job memory limit during
+# `stage=shard_events` (e.g., while sharding `icu/chartevents.csv.gz`).
+N_WORKERS="${N_WORKERS:-2}"
+echo "Using N_WORKERS=${N_WORKERS}"
+bash benchmarks/mimic-meds-extraction/scripts/01_extract_meds_full.sh "${N_WORKERS}"
 
 echo ""
 echo "=============================================="
