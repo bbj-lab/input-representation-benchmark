@@ -175,7 +175,11 @@ EXP3_CONFIGS = [
 def get_data_version(config: ExperimentConfig) -> str:
     """Generate data version string for this config."""
     fused_str = "fused" if config.fused else "unfused"
-    return f"{config.quantizer}_{config.clinical_anchoring}_{fused_str}"
+    # IMPORTANT: Tokenization differs between `time_tokens` (inserts spacing tokens)
+    # and `time2vec` (no spacing tokens; temporal info comes from Time2Vec).
+    # If we do not include `temporal` here, time_tokens/time2vec variants will write
+    # to the same <data_version>-tokenized directory and race/overwrite each other.
+    return f"{config.quantizer}_{config.clinical_anchoring}_{fused_str}_{config.temporal}"
 
 
 def get_tokenizer_config(config: ExperimentConfig) -> str:

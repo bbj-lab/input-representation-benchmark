@@ -18,7 +18,7 @@ echo "=== Starting exp3_meds_ventiles_5-10-5_fusedFalse_soft_time2vec_s42 ==="
 python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
     --data_version_in raw \
-    --data_version_out ventiles_5-10-5_unfused \
+    --data_version_out ventiles_5-10-5_unfused_time2vec \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
     --quantizer ventiles \
     --clinical_anchoring 5-10-5 \
@@ -29,14 +29,14 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
 
 # Step 2: Normalize layout (MEDS -> fms-ehrs compatible)
 python scripts/normalize_meds_tokenized_layout.py \
-    --input_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized \
-    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused-tokenized-norm \
+    --input_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_time2vec-tokenized \
+    --output_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_time2vec-tokenized-norm \
     --inplace
 
 # Step 3: Train with representation mechanics
 python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --data_version ventiles_5-10-5_unfused \
+    --data_version ventiles_5-10-5_unfused_time2vec \
     --model_dir models \
     --model_version exp3_meds_ventiles_5-10-5_fusedFalse_soft_time2vec \
     --representation soft \
@@ -50,13 +50,13 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 if [ "meds" = "meds" ]; then
     python scripts/extract_outcomes_meds.py \
         --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+        --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_time2vec_first_24h-tokenized \
         --splits train,val
 else
     python ../fms-ehrs/fms_ehrs/scripts/extract_outcomes.py \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --ref_version ventiles_5-10-5_unfused \
-        --data_version ventiles_5-10-5_unfused_first_24h
+        --ref_version ventiles_5-10-5_unfused_time2vec \
+        --data_version ventiles_5-10-5_unfused_time2vec_first_24h
 fi
 
 # Step 5: Fine-tune for each outcome
@@ -64,7 +64,7 @@ for outcome in same_admission_death long_length_of_stay icu_admission imv_event;
     python ../fms-ehrs/fms_ehrs/scripts/fine_tune_classification.py \
         --model_loc models/exp3_meds_ventiles_5-10-5_fusedFalse_soft_time2vec-*/model-soft-time2vec \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --data_version ventiles_5-10-5_unfused_first_24h \
+        --data_version ventiles_5-10-5_unfused_time2vec_first_24h \
         --out_dir models/classifiers \
         --outcome $outcome \
         --n_epochs 5 \
@@ -81,7 +81,7 @@ echo "=== Starting exp3_clif_ventiles_5-10-5_fusedFalse_soft_time2vec_s42 ==="
 python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_dir data/clif \
     --data_version_in raw \
-    --data_version_out ventiles_5-10-5_unfused \
+    --data_version_out ventiles_5-10-5_unfused_time2vec \
     --config_loc ../fms-ehrs/fms_ehrs/config/clif-21.yaml \
     --quantizer ventiles \
     --clinical_anchoring 5-10-5 \
@@ -92,14 +92,14 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
 
 # Step 2: Normalize layout (MEDS -> fms-ehrs compatible)
 python scripts/normalize_meds_tokenized_layout.py \
-    --input_dir data/clif/ventiles_5-10-5_unfused-tokenized \
-    --output_dir data/clif/ventiles_5-10-5_unfused-tokenized-norm \
+    --input_dir data/clif/ventiles_5-10-5_unfused_time2vec-tokenized \
+    --output_dir data/clif/ventiles_5-10-5_unfused_time2vec-tokenized-norm \
     --inplace
 
 # Step 3: Train with representation mechanics
 python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
     --data_dir data/clif \
-    --data_version ventiles_5-10-5_unfused \
+    --data_version ventiles_5-10-5_unfused_time2vec \
     --model_dir models \
     --model_version exp3_clif_ventiles_5-10-5_fusedFalse_soft_time2vec \
     --representation soft \
@@ -113,13 +113,13 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 if [ "clif" = "meds" ]; then
     python scripts/extract_outcomes_meds.py \
         --meds_events_dir data/clif \
-        --tokenized_dir data/clif/ventiles_5-10-5_unfused_first_24h-tokenized \
+        --tokenized_dir data/clif/ventiles_5-10-5_unfused_time2vec_first_24h-tokenized \
         --splits train,val
 else
     python ../fms-ehrs/fms_ehrs/scripts/extract_outcomes.py \
         --data_dir data/clif \
-        --ref_version ventiles_5-10-5_unfused \
-        --data_version ventiles_5-10-5_unfused_first_24h
+        --ref_version ventiles_5-10-5_unfused_time2vec \
+        --data_version ventiles_5-10-5_unfused_time2vec_first_24h
 fi
 
 # Step 5: Fine-tune for each outcome
@@ -127,7 +127,7 @@ for outcome in same_admission_death long_length_of_stay icu_admission imv_event;
     python ../fms-ehrs/fms_ehrs/scripts/fine_tune_classification.py \
         --model_loc models/exp3_clif_ventiles_5-10-5_fusedFalse_soft_time2vec-*/model-soft-time2vec \
         --data_dir data/clif \
-        --data_version ventiles_5-10-5_unfused_first_24h \
+        --data_version ventiles_5-10-5_unfused_time2vec_first_24h \
         --out_dir models/classifiers \
         --outcome $outcome \
         --n_epochs 5 \

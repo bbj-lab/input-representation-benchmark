@@ -18,7 +18,7 @@ echo "=== Starting exp2_meds_ventiles_5-10-5_fusedFalse_discrete_time_tokens_s42
 python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
     --data_version_in raw \
-    --data_version_out ventiles_5-10-5_unfused \
+    --data_version_out ventiles_5-10-5_unfused_time_tokens \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
     --quantizer ventiles \
     --clinical_anchoring 5-10-5 \
@@ -30,7 +30,7 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
 # Step 2: Train with representation mechanics
 python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --data_version ventiles_5-10-5_unfused \
+    --data_version ventiles_5-10-5_unfused_time_tokens \
     --model_dir models \
     --model_version exp2_meds_ventiles_5-10-5_fusedFalse_discrete_time_tokens \
     --representation discrete \
@@ -43,7 +43,7 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
     --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_time_tokens_first_24h-tokenized \
     --splits train,val
 
 # Step 4: Fine-tune for each outcome
@@ -51,7 +51,7 @@ for outcome in same_admission_death long_length_of_stay icu_admission imv_event;
     python ../fms-ehrs/fms_ehrs/scripts/fine_tune_classification.py \
         --model_loc models/exp2_meds_ventiles_5-10-5_fusedFalse_discrete_time_tokens-*/model-discrete-time_tokens \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --data_version ventiles_5-10-5_unfused_first_24h \
+        --data_version ventiles_5-10-5_unfused_time_tokens_first_24h \
         --out_dir models/classifiers \
         --outcome $outcome \
         --n_epochs 5 \
@@ -68,7 +68,7 @@ echo "=== Starting exp2_meds_ventiles_5-10-5_fusedFalse_discrete_time2vec_s42 ==
 python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
     --data_version_in raw \
-    --data_version_out ventiles_5-10-5_unfused \
+    --data_version_out ventiles_5-10-5_unfused_time2vec \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
     --quantizer ventiles \
     --clinical_anchoring 5-10-5 \
@@ -80,7 +80,7 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
 # Step 2: Train with representation mechanics
 python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --data_version ventiles_5-10-5_unfused \
+    --data_version ventiles_5-10-5_unfused_time2vec \
     --model_dir models \
     --model_version exp2_meds_ventiles_5-10-5_fusedFalse_discrete_time2vec \
     --representation discrete \
@@ -93,7 +93,7 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
     --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_time2vec_first_24h-tokenized \
     --splits train,val
 
 # Step 4: Fine-tune for each outcome
@@ -101,7 +101,7 @@ for outcome in same_admission_death long_length_of_stay icu_admission imv_event;
     python ../fms-ehrs/fms_ehrs/scripts/fine_tune_classification.py \
         --model_loc models/exp2_meds_ventiles_5-10-5_fusedFalse_discrete_time2vec-*/model-discrete-time2vec \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --data_version ventiles_5-10-5_unfused_first_24h \
+        --data_version ventiles_5-10-5_unfused_time2vec_first_24h \
         --out_dir models/classifiers \
         --outcome $outcome \
         --n_epochs 5 \
@@ -118,7 +118,7 @@ echo "=== Starting exp2_meds_ventiles_5-10-5_fusedFalse_soft_time_tokens_s42 ===
 python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
     --data_version_in raw \
-    --data_version_out ventiles_5-10-5_unfused \
+    --data_version_out ventiles_5-10-5_unfused_time_tokens \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
     --quantizer ventiles \
     --clinical_anchoring 5-10-5 \
@@ -130,7 +130,7 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
 # Step 2: Train with representation mechanics
 python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --data_version ventiles_5-10-5_unfused \
+    --data_version ventiles_5-10-5_unfused_time_tokens \
     --model_dir models \
     --model_version exp2_meds_ventiles_5-10-5_fusedFalse_soft_time_tokens \
     --representation soft \
@@ -143,7 +143,7 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
     --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_time_tokens_first_24h-tokenized \
     --splits train,val
 
 # Step 4: Fine-tune for each outcome
@@ -151,7 +151,7 @@ for outcome in same_admission_death long_length_of_stay icu_admission imv_event;
     python ../fms-ehrs/fms_ehrs/scripts/fine_tune_classification.py \
         --model_loc models/exp2_meds_ventiles_5-10-5_fusedFalse_soft_time_tokens-*/model-soft-time_tokens \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --data_version ventiles_5-10-5_unfused_first_24h \
+        --data_version ventiles_5-10-5_unfused_time_tokens_first_24h \
         --out_dir models/classifiers \
         --outcome $outcome \
         --n_epochs 5 \
@@ -168,7 +168,7 @@ echo "=== Starting exp2_meds_ventiles_5-10-5_fusedFalse_soft_time2vec_s42 ==="
 python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
     --data_version_in raw \
-    --data_version_out ventiles_5-10-5_unfused \
+    --data_version_out ventiles_5-10-5_unfused_time2vec \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
     --quantizer ventiles \
     --clinical_anchoring 5-10-5 \
@@ -180,7 +180,7 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
 # Step 2: Train with representation mechanics
 python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --data_version ventiles_5-10-5_unfused \
+    --data_version ventiles_5-10-5_unfused_time2vec \
     --model_dir models \
     --model_version exp2_meds_ventiles_5-10-5_fusedFalse_soft_time2vec \
     --representation soft \
@@ -193,7 +193,7 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
     --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_time2vec_first_24h-tokenized \
     --splits train,val
 
 # Step 4: Fine-tune for each outcome
@@ -201,7 +201,7 @@ for outcome in same_admission_death long_length_of_stay icu_admission imv_event;
     python ../fms-ehrs/fms_ehrs/scripts/fine_tune_classification.py \
         --model_loc models/exp2_meds_ventiles_5-10-5_fusedFalse_soft_time2vec-*/model-soft-time2vec \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --data_version ventiles_5-10-5_unfused_first_24h \
+        --data_version ventiles_5-10-5_unfused_time2vec_first_24h \
         --out_dir models/classifiers \
         --outcome $outcome \
         --n_epochs 5 \
@@ -218,7 +218,7 @@ echo "=== Starting exp2_meds_ventiles_5-10-5_fusedFalse_continuous_time_tokens_s
 python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
     --data_version_in raw \
-    --data_version_out ventiles_5-10-5_unfused \
+    --data_version_out ventiles_5-10-5_unfused_time_tokens \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
     --quantizer ventiles \
     --clinical_anchoring 5-10-5 \
@@ -230,7 +230,7 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
 # Step 2: Train with representation mechanics
 python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --data_version ventiles_5-10-5_unfused \
+    --data_version ventiles_5-10-5_unfused_time_tokens \
     --model_dir models \
     --model_version exp2_meds_ventiles_5-10-5_fusedFalse_continuous_time_tokens \
     --representation continuous \
@@ -243,7 +243,7 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
     --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_time_tokens_first_24h-tokenized \
     --splits train,val
 
 # Step 4: Fine-tune for each outcome
@@ -251,7 +251,7 @@ for outcome in same_admission_death long_length_of_stay icu_admission imv_event;
     python ../fms-ehrs/fms_ehrs/scripts/fine_tune_classification.py \
         --model_loc models/exp2_meds_ventiles_5-10-5_fusedFalse_continuous_time_tokens-*/model-continuous-time_tokens \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --data_version ventiles_5-10-5_unfused_first_24h \
+        --data_version ventiles_5-10-5_unfused_time_tokens_first_24h \
         --out_dir models/classifiers \
         --outcome $outcome \
         --n_epochs 5 \
@@ -268,7 +268,7 @@ echo "=== Starting exp2_meds_ventiles_5-10-5_fusedFalse_continuous_time2vec_s42 
 python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
     --data_version_in raw \
-    --data_version_out ventiles_5-10-5_unfused \
+    --data_version_out ventiles_5-10-5_unfused_time2vec \
     --config_loc ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml \
     --quantizer ventiles \
     --clinical_anchoring 5-10-5 \
@@ -280,7 +280,7 @@ python ../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py \
 # Step 2: Train with representation mechanics
 python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
     --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --data_version ventiles_5-10-5_unfused \
+    --data_version ventiles_5-10-5_unfused_time2vec \
     --model_dir models \
     --model_version exp2_meds_ventiles_5-10-5_fusedFalse_continuous_time2vec \
     --representation continuous \
@@ -293,7 +293,7 @@ python ../fms-ehrs/fms_ehrs/scripts/train_representation.py \
 # Step 3: Extract outcomes
 python scripts/extract_outcomes_meds.py \
     --meds_events_dir benchmarks/mimic-meds-extraction/data/meds/data \
-    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_first_24h-tokenized \
+    --tokenized_dir benchmarks/mimic-meds-extraction/data/meds/data/ventiles_5-10-5_unfused_time2vec_first_24h-tokenized \
     --splits train,val
 
 # Step 4: Fine-tune for each outcome
@@ -301,7 +301,7 @@ for outcome in same_admission_death long_length_of_stay icu_admission imv_event;
     python ../fms-ehrs/fms_ehrs/scripts/fine_tune_classification.py \
         --model_loc models/exp2_meds_ventiles_5-10-5_fusedFalse_continuous_time2vec-*/model-continuous-time2vec \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
-        --data_version ventiles_5-10-5_unfused_first_24h \
+        --data_version ventiles_5-10-5_unfused_time2vec_first_24h \
         --out_dir models/classifiers \
         --outcome $outcome \
         --n_epochs 5 \
