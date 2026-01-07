@@ -1,0 +1,59 @@
+# =============================================================================
+# MEDS Extraction Pipeline Configuration for MIMIC-IV (LOCAL / low-memory variant)
+# =============================================================================
+# Adapted from ETHOS-ARES (https://github.com/ipolharvard/ethos-ares)
+# License: MIT (Copyright (c) 2024 Paweł Renc)
+#
+# This config is identical to `extract_MIMIC.yaml` except for a smaller
+# `stage_configs.shard_events.row_chunksize`. This is useful on local machines
+# where very large row-chunks (e.g., 200M rows for icu/chartevents) can exceed
+# available memory during the `shard_events` stage.
+# =============================================================================
+
+defaults:
+  - _extract
+  - _self_
+
+description: |-
+  This pipeline extracts the MIMIC-IV dataset in longitudinal, sparse form from an input dataset meeting
+  select criteria and converts them to the flattened, MEDS format. You can control the key arguments to this
+  pipeline by setting environment variables:
+  ```bash
+    export EVENT_CONVERSION_CONFIG_FP=# Path to your event conversion config
+    export MIMICIV_PRE_MEDS_DIR=# Path to the output dir of the pre-MEDS step
+    export MIMICIV_MEDS_COHORT_DIR=# Path to where you want the dataset to live
+  ```
+
+# The event conversion configuration file is used throughout the pipeline to define the events to extract.
+event_conversion_config_fp: ${oc.env:EVENT_CONVERSION_CONFIG_FP}
+
+input_dir: ${oc.env:MIMICIV_PRE_MEDS_DIR}
+cohort_dir: ${oc.env:MIMICIV_MEDS_COHORT_DIR}
+
+etl_metadata:
+  dataset_name: MIMIC-IV
+  dataset_version: 3.1
+
+stage_configs:
+  shard_events:
+    # LOCAL override: smaller chunks reduce peak memory usage (at the cost of more shards).
+    row_chunksize: 100000000
+    infer_schema_length: null
+  split_and_shard_subjects:
+    n_subjects_per_shard: 20000
+    # Modified for input-representation-benchmark: 70/10/20 split
+    split_fracs:
+      train: 0.7
+      tuning: 0.1  # validation set
+      test: 0.2
+      held_out: null
+
+stages:
+  - shard_events
+  - split_and_shard_subjects
+  - convert_to_sharded_events
+  - merge_to_MEDS_cohort
+  - extract_code_metadata
+  - finalize_MEDS_metadata
+  - finalize_MEDS_data
+
