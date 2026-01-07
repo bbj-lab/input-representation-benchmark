@@ -115,7 +115,7 @@ The downstream task is clinical prediction: given a timeline prefix $\mathcal{T}
 
 All downstream tokenization, training, and evaluation rely entirely on our independent `fms-ehrs` codebase. This separation ensures clean modularity: MEDS extraction (adapted from ETHOS-ARES) produces standardized parquet files, while `fms-ehrs` handles all representation experiments without upstream dependencies.
 
-**Tokenization (fms-ehrs)**: We tokenize MEDS timelines using our `fms-ehrs` framework. Tokenization is YAML-configurable and supports: (i) quantization strategies (deciles/ventiles/trentiles/centiles), (ii) clinically anchored binning using reference intervals [5], (iii) optional fused code–value tokens (to reduce sequence length), (iv) time spacing tokens (as in ETHOS-ARES [1]) and Time2Vec temporal features [15], and (v) aligned auxiliary arrays for continuous-value representations (see §4.4). In our validation runs on MEDS-formatted MIMIC data, tokenization produced a vocabulary of 20,882 tokens and mean timeline length of 1,450 tokens per patient admission (Appendix D).
+**Tokenization (fms-ehrs)**: We tokenize MEDS timelines using our `fms-ehrs` framework. Tokenization is YAML-configurable and supports: (i) quantization strategies (deciles/ventiles/trentiles/centiles), (ii) clinically anchored binning using reference intervals [5], (iii) optional fused code–value tokens (to reduce sequence length), (iv) time spacing tokens (as in ETHOS-ARES [1]) and Time2Vec temporal features [15], and (v) aligned auxiliary arrays for continuous-value representations (see §4.4). In a concrete validation run on MEDS-formatted MIMIC-IV v3.1 (deciles, non-fused, time-spacing tokens, `max_padded_len=1024`, with 24h-cut artifacts), tokenization produced a vocabulary of **19,363** tokens and **297,817** hospitalization timelines in the train split after the ≥24h stay filter; full commands, timestamps, and readouts are recorded in `methods/data-columns.md`.
 
 **LLaMA Architecture**: Our base model is a decoder-only transformer with rotary position embeddings, using a scaled-down configuration (67.3M parameters) for computational tractability across 100 training runs.
 
@@ -279,7 +279,7 @@ This learned representation is added to token embeddings before transformer proc
 | Events with reference ranges | 114,135,372 (80.3%) |
 | Top 200 codes coverage | 97.06% |
 
-**Preprocessing**: We use the MEDS extraction pipeline adapted from ETHOS-ARES [1] for MIMIC-IV → MEDS conversion. All tokenization is performed by our `fms-ehrs` framework (vocabulary size: 20,882; avg timeline: 1,450 tokens). Extended MEDS extraction includes `ref_range_lower` and `ref_range_upper` columns for clinical anchoring.
+**Preprocessing**: We use the MEDS extraction pipeline adapted from ETHOS-ARES [1] for MIMIC-IV → MEDS conversion. All tokenization is performed by our `fms-ehrs` framework; in our Phase 1 validation run (see `methods/data-columns.md` for provenance), the resulting MEDS tokenization produced a **19,363**-token vocabulary with **297,817 / 41,869 / 85,530** train/val/test hospitalization timelines after the ≥24h stay filter. Extended MEDS extraction includes `ref_range_lower` and `ref_range_upper` columns for clinical anchoring.
 
 **Cohorts**: We define two cohorts based on experimental requirements:
 - **Experiments 1 & 2**: All hospitalizations with stay ≥24 hours
@@ -581,19 +581,20 @@ def compute_anchored_breaks(values, ref_lower, ref_upper, allocation="5-10-5"):
 | Codes with ref ranges | 392 (34.8%) |
 | Events with ref ranges | 114,135,372 (80.3%) |
 | Top 200 codes coverage | 97.06% |
-| Avg tokens per patient | 1,450 |
 
 ### D.2. Tokenization Statistics (fms-ehrs)
 
-Validated on MEDS-formatted MIMIC data using `fms_ehrs/config/mimic-meds-ed.yaml`:
+Validated on MEDS-formatted MIMIC data using `fms_ehrs/config/mimic-meds-ed.yaml` (see `methods/data-columns.md` for full execution provenance):
 
 | Statistic | Value |
 |-----------|-------|
-| Vocabulary size | 20,882 tokens |
-| Avg tokens per patient | 1,450 |
-| Tokenization runtime | ~70 minutes |
-| Memory requirement | <150 GB |
-| Configuration | deciles, time spacing tokens, non-fused |
+| Vocabulary size | 19,363 tokens |
+| Timelines (≥24h stay filter) | train/val/test = 297,817 / 41,869 / 85,530 |
+| Timelines (24h-cut) | train/val/test = 296,209 / 41,652 / 85,057 |
+| Mean unpadded tokens (train) | 2,041.07 (median 296; IQR 132–942) |
+| Tokenization runtime | 41m 28s (log: `slurm/output/local_tokenize_20260107_032155.log`) |
+| Memory requirement | Observed peak RSS ≈ 58 GB; recommend 150 GB job limit for safety |
+| Configuration | deciles, time spacing tokens, non-fused, `max_padded_len=1024`, `include_24h_cut` |
 
 This represents the first non-CLIF configuration for `fms-ehrs`, demonstrating successful adaptation to MEDS-formatted data from the ETHOS extraction pipeline.
 
@@ -641,9 +642,10 @@ Above (>105): [115, 127, 146, 184]         = 5 bins
 
 **Reproduction Instructions**:
 ```bash
-# Clone repositories (sibling directories)
-git clone [URL]/input-representation-benchmark
-git clone [URL]/fms-ehrs
+# Clone repositories (sibling directories; required by default paths)
+git clone https://github.com/bbj-lab/input-representation-benchmark.git
+cd input-representation-benchmark
+git clone --branch dev-input-rep --single-branch https://github.com/bbj-lab/fms-ehrs.git ../fms-ehrs
 
 # (Optional) Configure Weights & Biases for live tracking
 echo 'export WANDB_API_KEY="YOUR_KEY_HERE"' >> ~/.bashrc
@@ -652,21 +654,16 @@ source ~/.bashrc
 
 # Environments
 # We use TWO conda environments due to a hard dependency conflict:
-# - MEDS extraction (ETHOS-ARES-compatible) uses meds_transforms==0.1.1, which requires polars<=1.27.9
+# - MEDS extraction (ETHOS-ARES-compatible) uses MEDS_transforms==0.1.1, which requires polars<=1.27.9
 # - fms-ehrs/clifpy require polars>=1.33 (for CLIF support and modern Polars APIs)
 # Therefore, keep MEDS extraction isolated from training/tokenization.
 #
-# 1) Training/tokenization environment (used for Phases 1–3)
-conda create -n input-rep python=3.12 -y
-conda activate input-rep
-cd input-representation-benchmark
-pip install -e .
-pip install -e ../fms-ehrs
+# 1) MEDS extraction environment (used for Phase 0 only)
+bash scripts/setup_conda_env_meds_extract.sh
 
-# 2) MEDS extraction environment (used for Phase 0 only)
-conda create -n meds-extract python=3.12 -y
-conda activate meds-extract
-pip install "meds_transforms[local_parallelism,slurm_parallelism]==0.1.1" loguru
+# 2) Training/tokenization environment (used for Phases 1–3)
+# NOTE: torch installation is hardware-dependent; see script output for guidance.
+bash scripts/setup_conda_env_input_rep.sh --with-training-deps
 
 # Phase 0: Extract MEDS data from raw MIMIC-IV (CPU-heavy)
 # Precondition: MIMIC-IV v3.1 exists under physionet.org/files/mimiciv/3.1/
@@ -676,7 +673,6 @@ sbatch slurm/00_extract_meds.sh
 
 # Phase 1: Generate experiment job files (bash scripts)
 # The remaining SLURM jobs activate `input-rep` internally.
-conda activate input-rep
 python run_experiments.py --mode demo --exp 1
 python run_experiments.py --mode demo --exp 2
 python run_experiments.py --mode demo --exp 3
@@ -716,3 +712,36 @@ sbatch --array=0-1%8  slurm/run_from_jobfile.sh slurm/exp3_demo_jobs.sh
 - **Storage**: [PLACEHOLDER: quantify disk required for raw MIMIC + MEDS parquet + tokenized artifacts + checkpoints]
 - **Runtime**: hardware-dependent; we will report measured wall-clock time and GPU-hours per run alongside performance metrics.
 
+---
+
+## Appendix: Technical Notes (moved from README.md)
+
+### Ventile Quantization (Reference Range-Aware)
+
+**Goal**: Incorporate clinical knowledge into tokenization by using reference ranges (`ref_range_lower`, `ref_range_upper`) to define bins (e.g., 5 bins below normal, 10 within, 5 above).
+
+**Results (MIMIC-IV v3.1)**:
+- **Dataset**: 364,627 patients, 142M lab events, 1,128 unique lab codes
+- **Reference Ranges**: 392 codes (34.8%) have paired bounds, covering 114M events (80.3%)
+- **Strict Filtering**: 155/203 candidate codes (76.4%) pass the strict 20-bin requirement
+- **All passing codes achieve exactly 20 bins**: ✓
+- **Glucose Example**: Verified 5 bins below [70], 10 within [70-105], 5 above [105]
+
+### Time2Vec Temporal Encoding
+
+Time2Vec uses **relative time** (hours since admission) rather than absolute timestamps, respecting MIMIC-IV's deidentification policy:
+
+> "A single date shift was assigned to each subject_id. As a result, the data for a single patient are internally consistent... Conversely, distinct patients are not temporally comparable."
+
+This preserves clinically meaningful temporal patterns while avoiding spurious cross-patient correlations.
+
+### 4 Evaluation Outcomes
+
+1. **same_admission_death**: In-hospital mortality
+2. **long_length_of_stay**: Hospital stay > 7 days
+3. **icu_admission**: ICU admission after first 24 hours
+4. **imv_event**: Invasive mechanical ventilation after first 24 hours
+
+All outcomes use `storetime` semantics to prevent look-ahead bias.
+
+---

@@ -63,7 +63,7 @@ This benchmark uses a **two-repository architecture**:
 - **Configuration**: Experiment parameters (`configs/experiment.yaml`)
 - **Orchestration**: Job generation (`run_experiments.py`)
 - **MEDS-specific scripts**: Outcome extraction, layout normalization
-- **Documentation**: Methods, proposal, paper
+- **Documentation**: Methods and manuscript
 
 ### `fms-ehrs/` (sister repo)
 - **Tokenization**: `fms_ehrs/scripts/tokenize_w_config.py`
@@ -82,8 +82,7 @@ input-representation-benchmark/
 ├── run_experiments.py             # Job generation for all experiments
 │
 ├── methods/
-│   ├── proposal.md                # Research proposal
-│   ├── paper.md                   # Paper draft
+│   ├── manuscript.md              # Manuscript draft
 │   ├── data-columns.md            # Data columns used in each experiment
 │   └── overall-pipeline.mmd       # Pipeline diagram (Mermaid)
 │
@@ -217,36 +216,6 @@ wandb login
 Get your API key at: https://wandb.ai/authorize
 
 The training scripts automatically use W&B when `WANDB_API_KEY` is set. If not set, runs proceed in offline mode (see `slurm/preamble.sh`).
-
-## Technical Notes
-
-### Ventile Quantization (Reference Range-Aware)
-
-**Goal**: Incorporate clinical knowledge into tokenization by using reference ranges (`ref_range_lower`, `ref_range_upper`) to define bins (e.g., 5 bins below normal, 10 within, 5 above).
-
-**Results (MIMIC-IV v3.1)**:
-- **Dataset**: 364,627 patients, 142M lab events, 1,128 unique lab codes
-- **Reference Ranges**: 392 codes (34.8%) have paired bounds, covering 114M events (80.3%)
-- **Strict Filtering**: 155/203 candidate codes (76.4%) pass the strict 20-bin requirement
-- **All passing codes achieve exactly 20 bins**: ✓
-- **Glucose Example**: Verified 5 bins below [70], 10 within [70-105], 5 above [105]
-
-### Time2Vec Temporal Encoding
-
-Time2Vec uses **relative time** (hours since admission) rather than absolute timestamps, respecting MIMIC-IV's deidentification policy:
-
-> "A single date shift was assigned to each subject_id. As a result, the data for a single patient are internally consistent... Conversely, distinct patients are not temporally comparable."
-
-This preserves clinically meaningful temporal patterns while avoiding spurious cross-patient correlations.
-
-### 4 Evaluation Outcomes
-
-1. **same_admission_death**: In-hospital mortality
-2. **long_length_of_stay**: Hospital stay > 7 days
-3. **icu_admission**: ICU admission after first 24 hours
-4. **imv_event**: Invasive mechanical ventilation after first 24 hours
-
-All outcomes use `storetime` semantics to prevent look-ahead bias.
 
 ## Contact
 

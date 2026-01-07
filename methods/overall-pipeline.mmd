@@ -12,11 +12,11 @@ flowchart TD
     %% ==========================================================
     subgraph P0["Phase 0: Raw → MEDS (CPU-heavy)"]
         direction TB
-        ENV0[conda env: meds-extract<br/>polars~=1.30<br/>MEDS_transforms]:::env
+        ENV0[conda env: meds-extract<br/>MEDS_transforms==0.1.1<br/>polars<=1.27.9<br/>(see scripts/setup_conda_env_meds_extract.sh)]:::env
         RAW[MIMIC-IV v3.1 raw CSVs<br/>physionet.org/files/mimiciv/3.1/]:::raw
         CFG[event_configs_v3.1_full.yaml<br/>storetime semantics + ICU tables<br/>adds ref_range_lower/ref_range_upper]:::script
         PRE[pre_MEDS.py]:::script
-        PIPE[MEDS_transform-pipeline<br/>extract_MIMIC.yaml + local_parallelism_runner.yaml]:::script
+        PIPE[MEDS_transform-runner<br/>extract_MIMIC_local.yaml<br/>row_chunksize=100,000,000 (OOM mitigation)<br/>+ local_parallelism_runner.yaml]:::script
         MEDS[MEDS cohort parquet<br/>benchmarks/mimic-meds-extraction/data/meds/]:::artifact
 
         ENV0 --> PRE
@@ -44,8 +44,8 @@ flowchart TD
     %% ==========================================================
     subgraph P1["Phase 1: Tokenization"]
         direction TB
-        ENV1[conda env: input-rep<br/>polars>=1.33<br/>fms-ehrs + training deps]:::env
-        TOK[tokenize_w_config.py<br/>quantizer/anchoring/fused/time-tokens overrides]:::script
+        ENV1[conda env: input-rep<br/>polars>=1.33<br/>fms-ehrs + benchmark deps<br/>(see scripts/setup_conda_env_input_rep.sh)]:::env
+        TOK[tokenize_w_config.py<br/>reads data/raw/{train,val,test}<br/>writes *-tokenized + *_first_24h-tokenized]:::script
         TOKOUT[Tokenized timelines parquet<br/>tokens + numeric_values + times]:::artifact
         ENV1 --> TOK
     end
@@ -81,8 +81,9 @@ flowchart TD
     subgraph SLURM["SLURM orchestration"]
         direction TB
         S0[slurm/00_extract_meds.sh<br/>sets IRB_CONDA_ENV=meds-extract]:::script
+        S1[slurm/01_tokenize.sh<br/>sets IRB_CONDA_ENV=input-rep<br/>ensures data/raw split shim]:::script
         SARR[slurm/run_from_jobfile.sh<br/>--array=...%8 (max 8 GPUs)]:::script
-        S0 --> SARR
+        S0 --> S1 --> SARR
     end
 
     %% Cross-phase connections
