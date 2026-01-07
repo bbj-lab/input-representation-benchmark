@@ -67,6 +67,62 @@ N_WORKERS="${N_WORKERS:-2}"
 echo "Using N_WORKERS=${N_WORKERS}"
 bash benchmarks/mimic-meds-extraction/scripts/01_extract_meds_full.sh "${N_WORKERS}"
 
+# =============================================================================
+# Post-step: Create tokenization input layout shim (raw/{train,val,test})
+# =============================================================================
+# `fms_ehrs/scripts/tokenize_w_config.py` expects split subdirectories under:
+#   <data_dir>/<data_version_in>/{train,val,test}
+# Our MEDS pipeline produces:
+#   ${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data/{train,tuning,test}
+# So we create:
+#   .../data/raw/train -> ../train
+#   .../data/raw/val   -> ../tuning   (or ../val if it already exists)
+#   .../data/raw/test  -> ../test
+MEDS_DATA_BASE="${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data"
+RAW_BASE="${MEDS_DATA_BASE}/raw"
+
+if [[ ! -d "${MEDS_DATA_BASE}" ]]; then
+    echo "ERROR: Expected MEDS data directory not found: ${MEDS_DATA_BASE}"
+    exit 1
+fi
+if [[ ! -d "${MEDS_DATA_BASE}/train" ]]; then
+    echo "ERROR: Missing expected split dir: ${MEDS_DATA_BASE}/train"
+    exit 1
+fi
+if [[ ! -d "${MEDS_DATA_BASE}/test" ]]; then
+    echo "ERROR: Missing expected split dir: ${MEDS_DATA_BASE}/test"
+    exit 1
+fi
+
+VAL_SRC=""
+if [[ -d "${MEDS_DATA_BASE}/val" ]]; then
+    VAL_SRC="val"
+elif [[ -d "${MEDS_DATA_BASE}/tuning" ]]; then
+    VAL_SRC="tuning"
+else
+    echo "ERROR: Missing validation split dir. Expected one of:"
+    echo "  - ${MEDS_DATA_BASE}/val"
+    echo "  - ${MEDS_DATA_BASE}/tuning"
+    exit 1
+fi
+
+mkdir -p "${RAW_BASE}"
+(
+    cd "${RAW_BASE}"
+    [[ -e train ]] || ln -s ../train train
+    [[ -e test ]] || ln -s ../test test
+    [[ -e val ]] || ln -s "../${VAL_SRC}" val
+)
+
+echo ""
+echo "=============================================="
+echo "Tokenization input layout shim created"
+echo "=============================================="
+echo "  Base: ${MEDS_DATA_BASE}"
+echo "  raw/train -> ../train"
+echo "  raw/val   -> ../${VAL_SRC}"
+echo "  raw/test  -> ../test"
+
 echo ""
 echo "=============================================="
 echo "MEDS Extraction Complete!"

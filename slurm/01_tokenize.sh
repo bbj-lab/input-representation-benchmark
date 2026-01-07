@@ -53,6 +53,60 @@ echo "=============================================="
 
 cd "${FMS_EHRS_HOME}"
 
+# =============================================================================
+# Ensure MEDS input layout shim exists (raw/{train,val,test})
+# =============================================================================
+# `tokenize_w_config.py` always reads from:
+#   --data_dir/<data_version_in>/{train,val,test}
+# and this job sets:
+#   --data_version_in raw
+# Our MEDS extraction produces:
+#   ${DATA_DIR}/data/{train,tuning,test}
+# so we create symlinks (no data duplication):
+#   ${DATA_DIR}/data/raw/train -> ../train
+#   ${DATA_DIR}/data/raw/val   -> ../tuning   (or ../val if it exists)
+#   ${DATA_DIR}/data/raw/test  -> ../test
+MEDS_DATA_BASE="${DATA_DIR}/data"
+RAW_BASE="${MEDS_DATA_BASE}/raw"
+
+if [[ ! -d "${MEDS_DATA_BASE}" ]]; then
+    echo "ERROR: Expected MEDS data directory not found: ${MEDS_DATA_BASE}"
+    exit 1
+fi
+if [[ ! -d "${MEDS_DATA_BASE}/train" ]]; then
+    echo "ERROR: Missing expected split dir: ${MEDS_DATA_BASE}/train"
+    exit 1
+fi
+if [[ ! -d "${MEDS_DATA_BASE}/test" ]]; then
+    echo "ERROR: Missing expected split dir: ${MEDS_DATA_BASE}/test"
+    exit 1
+fi
+
+VAL_SRC=""
+if [[ -d "${MEDS_DATA_BASE}/val" ]]; then
+    VAL_SRC="val"
+elif [[ -d "${MEDS_DATA_BASE}/tuning" ]]; then
+    VAL_SRC="tuning"
+else
+    echo "ERROR: Missing validation split dir. Expected one of:"
+    echo "  - ${MEDS_DATA_BASE}/val"
+    echo "  - ${MEDS_DATA_BASE}/tuning"
+    exit 1
+fi
+
+mkdir -p "${RAW_BASE}"
+(
+    cd "${RAW_BASE}"
+    [[ -e train ]] || ln -s ../train train
+    [[ -e test ]] || ln -s ../test test
+    [[ -e val ]] || ln -s "../${VAL_SRC}" val
+)
+
+echo "Using input split layout:"
+echo "  ${RAW_BASE}/train -> ../train"
+echo "  ${RAW_BASE}/val   -> ../${VAL_SRC}"
+echo "  ${RAW_BASE}/test  -> ../test"
+
 python fms_ehrs/scripts/tokenize_w_config.py \
     --data_dir "${DATA_DIR}/data" \
     --data_version_in raw \
