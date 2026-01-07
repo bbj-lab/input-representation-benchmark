@@ -21,7 +21,8 @@ This repository evaluates input representation methods for EHR foundation models
 # Clone both repos as siblings (required by SLURM scripts + default configs)
 git clone https://github.com/bbj-lab/input-representation-benchmark.git
 cd input-representation-benchmark
-git clone https://github.com/bbj-lab/fms-ehrs.git ../fms-ehrs
+# IMPORTANT: this benchmark currently targets the `dev-input-rep` branch of fms-ehrs.
+git clone --branch dev-input-rep --single-branch https://github.com/bbj-lab/fms-ehrs.git ../fms-ehrs
 
 # MEDS extraction environment
 bash scripts/setup_conda_env_meds_extract.sh
