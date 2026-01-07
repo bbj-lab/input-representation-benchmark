@@ -44,14 +44,59 @@ export IRB_HOME FMS_EHRS_HOME DATA_DIR MODEL_DIR OUTPUT_DIR hm
 
 # Activate Python environment
 source ~/.bashrc 2>/dev/null || true
-source /gpfs/data/bbj-lab/mamba/etc/profile.d/conda.sh 2>/dev/null || true
+
+# Make `conda activate` work across environments (cluster + local).
+# - On BBJ cluster, conda is provided via a shared mamba install
+# - On local machines, users typically have miniconda/anaconda installed under $HOME
+if [[ -f /gpfs/data/bbj-lab/mamba/etc/profile.d/conda.sh ]]; then
+    # BBJ cluster
+    source /gpfs/data/bbj-lab/mamba/etc/profile.d/conda.sh
+else
+    # If `conda` is available, source its base shell hook.
+    if command -v conda >/dev/null 2>&1; then
+        CONDA_BASE="$(conda info --base 2>/dev/null || true)"
+        if [[ -n "${CONDA_BASE}" && -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
+            # shellcheck disable=SC1090
+            source "${CONDA_BASE}/etc/profile.d/conda.sh"
+        fi
+    fi
+
+    # Common local fallbacks (no-op if they don't exist).
+    for _c in \
+        "${HOME}/miniconda3/etc/profile.d/conda.sh" \
+        "${HOME}/anaconda3/etc/profile.d/conda.sh" \
+        "${HOME}/Desktop/miniconda3/etc/profile.d/conda.sh"; do
+        if [[ -f "${_c}" ]]; then
+            # shellcheck disable=SC1090
+            source "${_c}"
+            break
+        fi
+    done
+fi
+
+if ! command -v conda >/dev/null 2>&1; then
+    echo "ERROR: conda not found in PATH, and no conda.sh could be sourced."
+    echo "  - Install Miniconda/Anaconda, or add conda to your PATH."
+    echo "  - Or set up your shell so that: source \"$(conda info --base)/etc/profile.d/conda.sh\" works."
+    exit 1
+fi
+
 IRB_CONDA_ENV="${IRB_CONDA_ENV:-input-rep}"
 conda activate "${IRB_CONDA_ENV}"
 
 # Cache directories (following fms-ehrs conventions)
-HF_HOME="/gpfs/data/bbj-lab/cache/huggingface/"
-WANDB_CACHE_DIR="/scratch/$(whoami)/"
-WANDB_DIR="/scratch/$(whoami)/"
+if [[ -d /gpfs/data/bbj-lab/cache/huggingface/ ]]; then
+    HF_HOME="/gpfs/data/bbj-lab/cache/huggingface/"
+else
+    HF_HOME="${HF_HOME:-${HOME}/.cache/huggingface}"
+fi
+if [[ -d /scratch ]]; then
+    WANDB_CACHE_DIR="/scratch/$(whoami)/"
+    WANDB_DIR="/scratch/$(whoami)/"
+else
+    WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-${HOME}/.cache/wandb}"
+    WANDB_DIR="${WANDB_DIR:-${HOME}/.cache/wandb}"
+fi
 PYTHONPATH="${IRB_HOME}:${FMS_EHRS_HOME}:${PYTHONPATH:-}"
 export HF_HOME WANDB_CACHE_DIR WANDB_DIR PYTHONPATH
 

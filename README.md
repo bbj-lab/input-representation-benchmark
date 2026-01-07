@@ -18,19 +18,16 @@ This repository evaluates input representation methods for EHR foundation models
 ## Installation
 
 ```bash
-# Create environment
-conda create -n ehr-benchmark python=3.12 -y
-conda activate ehr-benchmark
+# Clone both repos as siblings (required by SLURM scripts + default configs)
+git clone https://github.com/bbj-lab/input-representation-benchmark.git
+cd input-representation-benchmark
+git clone https://github.com/bbj-lab/fms-ehrs.git ../fms-ehrs
 
-# Install MEDS transforms (for data extraction)
-pip install "MEDS_transforms[local_parallelism]"
+# MEDS extraction environment
+bash scripts/setup_conda_env_meds_extract.sh
 
-# Install fms-ehrs (sister repository - for tokenization and representation methods)
-git clone https://github.com/your-org/fms-ehrs ../fms-ehrs
-pip install -e ../fms-ehrs
-
-# Install this benchmark
-pip install -e .
+# Tokenization + training environment
+bash scripts/setup_conda_env_input_rep.sh --with-training-deps
 ```
 
 **Note**: The MIMIC-IV dataset (`physionet.org/`) is excluded from git. You must download it separately and place it under this repository.
