@@ -44,14 +44,29 @@ bash scripts/01_extract_meds_full.sh 3  # 3 = number of parallel workers
 
 # 2. Generate job files for experiments
 cd ../..  # Back to repo root
-python run_experiments.py --mode demo --exp 1  # Exp 1 (single seed)
-python run_experiments.py --mode demo --exp 2  # Exp 2 (single seed)
-python run_experiments.py --mode demo --exp 3  # Exp 3 (single seed)
+python run_experiments.py --mode demo  # Exp1–Exp3 (two-stage: Stage0+Stage1 job files)
 
-# 3. Run locally (for testing) or submit to SLURM
-bash slurm/exp1_demo_jobs.sh                   # Local execution
-# OR (with max 8 concurrent GPUs)
-sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh  # SLURM
+# 3. Submit to SLURM (recommended: Stage0 tokenizes once; Stage1 trains per seed)
+#
+# Exp1
+# Stage 0 (CPU): tokenize + outcomes ONCE per config (12 tasks)
+sbatch --array=0-11%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh
+# Stage 1 (GPU): pretrain + classify per config×seed (demo = 12 tasks)
+sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/07_exp1_train_jobs_demo.sh
+
+# Exp2
+# Stage 0 (CPU): tokenize + outcomes (deduplicated by data_version; 2 tasks)
+sbatch --array=0-1%2 slurm/02_run_from_jobfile_cpu.sh slurm/08_exp2_tokenize_jobs.sh
+# Stage 1 (GPU): train + classify (6 configs × 1 seed = 6 tasks)
+sbatch --array=0-5%8 slurm/run_from_jobfile.sh slurm/10_exp2_train_jobs_demo.sh
+
+# Exp3 (requires CLIF preprocessing; see methods/manuscript.md)
+# Stage 0 (CPU): tokenize + outcomes (2 tasks: MEDS vs CLIF)
+sbatch --array=0-1%2 slurm/02_run_from_jobfile_cpu.sh slurm/12_exp3_tokenize_jobs.sh
+# Stage 1 (GPU): train + classify (2 configs × 1 seed = 2 tasks)
+sbatch --array=0-1%8 slurm/run_from_jobfile.sh slurm/14_exp3_train_jobs_demo.sh
+
+# See: slurm/README.md (design rationale + outputs + cache behavior)
 ```
 
 ## Architecture
@@ -90,6 +105,7 @@ input-representation-benchmark/
 │   └── experiment.yaml            # Experiment parameter reference
 │
 ├── scripts/                       # MEDS-specific utility scripts
+│   ├── README.md                  # What each script does (high-level index)
 │   ├── extract_outcomes_meds.py   # 4-outcome extraction from MEDS data
 │   ├── normalize_meds_tokenized_layout.py  # Layout normalization for fms-ehrs
 │   ├── align_cohorts.py           # Cohort alignment for Exp 3
@@ -101,8 +117,21 @@ input-representation-benchmark/
 ├── slurm/                         # SLURM job submission
 │   ├── 00_extract_meds.sh         # Phase 0: MEDS extraction job
 │   ├── 01_tokenize.sh             # Phase 1: Tokenization job
+│   ├── README.md                  # SLURM orchestration docs (two-stage Exp1–Exp3)
 │   ├── preamble.sh                # Environment setup for jobs
-│   └── run_from_jobfile.sh        # Array job runner for training
+│   ├── run_from_jobfile.sh        # GPU array job runner (one-line command files)
+│   ├── 02_run_from_jobfile_cpu.sh # CPU array job runner (one-line command files)
+│   ├── 03_stage0_tokenize_and_outcomes_meds.sh  # Stage 0 (MEDS): tokenize + outcomes
+│   ├── 04_exp1_tokenize_jobs.sh   # Exp1 Stage 0 job file (generated; 12 configs)
+│   ├── 06_exp1_stage1_train_and_classify.sh     # Exp1 Stage 1 implementation
+│   ├── 07_exp1_train_jobs_demo.sh  # Exp1 Stage 1 job file (generated; demo)
+│   ├── 08_exp2_tokenize_jobs.sh    # Exp2 Stage 0 job file (generated; 2 data versions)
+│   ├── 09_exp2_stage1_train_and_classify.sh     # Exp2 Stage 1 implementation
+│   ├── 10_exp2_train_jobs_demo.sh  # Exp2 Stage 1 job file (generated; demo)
+│   ├── 11_exp3_stage0_tokenize_and_outcomes.sh  # Exp3 Stage 0 implementation
+│   ├── 12_exp3_tokenize_jobs.sh    # Exp3 Stage 0 job file (generated; 2 configs)
+│   ├── 13_exp3_stage1_train_and_classify.sh     # Exp3 Stage 1 implementation
+│   └── 14_exp3_train_jobs_demo.sh  # Exp3 Stage 1 job file (generated; demo)
 │
 ├── tests/                         # Unit tests
 │   ├── test_extract_outcomes_meds.py

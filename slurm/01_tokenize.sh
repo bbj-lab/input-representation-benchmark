@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=tokenize
 #SBATCH --output=./slurm/output/%j-%x.stdout
-#SBATCH --partition=tier2q
+#SBATCH --partition=gpuq
 #SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=150GB

@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=meds-extract
 #SBATCH --output=./slurm/output/%j-%x.stdout
-#SBATCH --partition=tier2q
+#SBATCH --partition=gpuq
 #SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=300GB
@@ -131,4 +131,9 @@ echo "Output: ${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds"
 echo ""
 echo "Next steps:"
 echo "  1. Generate job files: python run_experiments.py --mode demo"
-echo "  2. Submit Exp1: sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh"
+echo "  2. Exp1 Stage 0 (CPU): sbatch --array=0-11%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh"
+echo "  3. Exp1 Stage 1 (GPU): sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/07_exp1_train_jobs_demo.sh"
+echo "  4. Exp2 Stage 0 (CPU): sbatch --array=0-1%2  slurm/02_run_from_jobfile_cpu.sh slurm/08_exp2_tokenize_jobs.sh"
+echo "  5. Exp2 Stage 1 (GPU): sbatch --array=0-5%8  slurm/run_from_jobfile.sh slurm/10_exp2_train_jobs_demo.sh"
+echo "  6. Exp3 Stage 0 (CPU): sbatch --array=0-1%2  slurm/02_run_from_jobfile_cpu.sh slurm/12_exp3_tokenize_jobs.sh"
+echo "  7. Exp3 Stage 1 (GPU): sbatch --array=0-1%8  slurm/run_from_jobfile.sh slurm/14_exp3_train_jobs_demo.sh"

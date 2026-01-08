@@ -1,49 +1,39 @@
 #!/bin/bash
-#SBATCH --job-name=irb-train
+#SBATCH --job-name=irb-cpu
 #SBATCH --output=./slurm/output/%A_%a-%x.stdout
 #SBATCH --partition=gpuq
-#SBATCH --gres=gpu:1
-#SBATCH --mem=64GB
-#SBATCH --cpus-per-task=4
-#SBATCH --time=1-00:00:00
+#SBATCH --mem=150GB
+#SBATCH --cpus-per-task=8
+#SBATCH --time=0-08:00:00
 
 # =============================================================================
-# SLURM Array Job Runner for Input Representation Benchmark
+# SLURM Array Job Runner (CPU-heavy stages; no GPU request)
 # =============================================================================
-# Reads commands from a job file and executes the one matching SLURM_ARRAY_TASK_ID
+# Reads commands from a job file and executes the one matching SLURM_ARRAY_TASK_ID.
+#
+# Intended for CPU-heavy steps (e.g., tokenization + outcome extraction).
 #
 # Usage:
-#   # Generate job files:
-#   python run_experiments.py --mode demo --exp 1
-#   
-#   # Exp1 is two-stage:
-#   #   Stage 0 (CPU): tokenize + outcomes once per config
 #   sbatch --array=0-11%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh
-#   #   Stage 1 (GPU): train + classify per config×seed
-#   sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/07_exp1_train_jobs_demo.sh
 #
-# GPU Allocation Strategy:
-#   - Each job uses 1 GPU (--gres=gpu:1)
-#   - %8 limits concurrent jobs to 8 (fits within our 8-GPU limit)
-#   - Jobs run sequentially on available GPUs as they free up
-#
-# Array sizes (with %8 limit for max 8 concurrent GPUs):
-#   Exp1 stage1 demo: --array=0-11%8   (12 jobs, max 8 concurrent)
-#   Exp1 stage1 full: --array=0-59%8   (60 jobs, max 8 concurrent)
-#   Exp2 demo: --array=0-5%8    (6 jobs, max 8 concurrent)
-#   Exp2 full: --array=0-29%8   (30 jobs, max 8 concurrent)
-#   Exp3 demo: --array=0-1%8    (2 jobs, max 8 concurrent)
-#   Exp3 full: --array=0-9%8    (10 jobs, max 8 concurrent)
+# Notes:
+# - The default partition is `gpuq` (randi target). Override at submit time if needed:
+#     sbatch --partition=<your_cpu_partition> --array=0-11%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh
 # =============================================================================
 
 set -euo pipefail
 
 # Job file path (passed as argument)
-JOBFILE=${1:-"slurm/07_exp1_train_jobs_demo.sh"}
+JOBFILE=${1:-""}
+
+if [[ -z "$JOBFILE" ]]; then
+    echo "ERROR: Job file not provided."
+    echo "Usage: sbatch --array=0-N slurm/02_run_from_jobfile_cpu.sh <jobfile>"
+    exit 1
+fi
 
 if [[ ! -f "$JOBFILE" ]]; then
     echo "ERROR: Job file not found: $JOBFILE"
-    echo "Generate it first with: python run_experiments.py --mode demo"
     exit 1
 fi
 
@@ -62,6 +52,9 @@ find_repo_root() {
 
 SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
 IRB_HOME="$(find_repo_root "${SUBMIT_DIR}")"
+
+# Tokenization/outcome extraction uses the input-rep env.
+export IRB_CONDA_ENV="input-rep"
 source "${IRB_HOME}/slurm/preamble.sh"
 
 # Navigate to project root
@@ -73,15 +66,10 @@ mkdir -p slurm/output
 echo "=============================================="
 echo "SLURM Array Task: ${SLURM_ARRAY_TASK_ID:-0}"
 echo "Job File: ${JOBFILE}"
-echo "GPU: ${CUDA_VISIBLE_DEVICES:-auto}"
 echo "Host: $(hostname)"
 echo "=============================================="
 
-# Log GPU info
-nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader 2>/dev/null || echo "GPU info unavailable"
-
 # Extract the command for this array task
-# Job file format: non-empty, non-comment lines
 TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
 
 # Get the Nth command (0-indexed), skipping comments and empty lines
@@ -99,7 +87,6 @@ echo "  ${CMD}"
 echo ""
 echo "=============================================="
 
-# Execute the command
 eval "$CMD"
 
 EXIT_CODE=$?
@@ -110,3 +97,4 @@ echo "Task ${TASK_ID} completed with exit code ${EXIT_CODE}"
 echo "=============================================="
 
 exit ${EXIT_CODE}
+

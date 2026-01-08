@@ -698,11 +698,23 @@ python scripts/augment_clif_labs_with_ref_ranges.py \
 
 # Phase 2: Submit training/evaluation as SLURM arrays
 # We cap concurrency at 8 GPUs (array parallelism) to bound GPU usage.
-sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh
+# Exp1 is two-stage to avoid redundant tokenization across seeds/configs:
+#   Stage 0 (CPU): tokenize + outcome extraction (12 configs)
+sbatch --array=0-11%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh
+#   Stage 1 (GPU): pretrain + classify (12 configs × 1 seed for demo)
+sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/07_exp1_train_jobs_demo.sh
 # After Exp 1 completes:
-sbatch --array=0-5%8  slurm/run_from_jobfile.sh slurm/exp2_demo_jobs.sh
-# After Exp 2 completes:
-sbatch --array=0-1%8  slurm/run_from_jobfile.sh slurm/exp3_demo_jobs.sh
+# Exp2 is also two-stage because multiple representation variants share the same
+# tokenization outputs (would otherwise race/overwrite in SLURM arrays).
+#   Stage 0 (CPU): tokenize + outcome extraction (deduplicated; 2 data versions)
+sbatch --array=0-1%2 slurm/02_run_from_jobfile_cpu.sh slurm/08_exp2_tokenize_jobs.sh
+#   Stage 1 (GPU): train + classify (6 configs × 1 seed for demo)
+sbatch --array=0-5%8 slurm/run_from_jobfile.sh slurm/10_exp2_train_jobs_demo.sh
+# After Exp 2 completes (and after CLIF preprocessing is done):
+#   Stage 0 (CPU): tokenize + outcome extraction (2 configs: MEDS vs CLIF)
+sbatch --array=0-1%2 slurm/02_run_from_jobfile_cpu.sh slurm/12_exp3_tokenize_jobs.sh
+#   Stage 1 (GPU): train + classify (2 configs × 1 seed for demo)
+sbatch --array=0-1%8 slurm/run_from_jobfile.sh slurm/14_exp3_train_jobs_demo.sh
 ```
 
 **Computational Requirements**:

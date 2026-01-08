@@ -15,7 +15,13 @@
 #   python run_experiments.py --mode full   # 100 runs (5 seeds)
 #   
 #   # Submit via SLURM
-#   sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/exp1_demo_jobs.sh
+#   # Exp1–Exp3 are two-stage to avoid redundant tokenization and write races:
+#   sbatch --array=0-11%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh
+#   sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/07_exp1_train_jobs_demo.sh
+#   sbatch --array=0-1%2  slurm/02_run_from_jobfile_cpu.sh slurm/08_exp2_tokenize_jobs.sh
+#   sbatch --array=0-5%8  slurm/run_from_jobfile.sh slurm/10_exp2_train_jobs_demo.sh
+#   sbatch --array=0-1%2  slurm/02_run_from_jobfile_cpu.sh slurm/12_exp3_tokenize_jobs.sh
+#   sbatch --array=0-1%8  slurm/run_from_jobfile.sh slurm/14_exp3_train_jobs_demo.sh
 # =============================================================================
 
 # =============================================================================
