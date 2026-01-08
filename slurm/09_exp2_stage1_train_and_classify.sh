@@ -68,7 +68,7 @@ source "${IRB_HOME}/slurm/preamble.sh"
 
 MEDS_DATA_DIR="${DATA_DIR}/data"
 MODEL_DIR="${MODEL_DIR:-${IRB_HOME}/models}"
-FMS_EHRS_PATH="${FMS_EHRS_PATH:-${IRB_HOME}/../fms-ehrs}"
+FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
 
 JOB_NAME="exp2_${CONFIG_ID}_s${SEED}"
 JID="s${SEED}"
@@ -81,7 +81,7 @@ echo "TEMPORAL: ${TEMPORAL}"
 echo "NUM_BINS: ${NUM_BINS}"
 echo "SEED: ${SEED}"
 echo "MODEL_DIR: ${MODEL_DIR}"
-echo "FMS_EHRS_PATH: ${FMS_EHRS_PATH}"
+echo "FMS_EHRS_HOME: ${FMS_EHRS_HOME}"
 
 # -----------------------------
 # Guardrails: require Stage 0 artifacts
@@ -102,7 +102,7 @@ done
 # -----------------------------
 # Step 1: Train representation mechanics (GPU)
 # -----------------------------
-python "${FMS_EHRS_PATH}/fms_ehrs/scripts/train_representation.py" \
+python "${FMS_EHRS_HOME}/fms_ehrs/scripts/train_representation.py" \
   --data_dir "${MEDS_DATA_DIR}" \
   --data_version "${DATA_VERSION}" \
   --model_dir "${MODEL_DIR}" \
@@ -126,7 +126,7 @@ fi
 # Step 2: Fine-tune classifiers (GPU)
 # -----------------------------
 for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
-  python "${FMS_EHRS_PATH}/fms_ehrs/scripts/fine_tune_classification.py" \
+  python "${FMS_EHRS_HOME}/fms_ehrs/scripts/fine_tune_classification.py" \
     --model_loc "${MODEL_LOC}" \
     --data_dir "${MEDS_DATA_DIR}" \
     --data_version "${DATA_VERSION}_first_24h" \
