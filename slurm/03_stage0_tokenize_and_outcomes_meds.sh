@@ -153,17 +153,40 @@ fi
 if [[ "${MAIN_OK}" -eq 1 && "${H24_OK}" -eq 1 ]]; then
   echo "[stage0] Tokenization outputs already exist for ${DATA_VERSION_OUT}; skipping tokenization."
 else
-  python "${FMS_EHRS_HOME}/fms_ehrs/scripts/tokenize_w_config.py" \
-    --data_dir "${MEDS_DATA_DIR}" \
-    --data_version_in raw \
-    --data_version_out "${DATA_VERSION_OUT}" \
-    --config_loc "${TOKENIZER_CONFIG}" \
-    --quantizer "${QUANTIZER}" \
-    --clinical_anchoring "${CLINICAL_ANCHORING}" \
-    --include_ref_ranges "${INCLUDE_REF_RANGES}" \
-    --include_time_spacing_tokens "${INCLUDE_TIME_SPACING_TOKENS}" \
-    --fused_category_values "${FUSED_CATEGORY_VALUES}" \
+  # NOTE: fms-ehrs uses argparse.BooleanOptionalAction for boolean overrides.
+  # That means the correct CLI is:
+  #   --flag      (sets True)
+  #   --no-flag   (sets False)
+  # Passing `--flag false` *does not* set False; it sets True and treats "false" as unknown.
+  tokenize_args=(
+    --data_dir "${MEDS_DATA_DIR}"
+    --data_version_in raw
+    --data_version_out "${DATA_VERSION_OUT}"
+    --config_loc "${TOKENIZER_CONFIG}"
+    --quantizer "${QUANTIZER}"
+    --clinical_anchoring "${CLINICAL_ANCHORING}"
     --include_24h_cut
+  )
+
+  case "${INCLUDE_REF_RANGES}" in
+    true) tokenize_args+=( --include_ref_ranges ) ;;
+    false) tokenize_args+=( --no-include_ref_ranges ) ;;
+    *) echo "ERROR: --include_ref_ranges must be true|false (got: ${INCLUDE_REF_RANGES})" >&2; exit 1 ;;
+  esac
+
+  case "${INCLUDE_TIME_SPACING_TOKENS}" in
+    true) tokenize_args+=( --include_time_spacing_tokens ) ;;
+    false) tokenize_args+=( --no-include_time_spacing_tokens ) ;;
+    *) echo "ERROR: --include_time_spacing_tokens must be true|false (got: ${INCLUDE_TIME_SPACING_TOKENS})" >&2; exit 1 ;;
+  esac
+
+  case "${FUSED_CATEGORY_VALUES}" in
+    true) tokenize_args+=( --fused_category_values ) ;;
+    false) tokenize_args+=( --no-fused_category_values ) ;;
+    *) echo "ERROR: --fused_category_values must be true|false (got: ${FUSED_CATEGORY_VALUES})" >&2; exit 1 ;;
+  esac
+
+  python "${FMS_EHRS_HOME}/fms_ehrs/scripts/tokenize_w_config.py" "${tokenize_args[@]}"
 fi
 
 # Outcomes are deterministic given MEDS + tokenized timelines; compute once per config.

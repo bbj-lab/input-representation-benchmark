@@ -110,17 +110,34 @@ fi
 if [[ "${TOK_OK}" == "true" ]]; then
   echo "[stage0] Tokenization exists; skipping tokenize_w_config.py"
 else
-  python "${FMS_EHRS_HOME}/fms_ehrs/scripts/tokenize_w_config.py" \
-    --data_dir "${DATA_DIR}" \
-    --data_version_in raw \
-    --data_version_out "${DATA_VERSION_OUT}" \
-    --config_loc "${TOKENIZER_CONFIG_ABS}" \
-    --quantizer "${QUANTIZER}" \
-    --clinical_anchoring "${CLINICAL_ANCHORING}" \
-    --include_ref_ranges "${INCLUDE_REF_RANGES}" \
-    --include_time_spacing_tokens "${INCLUDE_TIME_SPACING_TOKENS}" \
-    --fused_category_values false \
+  # NOTE: fms-ehrs uses argparse.BooleanOptionalAction for boolean overrides:
+  #   --flag / --no-flag (NOT `--flag true|false`).
+  tokenize_args=(
+    --data_dir "${DATA_DIR}"
+    --data_version_in raw
+    --data_version_out "${DATA_VERSION_OUT}"
+    --config_loc "${TOKENIZER_CONFIG_ABS}"
+    --quantizer "${QUANTIZER}"
+    --clinical_anchoring "${CLINICAL_ANCHORING}"
     --include_24h_cut
+  )
+
+  case "${INCLUDE_REF_RANGES}" in
+    true) tokenize_args+=( --include_ref_ranges ) ;;
+    false) tokenize_args+=( --no-include_ref_ranges ) ;;
+    *) echo "ERROR: --include_ref_ranges must be true|false (got: ${INCLUDE_REF_RANGES})" >&2; exit 1 ;;
+  esac
+
+  case "${INCLUDE_TIME_SPACING_TOKENS}" in
+    true) tokenize_args+=( --include_time_spacing_tokens ) ;;
+    false) tokenize_args+=( --no-include_time_spacing_tokens ) ;;
+    *) echo "ERROR: --include_time_spacing_tokens must be true|false (got: ${INCLUDE_TIME_SPACING_TOKENS})" >&2; exit 1 ;;
+  esac
+
+  # Exp3 Stage0 always uses unfused tokenization (required for soft/continuous + parity).
+  tokenize_args+=( --no-fused_category_values )
+
+  python "${FMS_EHRS_HOME}/fms_ehrs/scripts/tokenize_w_config.py" "${tokenize_args[@]}"
 fi
 
 # -----------------------------
