@@ -158,31 +158,80 @@ EXP1_CONFIGS = [
 # (4 configs), excluding the discrete baselines.
 #
 # Soft/continuous REQUIRE unfused tokenization.
-def make_exp2_configs(*, include_discrete: bool) -> list[ExperimentConfig]:
+def _parse_config_id(config_id: str) -> dict:
+    """
+    Parse ExperimentConfig.config_id back into its components.
+
+    Expected format:
+      <data_format>_<quantizer>_<clinical_anchoring>_fused<True|False>_<representation>_<temporal>
+
+    Example:
+      meds_ventiles_5-10-5_fusedFalse_soft_time2vec
+    """
+    parts = config_id.split("_")
+    if len(parts) != 6:
+        raise ValueError(
+            f"Invalid config_id format (expected 6 '_' separated fields): {config_id}"
+        )
+    data_format, quantizer, clinical_anchoring, fused_part, representation, temporal = parts
+    if not fused_part.startswith("fused"):
+        raise ValueError(f"Invalid fused field in config_id: {config_id}")
+    fused_str = fused_part.replace("fused", "", 1)
+    if fused_str not in ("True", "False"):
+        raise ValueError(f"Invalid fused value in config_id: {config_id}")
+    fused = fused_str == "True"
+    return {
+        "data_format": data_format,
+        "quantizer": quantizer,
+        "clinical_anchoring": clinical_anchoring,
+        "fused": fused,
+        "representation": representation,
+        "temporal": temporal,
+    }
+
+
+def make_exp2_configs(
+    *,
+    include_discrete: bool,
+    discrete_only: bool,
+    quantizer: str,
+    clinical_anchoring: str,
+    fused_discrete: bool,
+) -> list[ExperimentConfig]:
     configs: list[ExperimentConfig] = []
+    if discrete_only and not include_discrete:
+        raise ValueError("discrete_only=True requires include_discrete=True")
+
     if include_discrete:
         configs.extend(
             [
                 ExperimentConfig(
-                    "ventiles", "5-10-5", False, "discrete", "time_tokens", "meds"
+                    quantizer,
+                    clinical_anchoring,
+                    fused_discrete,
+                    "discrete",
+                    "time_tokens",
+                    "meds",
                 ),
                 ExperimentConfig(
-                    "ventiles", "5-10-5", False, "discrete", "time2vec", "meds"
+                    quantizer,
+                    clinical_anchoring,
+                    fused_discrete,
+                    "discrete",
+                    "time2vec",
+                    "meds",
                 ),
             ]
         )
-    configs.extend(
-        [
-            ExperimentConfig("ventiles", "5-10-5", False, "soft", "time_tokens", "meds"),
-            ExperimentConfig("ventiles", "5-10-5", False, "soft", "time2vec", "meds"),
-            ExperimentConfig(
-                "ventiles", "5-10-5", False, "continuous", "time_tokens", "meds"
-            ),
-            ExperimentConfig(
-                "ventiles", "5-10-5", False, "continuous", "time2vec", "meds"
-            ),
-        ]
-    )
+    if not discrete_only:
+        configs.extend(
+            [
+                ExperimentConfig(quantizer, clinical_anchoring, False, "soft", "time_tokens", "meds"),
+                ExperimentConfig(quantizer, clinical_anchoring, False, "soft", "time2vec", "meds"),
+                ExperimentConfig(quantizer, clinical_anchoring, False, "continuous", "time_tokens", "meds"),
+                ExperimentConfig(quantizer, clinical_anchoring, False, "continuous", "time2vec", "meds"),
+            ]
+        )
     return configs
 
 
@@ -209,10 +258,13 @@ def make_exp3_configs(
     temporal: str,
     quantizer: str,
     clinical_anchoring: str,
+    fused: bool,
 ) -> list[ExperimentConfig]:
+    if representation in ("soft", "continuous") and fused:
+        raise ValueError("Exp3 soft/continuous requires unfused tokenization (fused=False).")
     return [
-        ExperimentConfig(quantizer, clinical_anchoring, False, representation, temporal, "meds"),
-        ExperimentConfig(quantizer, clinical_anchoring, False, representation, temporal, "clif"),
+        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds"),
+        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "clif"),
     ]
 
 
@@ -817,6 +869,34 @@ def main():
         help="Include Exp2 discrete baselines (default: omit to allow 'immune' Exp2 runs).",
     )
     parser.add_argument(
+        "--exp2_discrete_only",
+        action="store_true",
+        help="Generate only the two discrete Exp2 configs (to run after Exp1 winner is known).",
+    )
+    parser.add_argument(
+        "--exp2_from_exp1_config_id",
+        type=str,
+        default=None,
+        help="Use Exp1 winner config_id to parameterize Exp2 tokenization regime (quantizer, anchoring, fused).",
+    )
+    parser.add_argument(
+        "--exp2_quantizer",
+        type=str,
+        default="ventiles",
+        help="Exp2 tokenization quantizer (used when --exp2_from_exp1_config_id is not provided).",
+    )
+    parser.add_argument(
+        "--exp2_clinical_anchoring",
+        type=str,
+        default="5-10-5",
+        help="Exp2 clinical anchoring (used when --exp2_from_exp1_config_id is not provided).",
+    )
+    parser.add_argument(
+        "--exp2_discrete_fused",
+        action="store_true",
+        help="Use fused tokenization for the discrete Exp2 configs (soft/continuous always use unfused).",
+    )
+    parser.add_argument(
         "--exp3_representation",
         type=str,
         default=None,
@@ -839,6 +919,23 @@ def main():
         type=str,
         default=None,
         help="(Required for Exp3) Selected Exp1 winner clinical anchoring: none|5-10-5|10-10-10.",
+    )
+    parser.add_argument(
+        "--exp3_fused",
+        action="store_true",
+        help="(Optional for Exp3) Use fused tokenization in Exp3 (only valid for discrete representation).",
+    )
+    parser.add_argument(
+        "--exp3_from_exp1_config_id",
+        type=str,
+        default=None,
+        help="Use Exp1 winner config_id to populate Exp3 quantizer/anchoring/fused (no placeholders).",
+    )
+    parser.add_argument(
+        "--exp3_from_exp2_config_id",
+        type=str,
+        default=None,
+        help="Use Exp2 winner config_id to populate Exp3 representation/temporal (no placeholders).",
     )
     parser.add_argument(
         "--output-dir",
@@ -875,17 +972,51 @@ def main():
             configs = EXP1_CONFIGS
             exp_name = "Experiment 1: Granularity"
         elif exp == 2:
-            configs = make_exp2_configs(include_discrete=args.exp2_include_discrete)
+            if args.exp2_from_exp1_config_id is not None:
+                exp1 = _parse_config_id(args.exp2_from_exp1_config_id)
+                exp2_quantizer = exp1["quantizer"]
+                exp2_clinical_anchoring = exp1["clinical_anchoring"]
+                exp2_fused_discrete = exp1["fused"]
+            else:
+                exp2_quantizer = args.exp2_quantizer
+                exp2_clinical_anchoring = args.exp2_clinical_anchoring
+                exp2_fused_discrete = args.exp2_discrete_fused
+
+            configs = make_exp2_configs(
+                include_discrete=args.exp2_include_discrete,
+                discrete_only=args.exp2_discrete_only,
+                quantizer=exp2_quantizer,
+                clinical_anchoring=exp2_clinical_anchoring,
+                fused_discrete=exp2_fused_discrete,
+            )
             exp_name = "Experiment 2: Representation"
         else:
             # Enforce explicit winner selection; no placeholders.
+            if args.exp3_from_exp1_config_id is not None:
+                exp1 = _parse_config_id(args.exp3_from_exp1_config_id)
+                exp3_quantizer = exp1["quantizer"]
+                exp3_clinical_anchoring = exp1["clinical_anchoring"]
+                exp3_fused = exp1["fused"]
+            else:
+                exp3_quantizer = args.exp3_quantizer
+                exp3_clinical_anchoring = args.exp3_clinical_anchoring
+                exp3_fused = args.exp3_fused
+
+            if args.exp3_from_exp2_config_id is not None:
+                exp2 = _parse_config_id(args.exp3_from_exp2_config_id)
+                exp3_representation = exp2["representation"]
+                exp3_temporal = exp2["temporal"]
+            else:
+                exp3_representation = args.exp3_representation
+                exp3_temporal = args.exp3_temporal
+
             missing = [
                 k
                 for k, v in {
-                    "exp3_representation": args.exp3_representation,
-                    "exp3_temporal": args.exp3_temporal,
-                    "exp3_quantizer": args.exp3_quantizer,
-                    "exp3_clinical_anchoring": args.exp3_clinical_anchoring,
+                    "exp3_representation": exp3_representation,
+                    "exp3_temporal": exp3_temporal,
+                    "exp3_quantizer": exp3_quantizer,
+                    "exp3_clinical_anchoring": exp3_clinical_anchoring,
                 }.items()
                 if v is None
             ]
@@ -893,13 +1024,17 @@ def main():
                 raise SystemExit(
                     "Exp3 requires explicit winner selections (no placeholders). "
                     f"Missing: {', '.join(missing)}. "
-                    "Provide: --exp3_representation --exp3_temporal --exp3_quantizer --exp3_clinical_anchoring"
+                    "Provide either:\n"
+                    "  - --exp3_from_exp1_config_id and --exp3_from_exp2_config_id\n"
+                    "OR:\n"
+                    "  - --exp3_representation --exp3_temporal --exp3_quantizer --exp3_clinical_anchoring"
                 )
             configs = make_exp3_configs(
-                representation=args.exp3_representation,
-                temporal=args.exp3_temporal,
-                quantizer=args.exp3_quantizer,
-                clinical_anchoring=args.exp3_clinical_anchoring,
+                representation=exp3_representation,
+                temporal=exp3_temporal,
+                quantizer=exp3_quantizer,
+                clinical_anchoring=exp3_clinical_anchoring,
+                fused=exp3_fused,
             )
             exp_name = "Experiment 3: Data Format"
 

@@ -51,6 +51,14 @@ temporal_encoding: time_tokens
 # Options: meds (native MIMIC) | clif (standardized)
 data_format: meds
 
+# NOTE (critical scheduling / correctness):
+# Experiment 3 must wait until Experiments 1 & 2 winners are known because Exp3 is *not*
+# "extra work for CLIF only". Exp3 compares MEDS vs CLIF on an ICU-aligned cohort
+# (hospital stays ≥24h), so the MEDS arm must be (re)trained under the *same* cohort and
+# under the selected Exp1+Exp2 winner configuration. Reusing an Exp2 MEDS checkpoint that
+# was trained on the all-hospitalizations cohort would confound vocabulary semantics with
+# cohort shift and be methodologically invalid.
+
 # =============================================================================
 # Data Configuration
 # =============================================================================

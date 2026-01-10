@@ -203,6 +203,37 @@ Both pipelines in Experiment 3 operate on identical patient IDs extracted via a 
 
 This yields 2 configurations.
 
+---
+
+## Scheduling / dependency logic (implementation note)
+
+The experiments form a conceptual dependency chain for *winner selection*:
+
+- **Exp1 → Exp2**: Exp1 selects the best *tokenization regime* (quantizer + clinical anchoring + fused/unfused). Exp2 should use that regime for the final discrete baselines.
+- **Exp2 → Exp3**: Exp2 selects the best *(representation, temporal)* mechanics; Exp3 should apply that winner when comparing MEDS vs CLIF semantics.
+
+However, not all Exp2 work must wait for Exp1 completion. In practice we support a two-phase Exp2 schedule:
+
+- **Exp2 “immune” subset (can start before Exp1 winner is known)**:
+  - soft/continuous × {time_tokens, time2vec} (4 configs)
+  - requires **unfused** tokenization
+- **Exp2 discrete-only subset (run after Exp1 winner is known)**:
+  - discrete × {time_tokens, time2vec} (2 configs)
+  - can use the Exp1 winner’s fused/unfused setting
+
+To prevent accidental “placeholder winners”, the job generator enforces:
+
+- **Exp3 jobfiles are not generated unless explicit winner selections are provided** (either as explicit flags or as winner `config_id` strings).
+
+**Why Exp3 must wait until Exp1+Exp2 winners are finalized**:
+
+Although Exp3 includes a “MEDS arm”, it is **not** redundant with “the best Exp2 MEDS model” because Exp3 is evaluated on a *different cohort* for parity with CLIF:
+
+- Exp1/Exp2 train on **all hospitalizations** with stay ≥24h.
+- Exp3 (both MEDS and CLIF arms) train on the **MIMIC-ICU cohort** with hospital stays ≥24h, aligned by patient IDs across formats.
+
+Therefore, Exp3 requires *re-training the MEDS-format model* under the Exp1+Exp2 winner configuration **on the ICU-aligned cohort**, so that the MEDS vs CLIF comparison isolates vocabulary semantics rather than cohort shift. Running Exp3 MEDS before Exp2 completes (or reusing an Exp2 MEDS checkpoint trained on the all-hospitalizations cohort) would be methodologically incorrect.
+
 ### 3.5. Representation Methods
 
 **Clinically-Anchored Quantization**

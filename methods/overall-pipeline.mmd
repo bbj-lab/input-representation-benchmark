@@ -57,9 +57,10 @@ flowchart TD
         direction TB
         EXP1[tune_model.py<br/>Experiment 1 (discrete LM)]:::script
         EXP2[train_representation.py<br/>Experiment 2 (discrete/soft/continuous)]:::script
+        DEC2{Select Exp2 winner<br/>(representation + temporal)}:::decision
         CKPT[Model checkpoints]:::artifact
         EXP1 --> CKPT
-        EXP2 --> CKPT
+        EXP2 --> CKPT --> DEC2
     end
 
     %% ==========================================================
@@ -73,6 +74,17 @@ flowchart TD
         METRICS[W&B logs + metrics tables]:::artifact
         OUTM --> FT --> METRICS
         OUTC --> FT
+    end
+
+    %% ==========================================================
+    %% Phase gating (no-placeholder scheduling)
+    %% ==========================================================
+    subgraph GATE["Scheduling / selection gates (no placeholders)"]
+        direction TB
+        DEC1{Select Exp1 winner<br/>(tokenization regime)}:::decision
+        NOTE2[Exp2 may start early with<br/>soft/continuous × {time_tokens,time2vec}<br/>under an explicitly declared regime]:::decision
+        NOTE3[Exp3 must wait for Exp1+Exp2 winners<br/>because Exp3 retrains MEDS on ICU-aligned cohort<br/>(fair MEDS vs CLIF comparison)]:::decision
+        DEC1 --> NOTE2 --> DEC2 --> NOTE3
     end
 
     %% ==========================================================
