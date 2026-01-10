@@ -103,8 +103,24 @@ TOKENIZED_24H_DIR="${DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized"
 # Step 1: Tokenize (skip if already present)
 # -----------------------------
 TOK_OK="false"
-if [[ -f "${TOKENIZED_DIR}/train/tokens_timelines.parquet" && -f "${TOKENIZED_DIR}/val/tokens_timelines.parquet" && -f "${TOKENIZED_DIR}/train/vocab.gzip" ]]; then
-  TOK_OK="true"
+TOK_OK="true"
+for s in train val test; do
+  if [[ ! -f "${TOKENIZED_DIR}/${s}/tokens_timelines.parquet" ]]; then
+    TOK_OK="false"
+    break
+  fi
+done
+if [[ ! -f "${TOKENIZED_DIR}/train/vocab.gzip" ]]; then
+  TOK_OK="false"
+fi
+for s in train val test; do
+  if [[ ! -f "${TOKENIZED_24H_DIR}/${s}/tokens_timelines.parquet" ]]; then
+    TOK_OK="false"
+    break
+  fi
+done
+if [[ ! -f "${TOKENIZED_24H_DIR}/train/vocab.gzip" ]]; then
+  TOK_OK="false"
 fi
 
 if [[ "${TOK_OK}" == "true" ]]; then

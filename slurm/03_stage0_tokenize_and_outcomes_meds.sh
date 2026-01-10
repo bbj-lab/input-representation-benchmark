@@ -143,11 +143,26 @@ ensure_symlink "${TARGET_24H}" "${LINK_24H}"
 # Skip tokenization if the key outputs already exist
 MAIN_OK=0
 H24_OK=0
-if [[ -f "${LINK_MAIN}/train/tokens_timelines.parquet" && -f "${LINK_MAIN}/train/vocab.gzip" ]]; then
-  MAIN_OK=1
+MAIN_OK=1
+for s in train val test; do
+  if [[ ! -f "${LINK_MAIN}/${s}/tokens_timelines.parquet" ]]; then
+    MAIN_OK=0
+    break
+  fi
+done
+if [[ ! -f "${LINK_MAIN}/train/vocab.gzip" ]]; then
+  MAIN_OK=0
 fi
-if [[ -f "${LINK_24H}/train/tokens_timelines.parquet" && -f "${LINK_24H}/train/vocab.gzip" ]]; then
-  H24_OK=1
+
+H24_OK=1
+for s in train val test; do
+  if [[ ! -f "${LINK_24H}/${s}/tokens_timelines.parquet" ]]; then
+    H24_OK=0
+    break
+  fi
+done
+if [[ ! -f "${LINK_24H}/train/vocab.gzip" ]]; then
+  H24_OK=0
 fi
 
 if [[ "${MAIN_OK}" -eq 1 && "${H24_OK}" -eq 1 ]]; then
