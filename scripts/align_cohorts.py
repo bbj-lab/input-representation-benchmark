@@ -22,6 +22,10 @@ Output:
     - train_patient_ids.csv: Training set patient IDs
     - val_patient_ids.csv: Validation set patient IDs
     - test_patient_ids.csv: Test set patient IDs
+    - cohort_hadm_ids.csv: All ICU-eligible hadm_ids (LOS>=24h and >=1 ICU stay)
+    - train_hadm_ids.csv: ICU-eligible hadm_ids for the training patient split
+    - val_hadm_ids.csv: ICU-eligible hadm_ids for the validation patient split
+    - test_hadm_ids.csv: ICU-eligible hadm_ids for the test patient split
     - cohort_stats.json: Summary statistics
 
 Attribution:
@@ -31,56 +35,92 @@ Attribution:
 """
 
 import argparse
+import csv
+import gzip
 import json
 import logging
+import random
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
-
-import numpy as np
-import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
-def load_admissions(mimic_dir: Path) -> pd.DataFrame:
-    """Load admissions table with length of stay calculation."""
+def load_admissions(mimic_dir: Path) -> tuple[set[int], set[int], dict[int, set[int]]]:
+    """
+    Stream admissions.csv.gz and return:
+      - long_stay_patients (subject_id) where any admission LOS>=24h
+      - long_stay_hadm_ids (hadm_id) where admission LOS>=24h
+      - subject_to_hadm mapping for all admissions (subject_id -> set(hadm_id))
+    """
     admissions_path = mimic_dir / "hosp" / "admissions.csv.gz"
     logger.info(f"Loading admissions from {admissions_path}")
     
-    df = pd.read_csv(
-        admissions_path,
-        usecols=["subject_id", "hadm_id", "admittime", "dischtime"],
-        parse_dates=["admittime", "dischtime"]
-    )
+    long_stay_patients: set[int] = set()
+    long_stay_hadm: set[int] = set()
+    subject_to_hadm: dict[int, set[int]] = {}
+
+    with gzip.open(admissions_path, "rt", newline="") as f:
+        rdr = csv.DictReader(f)
+        for row in rdr:
+            try:
+                sid = int(row["subject_id"])
+                hid = int(row["hadm_id"])
+            except Exception:
+                continue
+
+            subject_to_hadm.setdefault(sid, set()).add(hid)
+
+            admittime = row.get("admittime")
+            dischtime = row.get("dischtime")
+            if not admittime or not dischtime:
+                continue
+            try:
+                a = datetime.strptime(admittime, "%Y-%m-%d %H:%M:%S")
+                d = datetime.strptime(dischtime, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                continue
+            los_hours = (d - a).total_seconds() / 3600.0
+            if los_hours >= 24.0:
+                long_stay_patients.add(sid)
+                long_stay_hadm.add(hid)
     
-    # Calculate length of stay in hours
-    df["los_hours"] = (df["dischtime"] - df["admittime"]).dt.total_seconds() / 3600
-    
-    return df
+    return long_stay_patients, long_stay_hadm, subject_to_hadm
 
 
-def load_icustays(mimic_dir: Path) -> pd.DataFrame:
-    """Load ICU stays table."""
+def load_icustays(mimic_dir: Path) -> tuple[set[int], set[int]]:
+    """Stream icustays.csv.gz and return (icu_patients, icu_hadm_ids)."""
     icustays_path = mimic_dir / "icu" / "icustays.csv.gz"
     logger.info(f"Loading ICU stays from {icustays_path}")
-    
-    df = pd.read_csv(
-        icustays_path,
-        usecols=["subject_id", "hadm_id", "stay_id", "intime", "outtime"],
-        parse_dates=["intime", "outtime"]
-    )
-    
-    return df
+    icu_patients: set[int] = set()
+    icu_hadm: set[int] = set()
+    with gzip.open(icustays_path, "rt", newline="") as f:
+        rdr = csv.DictReader(f)
+        for row in rdr:
+            try:
+                icu_patients.add(int(row["subject_id"]))
+            except Exception:
+                pass
+            try:
+                icu_hadm.add(int(row["hadm_id"]))
+            except Exception:
+                pass
+    return icu_patients, icu_hadm
 
 
 def extract_icu_cohort(
-    admissions: pd.DataFrame,
-    icustays: pd.DataFrame,
+    long_stay_patients: set[int],
+    long_stay_hadm: set[int],
+    icu_patients: set[int],
+    icu_hadm: set[int],
     min_los_hours: float = 24.0
-) -> Set[int]:
+) -> Tuple[Set[int], Set[int]]:
     """
-    Extract ICU cohort: patients with ≥1 ICU stay AND hospital stay ≥24h.
+    Extract ICU cohort:
+      - patient cohort: patients with ≥1 ICU stay AND hospital stay ≥24h
+      - hospitalization cohort: hadm_id with ≥1 ICU stay AND hospital LOS ≥24h
     
     Args:
         admissions: Hospital admissions dataframe
@@ -88,22 +128,22 @@ def extract_icu_cohort(
         min_los_hours: Minimum length of stay in hours
         
     Returns:
-        Set of subject_ids meeting criteria
+        (cohort_patient_ids, cohort_hadm_ids)
     """
-    # Get patients with at least one ICU stay
-    icu_patients = set(icustays["subject_id"].unique())
     logger.info(f"Patients with ICU stays: {len(icu_patients):,}")
-    
-    # Get admissions with LOS ≥24h
-    long_stay_admissions = admissions[admissions["los_hours"] >= min_los_hours]
-    long_stay_patients = set(long_stay_admissions["subject_id"].unique())
+    logger.info(f"Hospitalizations with ICU stays: {len(icu_hadm):,}")
     logger.info(f"Patients with LOS ≥{min_los_hours}h: {len(long_stay_patients):,}")
+    logger.info(f"Hospitalizations with LOS ≥{min_los_hours}h: {len(long_stay_hadm):,}")
     
     # Intersection: ICU patients with long stays
     cohort = icu_patients & long_stay_patients
     logger.info(f"ICU cohort (≥{min_los_hours}h): {len(cohort):,} patients")
     
-    return cohort
+    # ICU-eligible hospitalizations (hadm_id with ICU stay and LOS>=24h)
+    cohort_hadm = icu_hadm & long_stay_hadm
+    logger.info(f"ICU cohort (≥{min_los_hours}h): {len(cohort_hadm):,} hospitalizations")
+
+    return cohort, cohort_hadm
 
 
 def patient_level_split(
@@ -128,9 +168,9 @@ def patient_level_split(
     """
     assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6
     
-    # Shuffle with fixed seed
-    rng = np.random.RandomState(seed)
-    shuffled = rng.permutation(patient_ids).tolist()
+    # Shuffle with fixed seed (stdlib only; avoids numpy dependency)
+    shuffled = list(patient_ids)
+    random.Random(seed).shuffle(shuffled)
     
     n_total = len(shuffled)
     n_train = int(n_total * train_ratio)
@@ -150,6 +190,8 @@ def save_cohort(
     train_ids: List[int],
     val_ids: List[int],
     test_ids: List[int],
+    cohort_hadm_ids: Set[int],
+    subject_to_hadm: dict[int, set[int]],
     output_dir: Path,
     seed: int
 ) -> Dict:
@@ -170,18 +212,35 @@ def save_cohort(
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Save patient ID lists
-    pd.DataFrame({"subject_id": sorted(cohort)}).to_csv(
-        output_dir / "cohort_patient_ids.csv", index=False
-    )
-    pd.DataFrame({"subject_id": train_ids}).to_csv(
-        output_dir / "train_patient_ids.csv", index=False
-    )
-    pd.DataFrame({"subject_id": val_ids}).to_csv(
-        output_dir / "val_patient_ids.csv", index=False
-    )
-    pd.DataFrame({"subject_id": test_ids}).to_csv(
-        output_dir / "test_patient_ids.csv", index=False
-    )
+    def _write_csv(path: Path, header: str, rows: list[int]) -> None:
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow([header])
+            for x in rows:
+                w.writerow([x])
+
+    _write_csv(output_dir / "cohort_patient_ids.csv", "subject_id", sorted(cohort))
+    _write_csv(output_dir / "train_patient_ids.csv", "subject_id", train_ids)
+    _write_csv(output_dir / "val_patient_ids.csv", "subject_id", val_ids)
+    _write_csv(output_dir / "test_patient_ids.csv", "subject_id", test_ids)
+
+    # Derive ICU-eligible hadm_ids per patient split.
+    # We use admissions to map subject_id -> hadm_id, then intersect with cohort_hadm_ids
+    # (hadm-level ICU + LOS>=24 eligibility).
+    def hadm_for(subject_ids: list[int]) -> list[int]:
+        hadm: set[int] = set()
+        for sid in subject_ids:
+            hadm |= subject_to_hadm.get(int(sid), set())
+        return sorted(hadm & cohort_hadm_ids)
+
+    train_hadm = hadm_for(train_ids)
+    val_hadm = hadm_for(val_ids)
+    test_hadm = hadm_for(test_ids)
+
+    _write_csv(output_dir / "cohort_hadm_ids.csv", "hadm_id", sorted(cohort_hadm_ids))
+    _write_csv(output_dir / "train_hadm_ids.csv", "hadm_id", train_hadm)
+    _write_csv(output_dir / "val_hadm_ids.csv", "hadm_id", val_hadm)
+    _write_csv(output_dir / "test_hadm_ids.csv", "hadm_id", test_hadm)
     
     # Compute and save statistics
     stats = {
@@ -189,11 +248,15 @@ def save_cohort(
         "train_patients": len(train_ids),
         "val_patients": len(val_ids),
         "test_patients": len(test_ids),
+        "total_icu_eligible_hospitalizations": len(cohort_hadm_ids),
+        "train_icu_eligible_hospitalizations": len(train_hadm),
+        "val_icu_eligible_hospitalizations": len(val_hadm),
+        "test_icu_eligible_hospitalizations": len(test_hadm),
         "train_ratio": len(train_ids) / len(cohort),
         "val_ratio": len(val_ids) / len(cohort),
         "test_ratio": len(test_ids) / len(cohort),
         "data_seed": seed,
-        "cohort_criteria": "ICU patients with hospital stay ≥24 hours"
+        "cohort_criteria": "Patient-level split; ICU-eligible hospitalizations are those with ≥1 ICU stay and hospital LOS ≥24h"
     }
     
     with open(output_dir / "cohort_stats.json", "w") as f:
@@ -244,11 +307,13 @@ def main():
     logger.info("")
     
     # Load data
-    admissions = load_admissions(args.mimic_dir)
-    icustays = load_icustays(args.mimic_dir)
+    long_stay_patients, long_stay_hadm, subject_to_hadm = load_admissions(args.mimic_dir)
+    icu_patients, icu_hadm = load_icustays(args.mimic_dir)
     
     # Extract cohort
-    cohort = extract_icu_cohort(admissions, icustays, args.min_los_hours)
+    cohort, cohort_hadm_ids = extract_icu_cohort(
+        long_stay_patients, long_stay_hadm, icu_patients, icu_hadm, args.min_los_hours
+    )
     
     # Split
     train_ids, val_ids, test_ids = patient_level_split(
@@ -260,7 +325,16 @@ def main():
     )
     
     # Save
-    stats = save_cohort(cohort, train_ids, val_ids, test_ids, args.output_dir, args.data_seed)
+    stats = save_cohort(
+        cohort,
+        train_ids,
+        val_ids,
+        test_ids,
+        cohort_hadm_ids,
+        subject_to_hadm,
+        args.output_dir,
+        args.data_seed,
+    )
     
     logger.info("")
     logger.info("=" * 60)

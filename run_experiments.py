@@ -19,31 +19,26 @@ Usage:
     python run_experiments.py --mode full --exp 3
 
 Output:
-    Exp1 (two-stage):
-      - Stage 0 (tokenize+outcomes; one line per config): slurm/04_exp1_tokenize_jobs.sh
-      - Stage 1 (train+classify; one line per config×seed):
-          - demo: slurm/07_exp1_train_jobs_demo.sh
-          - full: slurm/07_exp1_train_jobs_full.sh
+    This script writes generated jobfiles into:
+      slurm/generated/<mode>/
 
-    Exp2 (two-stage):
-      - Stage 0 (tokenize+outcomes; dedup by data_version): slurm/08_exp2_tokenize_jobs.sh
-      - Stage 1 (train+classify; one line per config×seed):
-          - demo: slurm/10_exp2_train_jobs_demo.sh
-          - full: slurm/10_exp2_train_jobs_full.sh
+    Each experiment is a 4-stage pipeline:
+      - Stage 0 (CPU tier2q): tokenize + outcomes
+      - Stage 1 (GPU gpuq): train / tune
+      - Stage 2 (GPU gpuq): extract representations (2 GPUs)
+      - Stage 3 (CPU tier2q): logistic regression on extracted reps
 
-    Exp3 (two-stage):
-      - Stage 0 (tokenize+outcomes; one line per config): slurm/12_exp3_tokenize_jobs.sh
-      - Stage 1 (train+classify; one line per config×seed):
-          - demo: slurm/14_exp3_train_jobs_demo.sh
-          - full: slurm/14_exp3_train_jobs_full.sh
+    Example outputs (demo mode):
+      - slurm/generated/demo/04_exp1_stage0_tokenize.jobfile
+      - slurm/generated/demo/07a_exp1_stage1_train.jobfile
+      - slurm/generated/demo/07b_exp1_stage2_extract_reps.jobfile
+      - slurm/generated/demo/07c_exp1_stage3_lr.jobfile
 
-Pipeline per job:
-    Exp1 Stage 0: tokenize_w_config.py -> extract_outcomes_meds.py
-    Exp1 Stage 1: tune_model.py -> fine_tune_classification.py
-    Exp2 Stage 0: tokenize_w_config.py -> extract_outcomes_meds.py
-    Exp2 Stage 1: train_representation.py -> fine_tune_classification.py
-    Exp3 Stage 0: tokenize_w_config.py -> (optional normalize) -> extract_outcomes (format-specific)
-    Exp3 Stage 1: train_representation.py -> fine_tune_classification.py
+Pipeline per experiment (high level):
+    - Stage 0: tokenize_w_config.py (via Stage0 scripts) + outcome joining
+    - Stage 1: Exp1 uses tune_model.py (8-GPU DDP); Exp2/3 use train_representation.py
+    - Stage 2: extract_hidden_states.py (2-GPU torchrun)
+    - Stage 3: transfer_rep_based_preds.py --classifier logistic_regression (CPU-only)
 
 Attribution:
     The MEDS extraction pipeline used in this benchmark is adapted from ETHOS-ARES:
@@ -72,10 +67,17 @@ FMS_EHRS_PATH = "../fms-ehrs"
 # Default paths (can be overridden via CLI)
 DEFAULT_PATHS = {
     "meds_data_dir": "benchmarks/mimic-meds-extraction/data/meds/data",
-    "clif_data_dir": "data/clif",  # CLIF-converted data
+    "clif_data_dir": "data/clif",  # Exp3 CLIF-converted data (override via --clif_data_dir)
     "model_dir": "models",
     "meds_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/mimic-meds-ed.yaml",
-    "clif_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/clif-21.yaml",
+    # NOTE: CLIF tokenization is only used in Exp3; default to the Exp3 ICU matched-signal config.
+    "clif_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/clif-21-exp3-icu.yaml",
+    # Exp3 arms (data artifacts produced by scripts/build_clif_from_physionet.py,
+    # scripts/split_meds_by_hadm_splits.py, scripts/build_exp3_semantic_control_arms.py)
+    "exp3_meds_icu_data_dir": "data/exp3/meds_icu",
+    "exp3_meds_randomized_data_dir": "data/exp3/arms/meds_randomized",
+    "exp3_meds_freqmatched_data_dir": "data/exp3/arms/meds_freqmatched",
+    "exp3_meds_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/mimic-meds-exp3-icu.yaml",
 }
 
 # Quantizer to num_bins mapping
@@ -100,7 +102,7 @@ class ExperimentConfig:
     fused: bool
     representation: str
     temporal: str
-    data_format: str  # meds | clif
+    data_format: str  # meds | clif | meds_icu | meds_randomized | meds_freqmatched
     # Derived fields
     num_bins: int = field(init=False)
     needs_numeric_values: bool = field(init=False)
@@ -147,15 +149,21 @@ EXP1_CONFIGS = [
 
 # Experiment 2: Representation Mechanics
 # -------------------------------------
-# NOTE (important for scheduling):
-# Exp2 is logically downstream of Exp1 because Exp1 chooses the *tokenization regime*
-# (quantizer + clinical anchoring + fused/unfused + time spacing tokens).
+# NOTE (important for internal validity + scheduling):
+# Exp2 is downstream of Exp1 because Exp1 chooses the *tokenization regime*:
+#   (quantizer + clinical anchoring + fused/unfused + time spacing tokens).
 #
-# However, some Exp2 conditions can be explored without committing to an Exp1 winner
-# (e.g., representation mechanics comparisons under a fixed, explicitly-declared
-# tokenization regime). To avoid "placeholder winners", we make Exp2 configs
-# *parameterized* and support an "immune" subset: soft/continuous × {time_tokens, time2vec}
-# (4 configs), excluding the discrete baselines.
+# In this benchmark implementation, BOTH soft discretization and continuous encoding
+# depend on the Exp1 binning regime:
+# - soft discretization interpolates between adjacent bins and therefore requires
+#   the Exp1 bin boundaries (stored in vocab.aux).
+# - continuous encoding is inspired by xVal, but our MEDS-compatible adaptation
+#   applies continuous embeddings at quantile-token positions (we do not use a
+#   dedicated [NUM] token). Therefore the quantile-token stream (number of bins)
+#   must be fixed by the Exp1 winner regime.
+#
+# As a result, Exp2 has no "immune" subset in this pipeline: Exp2 Stage0/Stage1
+# should only be generated after selecting the appropriate Exp1 winner(s).
 #
 # Soft/continuous REQUIRE unfused tokenization.
 def _parse_config_id(config_id: str) -> dict:
@@ -194,6 +202,8 @@ def make_exp2_configs(
     *,
     include_discrete: bool,
     discrete_only: bool,
+    include_soft: bool = True,
+    include_continuous: bool = True,
     quantizer: str,
     clinical_anchoring: str,
     fused_discrete: bool,
@@ -224,14 +234,20 @@ def make_exp2_configs(
             ]
         )
     if not discrete_only:
-        configs.extend(
-            [
-                ExperimentConfig(quantizer, clinical_anchoring, False, "soft", "time_tokens", "meds"),
-                ExperimentConfig(quantizer, clinical_anchoring, False, "soft", "time2vec", "meds"),
-                ExperimentConfig(quantizer, clinical_anchoring, False, "continuous", "time_tokens", "meds"),
-                ExperimentConfig(quantizer, clinical_anchoring, False, "continuous", "time2vec", "meds"),
-            ]
-        )
+        if include_soft:
+            configs.extend(
+                [
+                    ExperimentConfig(quantizer, clinical_anchoring, False, "soft", "time_tokens", "meds"),
+                    ExperimentConfig(quantizer, clinical_anchoring, False, "soft", "time2vec", "meds"),
+                ]
+            )
+        if include_continuous:
+            configs.extend(
+                [
+                    ExperimentConfig(quantizer, clinical_anchoring, False, "continuous", "time_tokens", "meds"),
+                    ExperimentConfig(quantizer, clinical_anchoring, False, "continuous", "time2vec", "meds"),
+                ]
+            )
     return configs
 
 
@@ -239,13 +255,16 @@ def make_exp2_configs(
 # ------------------------------------------------
 # Compares MEDS vs CLIF on the same ICU cohort.
 #
-# NOTE on clinical anchoring:
+# NOTE on clinical anchoring / internal validity:
 # The base CLIF 2.1 schema (as implemented by clifpy) does not include reference
 # range bounds by default (it includes `reference_unit` but not lower/upper bounds).
 # To enable clinically anchored binning symmetrically for MEDS vs CLIF (when Exp1
 # winner uses anchoring), we must augment CLIF lab tables with per-row
 # `ref_range_lower` / `ref_range_upper` columns derived from MIMIC lab metadata.
 # See: scripts/augment_clif_labs_with_ref_ranges.py
+#
+# Internal validity: without symmetric reference-range support, a clinically anchored Exp1 winner
+# would be applied asymmetrically across MEDS vs CLIF in Exp3, confounding any semantics claim.
 #
 # IMPORTANT:
 # Exp3 should be generated only after selecting an Exp2 winner (representation + temporal),
@@ -263,9 +282,11 @@ def make_exp3_configs(
     if representation in ("soft", "continuous") and fused:
         raise ValueError("Exp3 soft/continuous requires unfused tokenization (fused=False).")
     return [
-        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds"),
+        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds_icu"),
         ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "clif"),
-    ]
+        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds_randomized"),
+        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds_freqmatched"),
+]
 
 
 # =============================================================================
@@ -291,6 +312,8 @@ def get_tokenizer_config(config: ExperimentConfig) -> str:
         if config.fused:
             return base.replace("clif-21.yaml", "clif-21-fused.yaml")
         return base
+    if config.data_format in ("meds_icu", "meds_randomized", "meds_freqmatched"):
+        return DEFAULT_PATHS["exp3_meds_tokenizer_config"]
     else:
         return DEFAULT_PATHS["meds_tokenizer_config"]
 
@@ -299,6 +322,12 @@ def get_data_dir(config: ExperimentConfig) -> str:
     """Get data directory for this config."""
     if config.data_format == "clif":
         return DEFAULT_PATHS["clif_data_dir"]
+    if config.data_format == "meds_icu":
+        return DEFAULT_PATHS["exp3_meds_icu_data_dir"]
+    if config.data_format == "meds_randomized":
+        return DEFAULT_PATHS["exp3_meds_randomized_data_dir"]
+    if config.data_format == "meds_freqmatched":
+        return DEFAULT_PATHS["exp3_meds_freqmatched_data_dir"]
     return DEFAULT_PATHS["meds_data_dir"]
 
 
@@ -317,7 +346,7 @@ def generate_exp1_stage0_job_file(
         f.write("# Exp1 Stage 0: tokenization + outcomes (one command per config)\n")
         f.write("# Generated by run_experiments.py\n")
         f.write("# Submit with:\n")
-        f.write("#   sbatch --array=0-11%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh\n")
+        f.write(f"#   sbatch --array=0-11%2 slurm/02_run_stage0_tier2q_tokenize.sh {output_path}\n")
         f.write("\n")
 
         for config in configs:
@@ -347,33 +376,241 @@ def generate_exp1_stage1_job_file(
     *,
     mode: str,
 ) -> int:
-    """
-    Generate Exp1 Stage 1 job file (train + classify), one line per config×seed.
-
-    Stage 1 assumes Stage 0 already produced tokenized data + outcomes.
+    """Generate Exp1 Stage 1a job file (FM train/HPO), one line per config×seed.
+    Delegates to vendored Quantifying-Surprise-EHRs launcher
+    (slurm/ref_qse/04_tune_model.sh) to preserve training/HPO mechanics.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        f.write("# Exp1 Stage 1: train + classify (one command per config×seed)\n")
+        f.write("# Exp1 Stage 1a: FM training/HPO (8-GPU torchrun; ref_qse/04_tune_model.sh)\n")
         f.write("# Generated by run_experiments.py\n")
         f.write(f"# Mode: {mode}\n")
         f.write("# Submit with:\n")
-        if mode == "demo":
-            f.write("#   sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/07_exp1_train_jobs_demo.sh\n")
-        else:
-            f.write("#   sbatch --array=0-59%8 slurm/run_from_jobfile.sh slurm/07_exp1_train_jobs_full.sh\n")
+        f.write(f"#   sbatch --array=0-{(len(configs) * len(training_seeds)) - 1}%2 slurm/05_run_stage1_gpu8_train.sh {output_path}\n")
         f.write("\n")
 
         for config in configs:
             data_version = get_data_version(config)
             for seed in training_seeds:
                 f.write(
-                    "bash slurm/06_exp1_stage1_train_and_classify.sh "
-                    f"--config_id {config.config_id} "
-                    f"--data_version {data_version} "
-                    f"--seed {seed}\n"
+                    "bash -lc "
+                    + "\""
+                    + f"export config_id={config.config_id} "
+                    + f"data_version={data_version} "
+                    + f"seed={seed} "
+                    + "MODEL_DIR=${MODEL_DIR:-models} "
+                    + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
+                    + "&& bash slurm/ref_qse/04_tune_model.sh"
+                    + "\"\n"
                 )
 
+    output_path.chmod(0o755)
+    return len(configs) * len(training_seeds)
+
+
+def _exp1_best_model_loc(config: ExperimentConfig, seed: int) -> str:
+    dv = get_data_version(config)
+    return f"$MODEL_DIR/exp1_{config.config_id}-s{seed}-hp-{dv}"
+
+
+def _exp2_model_loc(config: ExperimentConfig, seed: int) -> str:
+    # Matches slurm/exp2_stage1_train_representation.sh output naming
+    return (
+        f"$MODEL_DIR/exp2_{config.config_id}-{config.representation}-{config.temporal}-s{seed}"
+        f"/model-{config.representation}-{config.temporal}"
+    )
+
+
+def _exp3_model_loc(config: ExperimentConfig, seed: int) -> str:
+    # Matches slurm/exp3_stage1_train_representation.sh output naming
+    return (
+        f"$MODEL_DIR/exp3_{config.config_id}-{config.representation}-{config.temporal}-s{seed}"
+        f"/model-{config.representation}-{config.temporal}"
+    )
+
+
+def generate_exp1_rep_extract_job_file(
+    configs: List[ExperimentConfig],
+    training_seeds: List[int],
+    output_path: Path,
+    *,
+    mode: str,
+) -> int:
+    """Exp1 Option-B: extract reps (2 GPUs) for each trained FM (config×seed)."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write("# Exp1 Option-B: extract representations (2-GPU torchrun)\n")
+        f.write("# Generated by run_experiments.py\n")
+        f.write(f"# Mode: {mode}\n\n")
+        for config in configs:
+            data_dir = get_data_dir(config)
+            dv = get_data_version(config)
+            for seed in training_seeds:
+                f.write(
+                    "bash -lc "
+                    + "\""
+                    + f"export data_dir={data_dir} "
+                    + f"data_version={dv}_first_24h "
+                    + f"model_loc={_exp1_best_model_loc(config, seed)} "
+                    + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
+                    + "&& bash slurm/ref_qse/09_extract_reps.sh"
+                    + "\"\n"
+                )
+    output_path.chmod(0o755)
+    return len(configs) * len(training_seeds)
+
+
+def generate_exp1_rep_pred_job_file(
+    configs: List[ExperimentConfig],
+    training_seeds: List[int],
+    output_path: Path,
+    *,
+    mode: str,
+) -> int:
+    """Exp1 Option-B: logistic regression on extracted reps (CPU) for each trained FM."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write("# Exp1 Option-B: logistic regression on extracted reps (CPU)\n")
+        f.write("# Generated by run_experiments.py\n")
+        f.write(f"# Mode: {mode}\n\n")
+        for config in configs:
+            data_dir = get_data_dir(config)
+            dv = get_data_version(config)
+            for seed in training_seeds:
+                f.write(
+                    "bash -lc "
+                    + "\""
+                    + f"export data_dir={data_dir} "
+                    + f"data_version={dv}_first_24h "
+                    + f"model_loc={_exp1_best_model_loc(config, seed)} "
+                    + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
+                    + "&& bash slurm/ref_qse/10_xfer_rep_based_preds.sh"
+                    + "\"\n"
+                )
+    output_path.chmod(0o755)
+    return len(configs) * len(training_seeds)
+
+
+def generate_exp2_rep_extract_job_file(
+    configs: List[ExperimentConfig],
+    training_seeds: List[int],
+    output_path: Path,
+    *,
+    mode: str,
+) -> int:
+    """Exp2 Option-B: extract reps (2 GPUs) for each trained representation model."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write("# Exp2 Option-B: extract representations (2-GPU torchrun)\n")
+        f.write("# Generated by run_experiments.py\n")
+        f.write(f"# Mode: {mode}\n\n")
+        for config in configs:
+            data_dir = get_data_dir(config)
+            dv = get_data_version(config)
+            for seed in training_seeds:
+                f.write(
+                    "bash -lc "
+                    + "\""
+                    + f"export data_dir={data_dir} "
+                    + f"data_version={dv}_first_24h "
+                    + f"model_loc={_exp2_model_loc(config, seed)} "
+                    + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
+                    + "&& bash slurm/ref_qse/09_extract_reps.sh"
+                    + "\"\n"
+                )
+    output_path.chmod(0o755)
+    return len(configs) * len(training_seeds)
+
+
+def generate_exp2_rep_pred_job_file(
+    configs: List[ExperimentConfig],
+    training_seeds: List[int],
+    output_path: Path,
+    *,
+    mode: str,
+) -> int:
+    """Exp2 Option-B: logistic regression on extracted reps (CPU)."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write("# Exp2 Option-B: logistic regression on extracted reps (CPU)\n")
+        f.write("# Generated by run_experiments.py\n")
+        f.write(f"# Mode: {mode}\n\n")
+        for config in configs:
+            data_dir = get_data_dir(config)
+            dv = get_data_version(config)
+            for seed in training_seeds:
+                f.write(
+                    "bash -lc "
+                    + "\""
+                    + f"export data_dir={data_dir} "
+                    + f"data_version={dv}_first_24h "
+                    + f"model_loc={_exp2_model_loc(config, seed)} "
+                    + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
+                    + "&& bash slurm/ref_qse/10_xfer_rep_based_preds.sh"
+                    + "\"\n"
+                )
+    output_path.chmod(0o755)
+    return len(configs) * len(training_seeds)
+
+
+def generate_exp3_rep_extract_job_file(
+    configs: List[ExperimentConfig],
+    training_seeds: List[int],
+    output_path: Path,
+    *,
+    mode: str,
+) -> int:
+    """Exp3 Option-B: extract reps (2 GPUs) for each trained model (MEDS and CLIF arms)."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write("# Exp3 Option-B: extract representations (2-GPU torchrun)\n")
+        f.write("# Generated by run_experiments.py\n")
+        f.write(f"# Mode: {mode}\n\n")
+        for config in configs:
+            data_dir = get_data_dir(config)
+            dv = get_data_version(config)
+            for seed in training_seeds:
+                f.write(
+                    "bash -lc "
+                    + "\""
+                    + f"export data_dir={data_dir} "
+                    + f"data_version={dv}_first_24h "
+                    + f"model_loc={_exp3_model_loc(config, seed)} "
+                    + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
+                    + "&& bash slurm/ref_qse/09_extract_reps.sh"
+                    + "\"\n"
+                )
+    output_path.chmod(0o755)
+    return len(configs) * len(training_seeds)
+
+
+def generate_exp3_rep_pred_job_file(
+    configs: List[ExperimentConfig],
+    training_seeds: List[int],
+    output_path: Path,
+    *,
+    mode: str,
+) -> int:
+    """Exp3: logistic regression on extracted reps (CPU), run separately for MEDS and CLIF arms."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write("# Exp3 Option-B: logistic regression on extracted reps (CPU)\n")
+        f.write("# Generated by run_experiments.py\n")
+        f.write(f"# Mode: {mode}\n\n")
+        for config in configs:
+            data_dir = get_data_dir(config)
+            dv = get_data_version(config)
+            for seed in training_seeds:
+                f.write(
+                    "bash -lc "
+                    + "\""
+                    + f"export data_dir={data_dir} "
+                    + f"data_version={dv}_first_24h "
+                    + f"model_loc={_exp3_model_loc(config, seed)} "
+                    + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
+                    + "&& bash slurm/ref_qse/10_xfer_rep_based_preds.sh"
+                    + "\"\n"
+                )
     output_path.chmod(0o755)
     return len(configs) * len(training_seeds)
 
@@ -409,14 +646,14 @@ def generate_exp2_stage0_job_file(
             "true" if config.temporal == "time_tokens" else "false"
         )
 
-        # Exp2 uses unfused tokenization to support soft/continuous encoders.
+        fused_flag = "true" if config.fused else "false"
         commands.append(
             "bash slurm/03_stage0_tokenize_and_outcomes_meds.sh "
             f"--data_version_out {data_version} "
             f"--quantizer {config.quantizer} "
             f"--clinical_anchoring {config.clinical_anchoring} "
             f"--include_ref_ranges {include_ref_ranges} "
-            "--fused_category_values false "
+            f"--fused_category_values {fused_flag} "
             f"--include_time_spacing_tokens {include_time_tokens}"
         )
 
@@ -425,7 +662,7 @@ def generate_exp2_stage0_job_file(
         f.write("# Generated by run_experiments.py\n")
         f.write("# Submit with:\n")
         f.write(
-            f"#   sbatch --array=0-{len(commands) - 1}%2 slurm/02_run_from_jobfile_cpu.sh {output_path}\n"
+            f"#   sbatch --array=0-{len(commands) - 1}%2 slurm/02_run_stage0_tier2q_tokenize.sh {output_path}\n"
         )
         f.write("\n")
         for cmd in commands:
@@ -442,7 +679,7 @@ def generate_exp2_stage1_job_file(
     *,
     mode: str,
 ) -> int:
-    """Generate Exp2 Stage 1 jobfile (train+classify per config×seed)."""
+    """Generate Exp2 Stage 1 jobfile (train representation mechanics per config×seed)."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     commands: list[str] = []
@@ -450,7 +687,7 @@ def generate_exp2_stage1_job_file(
         data_version = get_data_version(config)
         for seed in training_seeds:
             commands.append(
-                "bash slurm/09_exp2_stage1_train_and_classify.sh "
+                "bash slurm/07_exp2_stage1_train_representation.sh "
                 f"--config_id {config.config_id} "
                 f"--data_version {data_version} "
                 f"--representation {config.representation} "
@@ -460,11 +697,11 @@ def generate_exp2_stage1_job_file(
             )
 
     with open(output_path, "w") as f:
-        f.write(f"# Exp2 Stage 1 ({mode}): train representation + classify (per config×seed)\n")
+        f.write(f"# Exp2 Stage 1 ({mode}): train representation (per config×seed)\n")
         f.write("# Generated by run_experiments.py\n")
         f.write("# Submit with:\n")
         f.write(
-            f"#   sbatch --array=0-{len(commands) - 1}%8 slurm/run_from_jobfile.sh {output_path}\n"
+            f"#   sbatch --array=0-{len(commands) - 1}%2 slurm/05_run_stage1_gpu8_train.sh {output_path}\n"
         )
         f.write("\n")
         for cmd in commands:
@@ -493,9 +730,10 @@ def generate_exp3_stage0_job_file(
         include_time_tokens = (
             "true" if config.temporal == "time_tokens" else "false"
         )
+        fused_flag = "true" if config.fused else "false"
 
         commands.append(
-            "bash slurm/11_exp3_stage0_tokenize_and_outcomes.sh "
+            "bash slurm/04_exp3_stage0_tokenize_and_outcomes.sh "
             f"--data_format {config.data_format} "
             f"--data_dir {data_dir} "
             f"--data_version_out {data_version} "
@@ -503,7 +741,8 @@ def generate_exp3_stage0_job_file(
             f"--quantizer {config.quantizer} "
             f"--clinical_anchoring {config.clinical_anchoring} "
             f"--include_ref_ranges {include_ref_ranges} "
-            f"--include_time_spacing_tokens {include_time_tokens}"
+            f"--include_time_spacing_tokens {include_time_tokens} "
+            f"--fused_category_values {fused_flag}"
         )
 
     with open(output_path, "w") as f:
@@ -511,7 +750,7 @@ def generate_exp3_stage0_job_file(
         f.write("# Generated by run_experiments.py\n")
         f.write("# Submit with:\n")
         f.write(
-            f"#   sbatch --array=0-{len(commands) - 1}%2 slurm/02_run_from_jobfile_cpu.sh {output_path}\n"
+            f"#   sbatch --array=0-{len(commands) - 1}%2 slurm/02_run_stage0_tier2q_tokenize.sh {output_path}\n"
         )
         f.write("\n")
         for cmd in commands:
@@ -528,7 +767,7 @@ def generate_exp3_stage1_job_file(
     *,
     mode: str,
 ) -> int:
-    """Generate Exp3 Stage 1 jobfile (train+classify per config×seed)."""
+    """Generate Exp3 Stage 1 jobfile (train representation mechanics per config×seed)."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     commands: list[str] = []
@@ -537,7 +776,7 @@ def generate_exp3_stage1_job_file(
         data_dir = get_data_dir(config)
         for seed in training_seeds:
             commands.append(
-                "bash slurm/13_exp3_stage1_train_and_classify.sh "
+                "bash slurm/08_exp3_stage1_train_representation.sh "
                 f"--config_id {config.config_id} "
                 f"--data_dir {data_dir} "
                 f"--data_version {data_version} "
@@ -548,11 +787,11 @@ def generate_exp3_stage1_job_file(
             )
 
     with open(output_path, "w") as f:
-        f.write(f"# Exp3 Stage 1 ({mode}): train representation + classify (per config×seed)\n")
+        f.write(f"# Exp3 Stage 1 ({mode}): train representation (per config×seed)\n")
         f.write("# Generated by run_experiments.py\n")
         f.write("# Submit with:\n")
         f.write(
-            f"#   sbatch --array=0-{len(commands) - 1}%8 slurm/run_from_jobfile.sh {output_path}\n"
+            f"#   sbatch --array=0-{len(commands) - 1}%2 slurm/05_run_stage1_gpu8_train.sh {output_path}\n"
         )
         f.write("\n")
         for cmd in commands:
@@ -562,288 +801,7 @@ def generate_exp3_stage1_job_file(
     return len(commands)
 
 
-def generate_exp1_job(
-    config: ExperimentConfig, seed: int, job_idx: int
-) -> str:
-    """Generate Exp1 job script (discrete representation, time_tokens).
-
-    Pipeline: tokenize -> tune_model -> extract_outcomes -> fine_tune_classification
-    """
-    data_version = get_data_version(config)
-    tokenizer_config = get_tokenizer_config(config)
-    data_dir = get_data_dir(config)
-    model_dir = DEFAULT_PATHS["model_dir"]
-
-    job_name = f"exp1_{config.config_id}_s{seed}"
-
-    # Tokenizer overrides to ensure the job actually matches the experiment condition.
-    include_ref_ranges = "true" if config.clinical_anchoring != "none" else "false"
-    include_time_tokens = "true"  # Exp1 uses time-spacing tokens (baseline)
-    fused_flag = "true" if config.fused else "false"
-
-    script = f"""
-# Job {job_idx}: {job_name}
-echo "=== Starting {job_name} ==="
-
-# Step 1: Tokenize data
-python {FMS_EHRS_PATH}/fms_ehrs/scripts/tokenize_w_config.py \\
-    --data_dir {data_dir} \\
-    --data_version_in raw \\
-    --data_version_out {data_version} \\
-    --config_loc {tokenizer_config} \\
-    --quantizer {config.quantizer} \\
-    --clinical_anchoring {config.clinical_anchoring} \\
-    --include_ref_ranges {include_ref_ranges} \\
-    --include_time_spacing_tokens {include_time_tokens} \\
-    --fused_category_values {fused_flag} \\
-    --include_24h_cut
-
-# Step 2: Pretrain model (uses tune_model for Exp1 discrete)
-python {FMS_EHRS_PATH}/fms_ehrs/scripts/tune_model.py \\
-    --data_dir {data_dir} \\
-    --data_version {data_version} \\
-    --model_dir {model_dir} \\
-    --model_version exp1_{config.config_id} \\
-    --collation packed \\
-    --n_epochs 5 \\
-    --wandb_project input-rep-benchmark-exp1
-
-# Step 3: Extract outcomes
-python scripts/extract_outcomes_meds.py \\
-    --meds_events_dir {data_dir} \\
-    --tokenized_dir {data_dir}/{data_version}_first_24h-tokenized \\
-    --splits train,val
-
-# Step 4: Fine-tune for each outcome
-for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
-    python {FMS_EHRS_PATH}/fms_ehrs/scripts/fine_tune_classification.py \\
-        --model_loc {model_dir}/exp1_{config.config_id}-* \\
-        --data_dir {data_dir} \\
-        --data_version {data_version}_first_24h \\
-        --out_dir {model_dir}/classifiers \\
-        --outcome $outcome \\
-        --n_epochs 5 \\
-        --wandb_project input-rep-benchmark-exp1-classify
-done
-
-echo "=== Completed {job_name} ==="
-"""
-    return script
-
-
-def generate_exp2_job(
-    config: ExperimentConfig, seed: int, job_idx: int
-) -> str:
-    """Generate Exp2 job script (representation mechanics).
-
-    Pipeline: tokenize -> train_representation -> extract_outcomes -> fine_tune_classification
-    """
-    data_version = get_data_version(config)
-    tokenizer_config = get_tokenizer_config(config)
-    data_dir = get_data_dir(config)
-    model_dir = DEFAULT_PATHS["model_dir"]
-
-    job_name = f"exp2_{config.config_id}_s{seed}"
-
-    # Tokenizer overrides:
-    # - Soft/continuous require unfused tokenization (enforced by configs)
-    # - Temporal axis is clean either/or: time_tokens => spacing tokens ON; time2vec => spacing tokens OFF
-    include_ref_ranges = "true" if config.clinical_anchoring != "none" else "false"
-    include_time_tokens = "true" if config.temporal == "time_tokens" else "false"
-
-    script = f"""
-# Job {job_idx}: {job_name}
-echo "=== Starting {job_name} ==="
-
-# Step 1: Tokenize data (with numeric_values if needed)
-python {FMS_EHRS_PATH}/fms_ehrs/scripts/tokenize_w_config.py \\
-    --data_dir {data_dir} \\
-    --data_version_in raw \\
-    --data_version_out {data_version} \\
-    --config_loc {tokenizer_config} \\
-    --quantizer {config.quantizer} \\
-    --clinical_anchoring {config.clinical_anchoring} \\
-    --include_ref_ranges {include_ref_ranges} \\
-    --include_time_spacing_tokens {include_time_tokens} \\
-    --fused_category_values false \\
-    --include_24h_cut
-
-# Step 2: Train with representation mechanics
-python {FMS_EHRS_PATH}/fms_ehrs/scripts/train_representation.py \\
-    --data_dir {data_dir} \\
-    --data_version {data_version} \\
-    --model_dir {model_dir} \\
-    --model_version exp2_{config.config_id} \\
-    --representation {config.representation} \\
-    --temporal {config.temporal} \\
-    --num_bins {config.num_bins} \\
-    --n_epochs 5 \\
-    --seed {seed} \\
-    --wandb_project input-rep-benchmark-exp2
-
-# Step 3: Extract outcomes
-python scripts/extract_outcomes_meds.py \\
-    --meds_events_dir {data_dir} \\
-    --tokenized_dir {data_dir}/{data_version}_first_24h-tokenized \\
-    --splits train,val
-
-# Step 4: Fine-tune for each outcome
-for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
-    python {FMS_EHRS_PATH}/fms_ehrs/scripts/fine_tune_classification.py \\
-        --model_loc {model_dir}/exp2_{config.config_id}-*/model-{config.representation}-{config.temporal} \\
-        --data_dir {data_dir} \\
-        --data_version {data_version}_first_24h \\
-        --out_dir {model_dir}/classifiers \\
-        --outcome $outcome \\
-        --n_epochs 5 \\
-        --wandb_project input-rep-benchmark-exp2-classify
-done
-
-echo "=== Completed {job_name} ==="
-"""
-    return script
-
-
-def generate_exp3_job(
-    config: ExperimentConfig, seed: int, job_idx: int
-) -> str:
-    """Generate Exp3 job script (data format comparison).
-
-    Same as Exp2 but compares MEDS vs CLIF formats.
-    """
-    data_version = get_data_version(config)
-    tokenizer_config = get_tokenizer_config(config)
-    data_dir = get_data_dir(config)
-    model_dir = DEFAULT_PATHS["model_dir"]
-
-    job_name = f"exp3_{config.config_id}_s{seed}"
-
-    # Tokenizer overrides:
-    # - Clean either/or temporal comparison as in Exp2
-    include_ref_ranges = "true" if config.clinical_anchoring != "none" else "false"
-    include_time_tokens = "true" if config.temporal == "time_tokens" else "false"
-
-    script = f"""
-# Job {job_idx}: {job_name}
-echo "=== Starting {job_name} ==="
-
-# Step 1: Tokenize data
-python {FMS_EHRS_PATH}/fms_ehrs/scripts/tokenize_w_config.py \\
-    --data_dir {data_dir} \\
-    --data_version_in raw \\
-    --data_version_out {data_version} \\
-    --config_loc {tokenizer_config} \\
-    --quantizer {config.quantizer} \\
-    --clinical_anchoring {config.clinical_anchoring} \\
-    --include_ref_ranges {include_ref_ranges} \\
-    --include_time_spacing_tokens {include_time_tokens} \\
-    --fused_category_values false \\
-    --include_24h_cut
-
-# Step 2: Normalize layout (MEDS -> fms-ehrs compatible)
-python scripts/normalize_meds_tokenized_layout.py \\
-    --input_dir {data_dir}/{data_version}-tokenized \\
-    --output_dir {data_dir}/{data_version}-tokenized-norm \\
-    --inplace
-
-# Step 3: Train with representation mechanics
-python {FMS_EHRS_PATH}/fms_ehrs/scripts/train_representation.py \\
-    --data_dir {data_dir} \\
-    --data_version {data_version} \\
-    --model_dir {model_dir} \\
-    --model_version exp3_{config.config_id} \\
-    --representation {config.representation} \\
-    --temporal {config.temporal} \\
-    --num_bins {config.num_bins} \\
-    --n_epochs 5 \\
-    --seed {seed} \\
-    --wandb_project input-rep-benchmark-exp3
-
-# Step 4: Extract outcomes (format-specific)
-if [ "{config.data_format}" = "meds" ]; then
-    python scripts/extract_outcomes_meds.py \\
-        --meds_events_dir {data_dir} \\
-        --tokenized_dir {data_dir}/{data_version}_first_24h-tokenized \\
-        --splits train,val
-else
-    python {FMS_EHRS_PATH}/fms_ehrs/scripts/extract_outcomes.py \\
-        --data_dir {data_dir} \\
-        --ref_version {data_version} \\
-        --data_version {data_version}_first_24h
-fi
-
-# Step 5: Fine-tune for each outcome
-for outcome in same_admission_death long_length_of_stay icu_admission imv_event; do
-    python {FMS_EHRS_PATH}/fms_ehrs/scripts/fine_tune_classification.py \\
-        --model_loc {model_dir}/exp3_{config.config_id}-*/model-{config.representation}-{config.temporal} \\
-        --data_dir {data_dir} \\
-        --data_version {data_version}_first_24h \\
-        --out_dir {model_dir}/classifiers \\
-        --outcome $outcome \\
-        --n_epochs 5 \\
-        --wandb_project input-rep-benchmark-exp3-classify
-done
-
-echo "=== Completed {job_name} ==="
-"""
-    return script
-
-
-def generate_job_file(
-    configs: List[ExperimentConfig],
-    training_seeds: List[int],
-    output_path: Path,
-    exp_name: str,
-    exp_num: int,
-) -> int:
-    """Generate a job file with all config+seed combinations.
-
-    Args:
-        configs: List of experiment configurations
-        training_seeds: List of training seeds to use
-        output_path: Path to write job file
-        exp_name: Name of experiment for logging
-        exp_num: Experiment number (1, 2, or 3)
-
-    Returns:
-        Number of jobs generated
-    """
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Select job generator
-    job_generators = {
-        1: generate_exp1_job,
-        2: generate_exp2_job,
-        3: generate_exp3_job,
-    }
-    generate_job = job_generators[exp_num]
-
-    with open(output_path, "w") as f:
-        f.write("#!/bin/bash\n")
-        f.write(f"# {exp_name} Job File\n")
-        f.write(f"# Generated by run_experiments.py\n")
-        f.write(f"# Total jobs: {len(configs) * len(training_seeds)}\n")
-        f.write(f"# Configs: {len(configs)}, Seeds: {len(training_seeds)}\n")
-        f.write("#\n")
-        f.write("# Usage:\n")
-        f.write(f"#   bash {output_path.name}\n")
-        f.write("#   Or submit individual jobs via SLURM array\n")
-        f.write("\n")
-        f.write("set -e  # Exit on error\n")
-        f.write("\n")
-
-        job_idx = 0
-        for config in configs:
-            for seed in training_seeds:
-                job_script = generate_job(config, seed, job_idx)
-                f.write(job_script)
-                f.write("\n")
-                job_idx += 1
-
-    # Make executable
-    output_path.chmod(0o755)
-
-    return job_idx
+## NOTE: This repo is standardized on SLURM jobfiles + stage-specific scripts and reps -> LR evaluation.
 
 
 def main():
@@ -866,7 +824,7 @@ def main():
     parser.add_argument(
         "--exp2_include_discrete",
         action="store_true",
-        help="Include Exp2 discrete baselines (default: omit to allow 'immune' Exp2 runs).",
+        help="Include Exp2 discrete baselines (discrete × {time_tokens,time2vec}).",
     )
     parser.add_argument(
         "--exp2_discrete_only",
@@ -874,22 +832,40 @@ def main():
         help="Generate only the two discrete Exp2 configs (to run after Exp1 winner is known).",
     )
     parser.add_argument(
+        "--exp2_include_soft",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include Exp2 soft discretization configs (default: true).",
+    )
+    parser.add_argument(
+        "--exp2_include_continuous",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include Exp2 continuous encoder configs (default: true).",
+    )
+    parser.add_argument(
         "--exp2_from_exp1_config_id",
         type=str,
         default=None,
-        help="Use Exp1 winner config_id to parameterize Exp2 tokenization regime (quantizer, anchoring, fused).",
+        help="Use Exp1 overall winner config_id to parameterize Exp2 *discrete* tokenization regime (quantizer, anchoring, fused).",
+    )
+    parser.add_argument(
+        "--exp2_soft_from_exp1_unfused_config_id",
+        type=str,
+        default=None,
+        help="Use Exp1 unfused winner config_id to parameterize Exp2 soft/continuous tokenization regime (quantizer, anchoring; fused is forced False).",
     )
     parser.add_argument(
         "--exp2_quantizer",
         type=str,
         default="ventiles",
-        help="Exp2 tokenization quantizer (used when --exp2_from_exp1_config_id is not provided).",
+        help="DEPRECATED for main runs. Exp2 should be parameterized from Exp1 winner config_id(s).",
     )
     parser.add_argument(
         "--exp2_clinical_anchoring",
         type=str,
         default="5-10-5",
-        help="Exp2 clinical anchoring (used when --exp2_from_exp1_config_id is not provided).",
+        help="DEPRECATED for main runs. Exp2 should be parameterized from Exp1 winner config_id(s).",
     )
     parser.add_argument(
         "--exp2_discrete_fused",
@@ -943,7 +919,71 @@ def main():
         default=Path("slurm"),
         help="Output directory for job files",
     )
+    parser.add_argument(
+        "--meds_data_dir",
+        type=str,
+        default=DEFAULT_PATHS["meds_data_dir"],
+        help="MEDS data directory (contains raw/ and <version>-tokenized/).",
+    )
+    parser.add_argument(
+        "--meds_tokenizer_config",
+        type=str,
+        default=DEFAULT_PATHS["meds_tokenizer_config"],
+        help="Tokenizer config for MEDS (YAML). Default: fms-ehrs/config/mimic-meds-ed.yaml",
+    )
+    parser.add_argument(
+        "--clif_data_dir",
+        type=str,
+        default=DEFAULT_PATHS["clif_data_dir"],
+        help="CLIF data directory (CLIF-2.x parquet exports). Required for Exp3.",
+    )
+    parser.add_argument(
+        "--clif_tokenizer_config",
+        type=str,
+        default=DEFAULT_PATHS["clif_tokenizer_config"],
+        help="Tokenizer config for CLIF (YAML). Default: fms-ehrs/config/clif-21-exp3-icu.yaml",
+    )
+    parser.add_argument(
+        "--exp3_meds_icu_data_dir",
+        type=str,
+        default=DEFAULT_PATHS["exp3_meds_icu_data_dir"],
+        help="(Exp3) ICU-aligned MEDS events directory (train/val/test).",
+    )
+    parser.add_argument(
+        "--exp3_meds_randomized_data_dir",
+        type=str,
+        default=DEFAULT_PATHS["exp3_meds_randomized_data_dir"],
+        help="(Exp3) MEDS randomized-mapping control events directory (train/val/test).",
+    )
+    parser.add_argument(
+        "--exp3_meds_freqmatched_data_dir",
+        type=str,
+        default=DEFAULT_PATHS["exp3_meds_freqmatched_data_dir"],
+        help="(Exp3) MEDS frequency-matched collapse control events directory (train/val/test).",
+    )
+    parser.add_argument(
+        "--exp3_meds_tokenizer_config",
+        type=str,
+        default=DEFAULT_PATHS["exp3_meds_tokenizer_config"],
+        help="(Exp3) Tokenizer config for MEDS Exp3 ICU matched-signal subset (YAML).",
+    )
     args = parser.parse_args()
+
+    # Apply CLI overrides to default paths used by job generation helpers.
+    DEFAULT_PATHS["meds_data_dir"] = args.meds_data_dir
+    DEFAULT_PATHS["clif_data_dir"] = args.clif_data_dir
+    DEFAULT_PATHS["meds_tokenizer_config"] = args.meds_tokenizer_config
+    DEFAULT_PATHS["clif_tokenizer_config"] = args.clif_tokenizer_config
+    DEFAULT_PATHS["exp3_meds_icu_data_dir"] = args.exp3_meds_icu_data_dir
+    DEFAULT_PATHS["exp3_meds_randomized_data_dir"] = args.exp3_meds_randomized_data_dir
+    DEFAULT_PATHS["exp3_meds_freqmatched_data_dir"] = args.exp3_meds_freqmatched_data_dir
+    DEFAULT_PATHS["exp3_meds_tokenizer_config"] = args.exp3_meds_tokenizer_config
+
+    # Write generated jobfiles under a mode-specific subdirectory to avoid
+    # ambiguous naming collisions (e.g., demo vs full) and to keep `slurm/`
+    # reserved for hand-authored stage scripts and runners.
+    generated_dir = args.output_dir / "generated" / args.mode
+    generated_dir.mkdir(parents=True, exist_ok=True)
 
     # Select seeds based on mode
     if args.mode == "demo":
@@ -957,7 +997,7 @@ def main():
     print(f"Mode: {args.mode}")
     print(f"Training seeds: {training_seeds}")
     print(f"Data seed: {DATA_SEED} (FIXED)")
-    print(f"Output directory: {args.output_dir}")
+    print(f"Output directory: {generated_dir}")
     print(f"fms-ehrs path: {FMS_EHRS_PATH}")
     print()
 
@@ -972,26 +1012,83 @@ def main():
             configs = EXP1_CONFIGS
             exp_name = "Experiment 1: Granularity"
         elif exp == 2:
-            if args.exp2_from_exp1_config_id is not None:
-                exp1 = _parse_config_id(args.exp2_from_exp1_config_id)
-                exp2_quantizer = exp1["quantizer"]
-                exp2_clinical_anchoring = exp1["clinical_anchoring"]
-                exp2_fused_discrete = exp1["fused"]
-            else:
-                exp2_quantizer = args.exp2_quantizer
-                exp2_clinical_anchoring = args.exp2_clinical_anchoring
-                exp2_fused_discrete = args.exp2_discrete_fused
+            # Exp2 depends on two different Exp1 selections:
+            # - Discrete baselines should adopt the *overall* Exp1 winner (including fused/unfused).
+            # - Soft/continuous require unfused tokenization; therefore their binning must be chosen
+            #   from the Exp1 winner within the unfused group.
+            discrete_regime = None
+            soft_regime = None
 
-            configs = make_exp2_configs(
-                include_discrete=args.exp2_include_discrete,
-                discrete_only=args.exp2_discrete_only,
-                quantizer=exp2_quantizer,
-                clinical_anchoring=exp2_clinical_anchoring,
-                fused_discrete=exp2_fused_discrete,
-            )
+            if args.exp2_include_discrete or args.exp2_discrete_only:
+                if args.exp2_from_exp1_config_id is None:
+                    raise ValueError(
+                        "Exp2 requires the Exp1 winner regime. "
+                        "Provide --exp2_from_exp1_config_id for the discrete baselines."
+                    )
+                discrete_regime = _parse_config_id(args.exp2_from_exp1_config_id)
+
+            if not args.exp2_discrete_only:
+                if args.exp2_soft_from_exp1_unfused_config_id is None:
+                    raise ValueError(
+                        "Exp2 soft/continuous configs require the Exp1 winner within the unfused group. "
+                        "Provide --exp2_soft_from_exp1_unfused_config_id (must have fused=False)."
+                    )
+                soft_regime = _parse_config_id(args.exp2_soft_from_exp1_unfused_config_id)
+                if soft_regime["fused"]:
+                    raise ValueError(
+                        "--exp2_soft_from_exp1_unfused_config_id must be an unfused Exp1 config_id (fused=False)."
+                    )
+
+            configs: list[ExperimentConfig] = []
+            if args.exp2_include_discrete:
+                assert discrete_regime is not None
+                configs.extend(
+                    make_exp2_configs(
+                        include_discrete=True,
+                        discrete_only=True,
+                        include_soft=False,
+                        include_continuous=False,
+                        quantizer=discrete_regime["quantizer"],
+                        clinical_anchoring=discrete_regime["clinical_anchoring"],
+                        fused_discrete=discrete_regime["fused"],
+                    )
+                )
+            if not args.exp2_discrete_only:
+                assert soft_regime is not None
+                configs.extend(
+                    make_exp2_configs(
+                        include_discrete=False,
+                        discrete_only=False,
+                        include_soft=bool(args.exp2_include_soft),
+                        include_continuous=bool(args.exp2_include_continuous),
+                        quantizer=soft_regime["quantizer"],
+                        clinical_anchoring=soft_regime["clinical_anchoring"],
+                        fused_discrete=False,
+                    )
+                )
+
             exp_name = "Experiment 2: Representation"
         else:
             # Enforce explicit winner selection; no placeholders.
+            if not Path(DEFAULT_PATHS["clif_data_dir"]).exists():
+                raise ValueError(
+                    "CLIF data directory does not exist: "
+                    f"{DEFAULT_PATHS['clif_data_dir']}. "
+                    "Provide --clif_data_dir pointing to your CLIF parquet exports before generating Exp3."
+                )
+            for k in [
+                "exp3_meds_icu_data_dir",
+                "exp3_meds_randomized_data_dir",
+                "exp3_meds_freqmatched_data_dir",
+            ]:
+                p = Path(DEFAULT_PATHS[k])
+                if not p.exists():
+                    raise ValueError(
+                        f"Exp3 requires {k} to exist: {p}. "
+                        "Build these artifacts first:\n"
+                        "  - scripts/split_meds_by_hadm_splits.py -> exp3_meds_icu_data_dir\n"
+                        "  - scripts/build_exp3_semantic_control_arms.py -> exp3_meds_{randomized,freqmatched}_data_dir\n"
+                    )
             if args.exp3_from_exp1_config_id is not None:
                 exp1 = _parse_config_id(args.exp3_from_exp1_config_id)
                 exp3_quantizer = exp1["quantizer"]
@@ -1039,61 +1136,93 @@ def main():
             exp_name = "Experiment 3: Data Format"
 
         if exp == 1:
-            # Exp1 uses a two-stage SLURM architecture:
-            #   Stage 0 (CPU-heavy): tokenize + outcomes ONCE per config
-            #   Stage 1 (GPU): train + classify per config×seed
-            stage0_path = args.output_dir / "04_exp1_tokenize_jobs.sh"
-            stage1_path = args.output_dir / f"07_exp1_train_jobs_{args.mode}.sh"
+            # Exp1 (4-stage; Option B):
+            #   Stage 0 (CPU): tokenize + outcomes (once per config)
+            #   Stage 1 (GPU; 8 GPUs/job): FM training/HPO (per config×seed)
+            #   Stage 2 (GPU; 2 GPUs/job): extract reps (per config×seed)
+            #   Stage 3 (CPU tier2q): logistic regression on reps (per config×seed)
+            stage0_path = generated_dir / "04_exp1_stage0_tokenize.jobfile"
+            stage1_path = generated_dir / "07a_exp1_stage1_train.jobfile"
+            repx_path = generated_dir / "07b_exp1_stage2_extract_reps.jobfile"
+            pred_path = generated_dir / "07c_exp1_stage3_lr.jobfile"
 
             n0 = generate_exp1_stage0_job_file(configs, stage0_path)
             n1 = generate_exp1_stage1_job_file(configs, training_seeds, stage1_path, mode=args.mode)
-            total_jobs += (n0 + n1)
+            nrepx = generate_exp1_rep_extract_job_file(configs, training_seeds, repx_path, mode=args.mode)
+            npred = generate_exp1_rep_pred_job_file(configs, training_seeds, pred_path, mode=args.mode)
+            total_jobs += (n0 + n1 + nrepx + npred)
             exp1_n0, exp1_n1 = n0, n1
 
             print(f"{exp_name}:")
             print(f"  Configs: {len(configs)}")
-            print("  Stage 0 (tokenize+outcomes):")
+            print("  Stage 0 (tokenize+outcomes; CPU):")
             print(f"    Jobs: {n0}")
             print(f"    Output: {stage0_path}")
-            print("  Stage 1 (train+classify):")
+            print("  Stage 1 (FM train/HPO; 8-GPU jobs):")
             print(f"    Jobs: {n1}")
             print(f"    Output: {stage1_path}")
+            print("  Stage 2 (extract reps; 2-GPU jobs):")
+            print(f"    Jobs: {nrepx}")
+            print(f"    Output: {repx_path}")
+            print("  Stage 3 (rep-based preds; CPU tier2q jobs):")
+            print(f"    Jobs: {npred}")
+            print(f"    Output: {pred_path}")
             print()
         elif exp == 2:
-            stage0_path = args.output_dir / "08_exp2_tokenize_jobs.sh"
-            stage1_path = args.output_dir / f"10_exp2_train_jobs_{args.mode}.sh"
+            stage0_path = generated_dir / "08_exp2_stage0_tokenize.jobfile"
+            stage1_path = generated_dir / "10a_exp2_stage1_train.jobfile"
+            repx_path = generated_dir / "10b_exp2_stage2_extract_reps.jobfile"
+            pred_path = generated_dir / "10c_exp2_stage3_lr.jobfile"
 
             n0 = generate_exp2_stage0_job_file(configs, stage0_path)
             n1 = generate_exp2_stage1_job_file(configs, training_seeds, stage1_path, mode=args.mode)
-            total_jobs += (n0 + n1)
+            nrepx = generate_exp2_rep_extract_job_file(configs, training_seeds, repx_path, mode=args.mode)
+            npred = generate_exp2_rep_pred_job_file(configs, training_seeds, pred_path, mode=args.mode)
+            total_jobs += (n0 + n1 + nrepx + npred)
             exp2_n0, exp2_n1 = n0, n1
 
             print(f"{exp_name}:")
             print(f"  Configs: {len(configs)}")
-            print("  Stage 0 (tokenize+outcomes; dedup by data_version):")
+            print("  Stage 0 (tokenize+outcomes; CPU; dedup by data_version):")
             print(f"    Jobs: {n0}")
             print(f"    Output: {stage0_path}")
-            print("  Stage 1 (train+classify):")
+            print("  Stage 1 (train; GPU):")
             print(f"    Jobs: {n1}")
             print(f"    Output: {stage1_path}")
+            print("  Stage 2 (extract reps; 2-GPU jobs):")
+            print(f"    Jobs: {nrepx}")
+            print(f"    Output: {repx_path}")
+            print("  Stage 3 (rep-based preds; CPU tier2q jobs):")
+            print(f"    Jobs: {npred}")
+            print(f"    Output: {pred_path}")
             print()
         else:
-            stage0_path = args.output_dir / "12_exp3_tokenize_jobs.sh"
-            stage1_path = args.output_dir / f"14_exp3_train_jobs_{args.mode}.sh"
+            stage0_path = generated_dir / "12_exp3_stage0_tokenize.jobfile"
+            stage1_path = generated_dir / "14a_exp3_stage1_train.jobfile"
+            repx_path = generated_dir / "14b_exp3_stage2_extract_reps.jobfile"
+            pred_path = generated_dir / "14c_exp3_stage3_lr.jobfile"
 
             n0 = generate_exp3_stage0_job_file(configs, stage0_path)
             n1 = generate_exp3_stage1_job_file(configs, training_seeds, stage1_path, mode=args.mode)
-            total_jobs += (n0 + n1)
+            nrepx = generate_exp3_rep_extract_job_file(configs, training_seeds, repx_path, mode=args.mode)
+            npred = generate_exp3_rep_pred_job_file(configs, training_seeds, pred_path, mode=args.mode)
+            total_jobs += (n0 + n1 + nrepx + npred)
             exp3_n0, exp3_n1 = n0, n1
 
             print(f"{exp_name}:")
             print(f"  Configs: {len(configs)}")
-            print("  Stage 0 (tokenize+outcomes):")
+            print("  Stage 0 (tokenize+outcomes; CPU):")
             print(f"    Jobs: {n0}")
             print(f"    Output: {stage0_path}")
-            print("  Stage 1 (train+classify):")
+            print("  Stage 1 (train; GPU):")
             print(f"    Jobs: {n1}")
             print(f"    Output: {stage1_path}")
+            print("  Stage 2 (extract reps; 2-GPU jobs):")
+            print(f"    Jobs: {nrepx}")
+            print(f"    Output: {repx_path}")
+            print("  Stage 3 (rep-based preds; CPU tier2q jobs):")
+            print(f"    Jobs: {npred}")
+            print(f"    Output: {pred_path}")
             print()
 
     print("=" * 60)
@@ -1101,19 +1230,25 @@ def main():
     print("=" * 60)
     print()
     print("Next steps:")
-    print(f"  1. Review job files in {args.output_dir}/")
+    print(f"  1. Review job files in {generated_dir}/")
     if exp1_n0 is not None:
-        print("  2. Exp1 (two-stage):")
-        print(f"     - Stage 0 (CPU): sbatch --array=0-{exp1_n0 - 1}%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh")
-        print(f"     - Stage 1 (GPU): sbatch --array=0-{exp1_n1 - 1}%8 slurm/run_from_jobfile.sh slurm/07_exp1_train_jobs_{args.mode}.sh")
+        print("  2. Exp1:")
+        print(f"     - Stage 0 (tier2q CPU): sbatch --array=0-{exp1_n0 - 1}%2 slurm/02_run_stage0_tier2q_tokenize.sh {generated_dir}/04_exp1_stage0_tokenize.jobfile")
+        print(f"     - Stage 1 (8 GPUs/job): TRAIN_JID=$(sbatch --parsable --array=0-{exp1_n1 - 1}%{exp1_n1} slurm/05_run_stage1_gpu8_train.sh {generated_dir}/07a_exp1_stage1_train.jobfile)")
+        print(f"     - Stage 2 (2 GPUs/job): EXTRACT_JID=$(sbatch --parsable --dependency=afterok:\"${{TRAIN_JID}}\" --array=0-{exp1_n1 - 1}%{exp1_n1} slurm/09_run_stage2_gpu2_extract.sh {generated_dir}/07b_exp1_stage2_extract_reps.jobfile)")
+        print(f"     - Stage 3 (tier2q LR): sbatch --dependency=afterok:\"${{EXTRACT_JID}}\" --array=0-{exp1_n1 - 1}%8 slurm/11_run_stage3_tier2q_lr.sh {generated_dir}/07c_exp1_stage3_lr.jobfile")
     if exp2_n0 is not None:
-        print("  3. Exp2 (two-stage):")
-        print(f"     - Stage 0 (CPU): sbatch --array=0-{exp2_n0 - 1}%2 slurm/02_run_from_jobfile_cpu.sh slurm/08_exp2_tokenize_jobs.sh")
-        print(f"     - Stage 1 (GPU): sbatch --array=0-{exp2_n1 - 1}%8 slurm/run_from_jobfile.sh slurm/10_exp2_train_jobs_{args.mode}.sh")
+        print("  3. Exp2 (4-stage):")
+        print(f"     - Stage 0 (tier2q CPU): sbatch --array=0-{exp2_n0 - 1}%2 slurm/02_run_stage0_tier2q_tokenize.sh {generated_dir}/08_exp2_stage0_tokenize.jobfile")
+        print(f"     - Stage 1 (8 GPUs/job): TRAIN2_JID=$(sbatch --parsable --array=0-{exp2_n1 - 1}%2 slurm/05_run_stage1_gpu8_train.sh {generated_dir}/10a_exp2_stage1_train.jobfile)")
+        print(f"     - Stage 2 (2 GPUs/job): EXTRACT2_JID=$(sbatch --parsable --dependency=afterok:\"${{TRAIN2_JID}}\" --array=0-{exp2_n1 - 1}%4 slurm/09_run_stage2_gpu2_extract.sh {generated_dir}/10b_exp2_stage2_extract_reps.jobfile)")
+        print(f"     - Stage 3 (tier2q LR): sbatch --dependency=afterok:\"${{EXTRACT2_JID}}\" --array=0-{exp2_n1 - 1}%8 slurm/11_run_stage3_tier2q_lr.sh {generated_dir}/10c_exp2_stage3_lr.jobfile")
     if exp3_n0 is not None:
-        print("  4. Exp3 (two-stage):")
-        print(f"     - Stage 0 (CPU): sbatch --array=0-{exp3_n0 - 1}%2 slurm/02_run_from_jobfile_cpu.sh slurm/12_exp3_tokenize_jobs.sh")
-        print(f"     - Stage 1 (GPU): sbatch --array=0-{exp3_n1 - 1}%8 slurm/run_from_jobfile.sh slurm/14_exp3_train_jobs_{args.mode}.sh")
+        print("  4. Exp3 (4-stage):")
+        print(f"     - Stage 0 (tier2q CPU): sbatch --array=0-{exp3_n0 - 1}%2 slurm/02_run_stage0_tier2q_tokenize.sh {generated_dir}/12_exp3_stage0_tokenize.jobfile")
+        print(f"     - Stage 1 (8 GPUs/job): TRAIN3_JID=$(sbatch --parsable --array=0-{exp3_n1 - 1}%2 slurm/05_run_stage1_gpu8_train.sh {generated_dir}/14a_exp3_stage1_train.jobfile)")
+        print(f"     - Stage 2 (2 GPUs/job): EXTRACT3_JID=$(sbatch --parsable --dependency=afterok:\"${{TRAIN3_JID}}\" --array=0-{exp3_n1 - 1}%4 slurm/09_run_stage2_gpu2_extract.sh {generated_dir}/14b_exp3_stage2_extract_reps.jobfile)")
+        print(f"     - Stage 3 (tier2q LR): sbatch --dependency=afterok:\"${{EXTRACT3_JID}}\" --array=0-{exp3_n1 - 1}%8 slurm/11_run_stage3_tier2q_lr.sh {generated_dir}/14c_exp3_stage3_lr.jobfile")
 
 
 if __name__ == "__main__":

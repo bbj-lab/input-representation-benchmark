@@ -3,40 +3,14 @@
 # Stage 0 (CPU-heavy): Tokenize MEDS once per config + write outcomes parquet
 # =============================================================================
 #
-# Design goal
-# -----------
-# Tokenization depends on (quantizer, clinical_anchoring, fused/unfused, time tokens),
-# but it does NOT depend on:
-#   - random seed
-#   - Optuna trial
-# Therefore we tokenize once per config and reuse for all downstream training jobs.
-#
-# This script also computes MEDS-derived outcomes and writes:
-#   <data_dir>/<data_version_out>_first_24h-tokenized/{train,val,test}/tokens_timelines_outcomes.parquet
-#
-# Cache layout (shared filesystem)
-# -------------------------------
-# Tokenized directories are placed under a shared cache root on /gpfs and symlinked
-# back into the repo’s expected location under:
-#   ${DATA_DIR}/data/<data_version_out>-tokenized
-#   ${DATA_DIR}/data/<data_version_out>_first_24h-tokenized
-#
-# Users may override the cache location by setting:
-#   IRB_TOKEN_CACHE_ROOT=/gpfs/data/bbj-lab/users/$USER/irb_scratch/tokenized/<dataset_id>
-#
-# Usage (direct):
-#   bash slurm/03_stage0_tokenize_and_outcomes_meds.sh \
-#     --data_version_out deciles_none_unfused_time_tokens \
-#     --quantizer deciles \
-#     --clinical_anchoring none \
-#     --include_ref_ranges false \
-#     --fused_category_values false
-#
-# Usage (recommended: via SLURM array):
-#   # First generate jobfile with 12 lines:
+# Usage (recommended: via SLURM array on tier2q):
 #   python run_experiments.py --mode demo --exp 1
-#   # Then:
-#   sbatch --array=0-11%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh
+#   sbatch --array=0-11%2 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/04_exp1_stage0_tokenize.jobfile
+#
+# Validity note:
+#   - Internal validity: stage0 enforces required tokenization artifacts (including numeric_stats.json)
+#     so downstream representation comparisons do not silently mix incompatible preprocessing.
+#
 # =============================================================================
 
 set -euo pipefail
@@ -86,15 +60,15 @@ find_repo_root() {
 SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
 IRB_HOME="${IRB_HOME:-$(find_repo_root "${SUBMIT_DIR}")}"
 export IRB_CONDA_ENV="${IRB_CONDA_ENV:-input-rep}"
-source "${IRB_HOME}/slurm/preamble.sh"
+source "${IRB_HOME}/slurm/00_preamble.sh"
 cd "${IRB_HOME}"
 
-MEDS_DATA_DIR="${DATA_DIR}/data"
+# `DATA_DIR` is standardized (via slurm/00_preamble.sh) to point to the MEDS
+# events directory (the one containing train/val/test or train/tuning/test and
+# raw parquet shards). Do NOT append `/data` here.
+MEDS_DATA_DIR="${DATA_DIR}"
 TOKENIZER_CONFIG="${FMS_EHRS_HOME}/fms_ehrs/config/mimic-meds-ed.yaml"
 
-# Shared cache root for tokenized artifacts (must be on a shared filesystem).
-# Default is a user-owned directory on /gpfs (BBJ cluster). For non-cluster/local
-# runs, fall back to a repo-local cache directory.
 DATASET_ID="${IRB_TOKEN_CACHE_DATASET_ID:-mimiciv-3.1_meds_70-10-20}"
 DEFAULT_CACHE_ROOT=""
 if [[ -d "${hm}" ]]; then
@@ -112,10 +86,8 @@ TARGET_24H="${IRB_TOKEN_CACHE_ROOT}/${DATA_VERSION_OUT}_first_24h-tokenized"
 LINK_MAIN="${MEDS_DATA_DIR}/${DATA_VERSION_OUT}-tokenized"
 LINK_24H="${MEDS_DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized"
 
-# Create targets
 mkdir -p "${TARGET_MAIN}" "${TARGET_24H}"
 
-# Create or validate symlinks
 ensure_symlink() {
   local target="$1"
   local link="$2"
@@ -140,9 +112,6 @@ ensure_symlink() {
 ensure_symlink "${TARGET_MAIN}" "${LINK_MAIN}"
 ensure_symlink "${TARGET_24H}" "${LINK_24H}"
 
-# Skip tokenization if the key outputs already exist
-MAIN_OK=0
-H24_OK=0
 MAIN_OK=1
 for s in train val test; do
   if [[ ! -f "${LINK_MAIN}/${s}/tokens_timelines.parquet" ]]; then
@@ -151,6 +120,14 @@ for s in train val test; do
   fi
 done
 if [[ ! -f "${LINK_MAIN}/train/vocab.gzip" ]]; then
+  MAIN_OK=0
+fi
+# Continuous encoders require quantizer/anchoring-independent numeric stats
+# computed from raw training values. This file is produced by
+# `fms_ehrs/scripts/tokenize_w_config.py` (train split) and must exist for
+# Experiment 2 continuous configurations to be method-faithful and fair across
+# quantization/anchoring settings.
+if [[ ! -f "${LINK_MAIN}/train/numeric_stats.json" ]]; then
   MAIN_OK=0
 fi
 
@@ -164,15 +141,13 @@ done
 if [[ ! -f "${LINK_24H}/train/vocab.gzip" ]]; then
   H24_OK=0
 fi
+if [[ ! -f "${LINK_24H}/train/numeric_stats.json" ]]; then
+  H24_OK=0
+fi
 
 if [[ "${MAIN_OK}" -eq 1 && "${H24_OK}" -eq 1 ]]; then
   echo "[stage0] Tokenization outputs already exist for ${DATA_VERSION_OUT}; skipping tokenization."
 else
-  # NOTE: fms-ehrs uses argparse.BooleanOptionalAction for boolean overrides.
-  # That means the correct CLI is:
-  #   --flag      (sets True)
-  #   --no-flag   (sets False)
-  # Passing `--flag false` *does not* set False; it sets True and treats "false" as unknown.
   tokenize_args=(
     --data_dir "${MEDS_DATA_DIR}"
     --data_version_in raw
@@ -202,10 +177,44 @@ else
   esac
 
   python "${FMS_EHRS_HOME}/fms_ehrs/scripts/tokenize_w_config.py" "${tokenize_args[@]}"
+
+  # ---------------------------------------------------------------------------
+  # Post-tokenization validity checks (fail loudly)
+  #
+  # Rationale: Stage0 is the source-of-truth for downstream training inputs.
+  # We must not allow Stage0 to "succeed" while silently missing artifacts
+  # required for method-faithful continuous encoders (numeric_stats.json).
+  # ---------------------------------------------------------------------------
+  for s in train val test; do
+    if [[ ! -f "${LINK_MAIN}/${s}/tokens_timelines.parquet" ]]; then
+      echo "ERROR: missing tokenization output: ${LINK_MAIN}/${s}/tokens_timelines.parquet" >&2
+      exit 1
+    fi
+    if [[ ! -f "${LINK_24H}/${s}/tokens_timelines.parquet" ]]; then
+      echo "ERROR: missing tokenization output: ${LINK_24H}/${s}/tokens_timelines.parquet" >&2
+      exit 1
+    fi
+  done
+  if [[ ! -f "${LINK_MAIN}/train/vocab.gzip" ]]; then
+    echo "ERROR: missing vocabulary: ${LINK_MAIN}/train/vocab.gzip" >&2
+    exit 1
+  fi
+  if [[ ! -f "${LINK_24H}/train/vocab.gzip" ]]; then
+    echo "ERROR: missing vocabulary: ${LINK_24H}/train/vocab.gzip" >&2
+    exit 1
+  fi
+  if [[ ! -f "${LINK_MAIN}/train/numeric_stats.json" ]]; then
+    echo "ERROR: missing required numeric stats: ${LINK_MAIN}/train/numeric_stats.json" >&2
+    echo "  Continuous encoders require these quantizer/anchoring-independent per-code statistics." >&2
+    exit 1
+  fi
+  if [[ ! -f "${LINK_24H}/train/numeric_stats.json" ]]; then
+    echo "ERROR: missing required numeric stats: ${LINK_24H}/train/numeric_stats.json" >&2
+    echo "  Continuous encoders require these quantizer/anchoring-independent per-code statistics." >&2
+    exit 1
+  fi
 fi
 
-# Outcomes are deterministic given MEDS + tokenized timelines; compute once per config.
-# Write into the 24h-cut tokenized directory (used for classification).
 OUT_OK=0
 if [[ -f "${LINK_24H}/train/tokens_timelines_outcomes.parquet" && -f "${LINK_24H}/val/tokens_timelines_outcomes.parquet" && -f "${LINK_24H}/test/tokens_timelines_outcomes.parquet" ]]; then
   OUT_OK=1
@@ -221,4 +230,3 @@ else
 fi
 
 echo "[stage0] Done: ${DATA_VERSION_OUT}"
-

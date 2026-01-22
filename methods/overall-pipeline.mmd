@@ -45,7 +45,8 @@ flowchart TD
     subgraph P1["Phase 1: Tokenization"]
         direction TB
         ENV1[conda env: input-rep<br/>polars>=1.33<br/>fms-ehrs + benchmark deps<br/>(see scripts/setup_conda_env_input_rep.sh)]:::env
-        TOK[tokenize_w_config.py<br/>reads data/raw/{train,val,test}<br/>writes *-tokenized + *_first_24h-tokenized]:::script
+        MAP{Exp3:<br/>semantic mapping intervention<br/>(native vs standardized vs null controls)}:::decision
+        TOK[tokenize_w_config.py<br/>reads data/raw/{train,val,test}<br/>writes *-tokenized + *_first_24h-tokenized<br/>and exports numeric_stats.json (median/IQR)]:::script
         TOKOUT[Tokenized timelines parquet<br/>tokens + numeric_values + times]:::artifact
         ENV1 --> TOK
     end
@@ -64,16 +65,17 @@ flowchart TD
     end
 
     %% ==========================================================
-    %% Phase 3: Outcome extraction + fine-tuning (GPU)
+    %% Phase 3: Evaluation (GPU + CPU)
     %% ==========================================================
-    subgraph P3["Phase 3: Outcomes + Fine-tuning (GPU)"]
+    subgraph P3["Phase 3: eval (reps → logistic regression)"]
         direction TB
-        OUTM[extract_outcomes_meds.py<br/>labels from MEDS timestamps]:::script
-        OUTC[fms_ehrs/scripts/extract_outcomes.py<br/>labels from CLIF tokens]:::script
-        FT[fine_tune_classification.py<br/>4 tasks + after-24h cohorts]:::script
-        METRICS[W&B logs + metrics tables]:::artifact
-        OUTM --> FT --> METRICS
-        OUTC --> FT
+        OUTM[extract_outcomes_meds.py<br/>labels joined onto *_first_24h-tokenized]:::script
+        OUTC[fms_ehrs/scripts/extract_outcomes.py<br/>labels from CLIF tokens (if needed)]:::script
+        EXTRACT[extract_hidden_states.py<br/>torchrun (2 GPUs)<br/>writes features-*.npy]:::script
+        LR[transfer_rep_based_preds.py<br/>classifier=logistic_regression<br/>(CPU tier2q)]:::script
+        METRICS[Metrics tables + saved preds<br/>(precision/recall/F1/AUROC)]:::artifact
+        OUTM --> EXTRACT --> LR --> METRICS
+        OUTC --> EXTRACT
     end
 
     %% ==========================================================
@@ -92,16 +94,20 @@ flowchart TD
     %% ==========================================================
     subgraph SLURM["SLURM orchestration"]
         direction TB
-        S0[slurm/00_extract_meds.sh<br/>sets IRB_CONDA_ENV=meds-extract]:::script
-        S1[slurm/01_tokenize.sh<br/>sets IRB_CONDA_ENV=input-rep<br/>ensures data/raw split shim]:::script
-        SARR[slurm/run_from_jobfile.sh<br/>--array=...%8 (max 8 GPUs)]:::script
-        S0 --> S1 --> SARR
+        S0[slurm/01_phase0_extract_meds.sh<br/>sets IRB_CONDA_ENV=meds-extract]:::script
+        S1[slurm/90_stage0_tokenize_only_debug.sh<br/>sets IRB_CONDA_ENV=input-rep<br/>(manual tokenization helper)]:::script
+        RUNCPU[slurm/02_run_stage0_tier2q_tokenize.sh<br/>Stage0 runner (tier2q CPU)]:::script
+        RUN4[slurm/05_run_stage1_gpu4_train.sh<br/>Stage1 runner (4 GPUs/job; packs 2 jobs/node)]:::script
+        RUN8[slurm/05_run_stage1_gpu8_train.sh<br/>Stage1 runner (8 GPUs/job; optional)]:::script
+        RUN2[slurm/09_run_stage2_gpu2_extract.sh<br/>Stage2 extract (2 GPUs/job)]:::script
+        RUNT2Q[slurm/11_run_stage3_tier2q_lr.sh<br/>Stage3 LR (CPU tier2q)]:::script
+        S0 --> S1 --> RUNCPU --> RUN4 --> RUN2 --> RUNT2Q
     end
 
     %% Cross-phase connections
     MEDS --> TOK
-    CLIFREF --> TOK
+    CLIFREF --> MAP --> TOK
     TOK --> TOKOUT --> EXP1
     TOKOUT --> EXP2
-    CKPT --> FT
+    CKPT --> EXTRACT
 

@@ -122,5 +122,5 @@ echo ""
 echo "Next step (tokenization):"
 echo "  conda activate ${ENV_NAME}"
 echo "  cd ${IRB_HOME}"
-echo "  bash slurm/01_tokenize.sh"
+echo "  bash slurm/90_stage0_tokenize_only_debug.sh"
 

@@ -82,5 +82,5 @@ echo ""
 echo "Next step (MEDS extraction):"
 echo "  conda activate ${ENV_NAME}"
 echo "  cd ${IRB_HOME}"
-echo "  sbatch slurm/00_extract_meds.sh   # or: bash benchmarks/mimic-meds-extraction/scripts/01_extract_meds_full.sh <N_WORKERS>"
+echo "  sbatch slurm/01_phase0_extract_meds.sh   # or: bash benchmarks/mimic-meds-extraction/scripts/01_extract_meds_full.sh <N_WORKERS>"
 

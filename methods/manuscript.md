@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Electronic Health Record (EHR) foundation models require principled methods for representing continuous physiological measurements within token sequences consumed by transformer architectures. Population-based quantile binning (e.g., deciles) has become a de facto choice in prior pipelines (e.g., ETHOS-ARES [1]), but it imposes an arbitrary categorical structure on intrinsically continuous measurements and may obscure clinically meaningful thresholds defined by reference intervals [5]. We present a systematic benchmark that isolates *input representation* as the primary experimental variable along three axes: (1) quantization granularity and clinical anchoring of bin boundaries using laboratory reference ranges, (2) representation mechanics that either treat binned values as discrete tokens or preserve numeric precision via soft discretization (convex combinations of bin embeddings [14]) and learned continuous encoders inspired by xVal-style numeric embeddings [7], and (3) vocabulary semantics contrasting institution-specific codes against standardized clinical concepts (CLIF; operationalized via Burkhart et al. [9]). We evaluate these design choices on MIMIC-IV v3.1 [13] across four prediction tasks (same-admission mortality, long length of stay, ICU admission after 24 hours, invasive mechanical ventilation after 24 hours), reporting discrimination (AUROC/AUPRC), calibration (Brier score/ECE), fairness (subgroup AUROC gaps), and efficiency (token counts, FLOPs, inference latency) in the style of clinically meaningful evaluation frameworks (FoMoH [10]) and benchmark practice (EHRSHOT [11]). Across 100 training runs using a scaled-down LLaMA 3.2 configuration (67.3M parameters; RoPE [12]) and five random seeds per configuration, we will report mean±SD performance and paired statistical comparisons across representation variants. [PLACEHOLDER: Key quantitative findings with specific AUROC/AUPRC and calibration changes]. This benchmark is intended to yield empirically grounded guidelines for representation design in clinical foundation models.
+Electronic Health Record (EHR) foundation models require principled methods for representing continuous physiological measurements within token sequences consumed by transformer architectures. Population-based quantile binning (e.g., deciles) has become a de facto choice in prior pipelines (e.g., ETHOS-ARES [1]), but it imposes an arbitrary categorical structure on intrinsically continuous measurements and may obscure clinically meaningful thresholds defined by reference intervals [5]. We present a systematic benchmark that isolates *input representation* as the primary experimental variable along three axes: (1) quantization granularity and clinical anchoring of bin boundaries using laboratory reference ranges, (2) representation mechanics that either treat binned values as discrete tokens or preserve numeric precision via soft discretization (convex combinations of bin embeddings [14]) and learned continuous encoders inspired by xVal-style numeric embeddings [7], and (3) **vocabulary semantics as a controlled intervention** that swaps only the *code namespace* (native identifiers vs. standardized concepts; CLIF) while holding the underlying event rows, timestamps, and numeric values fixed, with explicit negative controls (randomized mappings and frequency-matched collapses). We evaluate these design choices on MIMIC-IV v3.1 [13] across four prediction tasks (same-admission mortality, long length of stay, ICU admission after 24 hours, invasive mechanical ventilation after 24 hours), reporting discrimination (AUROC/AUPRC), calibration (Brier score/ECE), fairness (subgroup AUROC gaps), and efficiency (token counts, FLOPs, inference latency) in the style of clinically meaningful evaluation frameworks (FoMoH [10]) and benchmark practice (EHRSHOT [11]). Across 100 training runs using a scaled-down LLaMA 3.2 configuration (config overrides: `hidden_size=1024`, `intermediate_size=2048`, `num_hidden_layers=8`, `num_attention_heads=8`; **≈87M parameters**, depending on vocab size; RoPE [12]) and five random seeds per configuration, we will report mean±SD performance and paired statistical comparisons across representation variants. [PLACEHOLDER: Key quantitative findings with specific AUROC/AUPRC and calibration changes]. This benchmark is intended to yield empirically grounded guidelines for representation design in clinical foundation models.
 
 ---
 
@@ -27,6 +27,10 @@ Among the methodological choices in EHR foundation models, the discretization of
 ### Paragraph 5: Enhancement Principle (B = Continuous Value Encoding)
 
 Techniques for preserving continuous numeric information within transformer architectures offer a potential enhancement over hard discretization. The theoretical motivation is information-theoretic: discretization inherently discards precision, mapping a continuous range to a finite set of bins. xVal [7] demonstrates that continuous number encoding—representing numeric values through learned magnitude embeddings rather than categorical bins—enables strong out-of-distribution generalization on scientific datasets. The mechanism is straightforward: rather than mapping a value to one of K discrete tokens, the value directly modulates an embedding vector, preserving arbitrary precision. Convex combinations of embeddings (ConSE [14]) provide an intermediate approach: values falling between bin boundaries receive interpolated embeddings that smoothly transition across the categorical representation. These continuous encoding techniques address a fundamental limitation of discrete tokenization while maintaining compatibility with standard transformer architectures. Their effectiveness in the clinical domain—where laboratory values carry diagnostic significance and distributional properties differ from scientific datasets—requires empirical validation.
+
+**Implementation-critical note (fairness / correctness)**: xVal-style encoders require values to be kept within a bounded dynamic range (xVal discusses preprocessing to keep values in \([-5,5]\)). In EHRs, raw magnitudes vary drastically across codes (e.g., creatinine vs. heart rate vs. infusion rates), so our pipeline uses **per-code robust scaling** computed from raw training values. For each numeric code \(c\), we compute \(\mu_c := \mathrm{median}(v_c)\) and \(\sigma_c := \mathrm{IQR}(v_c)/1.35\) on the training split and clip \(z_c = (v-\mu_c)/\sigma_c\) to \(\pm 5\). These statistics are exported as `numeric_stats.json` during tokenization and are consumed by the continuous encoder during Exp2/Exp3 training.
+
+Crucially, we do **not** derive \((\mu_c,\sigma_c)\) from quantization breakpoints stored in `vocab.aux`, because those breakpoints can be **clinically anchored** (e.g., 5-10-5) and would otherwise couple continuous normalization to the discretization regime under test.
 
 ### Paragraph 6: Research Focus Definition (A = Input Representation for EHR Foundation Models)
 
@@ -117,9 +121,9 @@ All downstream tokenization, training, and evaluation rely entirely on our indep
 
 **Tokenization (fms-ehrs)**: We tokenize MEDS timelines using our `fms-ehrs` framework. Tokenization is YAML-configurable and supports: (i) quantization strategies (deciles/ventiles/trentiles/centiles), (ii) clinically anchored binning using reference intervals [5], (iii) optional fused code–value tokens (to reduce sequence length), (iv) time spacing tokens (as in ETHOS-ARES [1]) and Time2Vec temporal features [15], and (v) aligned auxiliary arrays for continuous-value representations (see §4.4). In a concrete validation run on MEDS-formatted MIMIC-IV v3.1 (deciles, non-fused, time-spacing tokens, `max_padded_len=1024`, with 24h-cut artifacts), tokenization produced a vocabulary of **19,363** tokens and **297,817** hospitalization timelines in the train split after the ≥24h stay filter; full commands, timestamps, and readouts are recorded in `methods/data-columns.md`.
 
-**LLaMA Architecture**: Our base model is a decoder-only transformer with rotary position embeddings, using a scaled-down configuration (67.3M parameters) for computational tractability across 100 training runs.
+**LLaMA Architecture**: Our base model is a decoder-only transformer with rotary position embeddings, using a scaled-down configuration (config overrides: `hidden_size=1024`, `intermediate_size=2048`, `num_hidden_layers=8`, `num_attention_heads=8`; **≈87M parameters**, depending on vocab size) for computational tractability across 100 training runs.
 
-**Data Inclusion Criteria and Label Leakage Prevention**: A central requirement for predictive evaluation is that model inputs reflect information that would be available at the prediction time. Several administrative/billing code tables in MIMIC-IV are known to be assigned or finalized at or after discharge (e.g., ICD diagnosis/procedure codes, DRG codes), making them high-risk sources of temporal leakage for within-admission prediction. Accordingly, we exclude four MIMIC-IV tables whose primary purpose is post hoc billing/administration and may encode outcome-related information not available during the admission [13]. This design choice aligns with clinically meaningful evaluation principles emphasizing temporal validity and deployment realism [10,20].
+**Data Inclusion Criteria and Label Leakage Prevention**: A central requirement for predictive evaluation is that model inputs reflect information that would be available at the prediction time. Several administrative/billing code tables in MIMIC-IV are known to be assigned or finalized at or after discharge (e.g., ICD diagnosis/procedure codes, DRG codes), making them high-risk sources of temporal leakage for within-admission prediction. Accordingly, we exclude four MIMIC-IV tables whose primary purpose is post hoc billing/administration and may encode outcome-related information not available during the admission [13]. This design choice improves **internal validity** (reduces leakage-driven overestimation of performance) and improves **ecological validity** for deployment-time prediction [10,20].
 
 | Excluded Table | Code Type | Reason |
 |----------------|-----------|--------|
@@ -170,7 +174,7 @@ We evaluate six granularity configurations:
 - Clinically-anchored trentiles (10-10-10): Reference range partitioning
 - Centiles (100 bins): Population-based
 
-The *granularity* parameter is applied to all MEDS event types that carry `numeric_value` (labs, vitals, fluid outputs, infusion rates/amounts, and other scalar measurements). *Clinical anchoring* is applied only to laboratory events with reference intervals (`ref_range_lower`, `ref_range_upper`) [5]; for non-laboratory numeric streams that lack reference ranges, bins are computed via population quantiles.
+The *granularity* parameter is applied to MEDS event types that carry `numeric_value` and are included in our tokenizer configuration (notably labs, ICU vitals, fluid outputs, and infusion start rates). *Clinical anchoring* is applied only to laboratory events with reference intervals (`ref_range_lower`, `ref_range_upper`) [5]; for non-laboratory numeric streams that lack reference ranges, bins are computed via population quantiles. (See `methods/data-columns.md` for exact inclusion/exclusion notes, e.g., OMR omission and categorical treatment of `INFUSION_END`.)
 
 Each configuration is evaluated with and without fused code–value tokens (combining a numeric event’s code token and its discretized bin token), yielding 12 configurations and enabling explicit measurement of the accuracy–efficiency tradeoff.
 
@@ -179,7 +183,7 @@ Each configuration is evaluated with and without fused code–value tokens (comb
 Using the optimal granularity from Experiment 1, we evaluate three encoding methods:
 - Discrete tokens: Standard embedding lookup
 - Soft discretization: Convex combination of adjacent bin embeddings
-- Continuous encoder: MLP projection of z-score normalized values
+- Continuous encoder: xVal-adapted scaled embedding of z-score normalized values
 
 Each encoding is evaluated with two temporal strategies:
 - Time spacing tokens: Discrete intervals following ETHOS protocol
@@ -187,21 +191,32 @@ Each encoding is evaluated with two temporal strategies:
 
 This yields 6 configurations.
 
-**Experiment 3: Data Format and Vocabulary Semantics**
+**Experiment 3: Vocabulary Semantics as a Controlled Intervention (paired design)**
 
-Using optimal granularity and encoding from Experiments 1-2, we evaluate:
-- MEDS format (native MIMIC): Institution-specific codes (e.g., `LAB//50931`)
-- CLIF format (standardized): Mapped clinical concepts (e.g., `LAB//glucose_serum`)
+Using the winning discretization regime from Experiment 1 and winning (value, temporal) mechanics from Experiment 2, Experiment 3 isolates **vocabulary semantics** by treating semantic mapping as an *intervention applied to the same underlying event rows*.
 
-**Cohort Alignment**: A critical methodological consideration is ensuring data parity between the two pipelines. CLIF's natural scope is ICU patients, whereas MEDS can include all hospitalizations. For fair comparison:
-- **Experiment 3 Cohort**: ICU patients with hospital stays ≥24 hours
-- **Experiments 1 & 2 Cohort**: All hospitalizations with stay ≥24 hours
+**Core construction (paired events, single cohort)**:
+- Fix a cohort \(H_{\mathrm{ICU}}\) (ICU-eligible hospitalizations with hospital LOS ≥24h) and a fixed set of event rows \(E\) (matched-signal subset for Exp3; by default **labs + vitals**, see `methods/data-columns.md`).
+- For every event row \(e \in E\), retain the same timestamps and numeric values, but define two parallel code namespaces:
+  - **Native codes**: institution-specific identifiers (e.g., `LAB//50931//mg/dl`, `VTL//220045//bpm`)
+  - **Standardized codes (CLIF semantics)**: mapped concepts (e.g., `LAB//glucose_serum`, `VITAL//heart_rate`)
+- The only experimental variable is which namespace is emitted as the code token stream; the value channel (`numeric_values`) and time inputs are held fixed.
 
-Both pipelines in Experiment 3 operate on identical patient IDs extracted via a cohort alignment script, ensuring the comparison isolates vocabulary effects from cohort composition differences.
+**Primary comparison arms**:
+- **MEDS (native)**: tokenize \(E\) using native codes.
+- **CLIF (standardized / CLIF)**: tokenize \(E\) using standardized codes produced by CLIF-MIMIC mapping rules.
 
-**Reference ranges in CLIF (for clinically anchored binning)**: The base CLIF 2.1 labs schema includes `reference_unit` but does not provide lower/upper reference interval bounds by default. When Experiment 1 selects a clinically anchored winner, we augment CLIF lab tables (`clif_labs.parquet`) with `ref_range_lower` and `ref_range_upper` derived from MIMIC-IV `labevents` grouped by `(lab_loinc_code, reference_unit)` so that clinically anchored binning can be applied symmetrically in Experiment 3. See `scripts/augment_clif_labs_with_ref_ranges.py`.
+**Negative controls (null models; required for internal validity)**:
+- **Randomized mapping control**: permute native→standardized mappings *within domain* (e.g., labs within labs, vitals within vitals) while preserving the same number of categories. If **CLIF ≈ randomized mapping**, observed gains are not attributable to semantics.
+- **Frequency-matched collapse control**: collapse codes into \(K\) pseudo-categories with matched frequency profile to the standardized vocabulary (tests “controlled-vocab regularization” vs “semantic mapping”).
 
-This yields 2 configurations.
+**Localizing where semantics matter (ablation)**:
+- **Partial mapping**: map only labs or only vitals (and any additional domains included by the Exp3 tokenizer config), leaving the rest native. This localizes where semantic abstraction helps/hurts.
+
+**Reference ranges for clinically anchored winners**:
+If Experiment 1 selects a clinically anchored winner and Exp3 includes lab anchoring, we require reference-interval bounds for the standardized arm. The base CLIF 2.1 labs schema includes `reference_unit` but not lower/upper bounds. We therefore augment CLIF-derived lab rows with `ref_range_lower` and `ref_range_upper` estimated from MIMIC-IV `labevents` grouped by `(lab_loinc_code, reference_unit)` so anchoring can be applied symmetrically across MEDS/CLIF. See `scripts/augment_clif_labs_with_ref_ranges.py`.
+
+This yields at minimum 2 arms (MEDS/CLIF), with 2 additional null controls (randomized mapping; frequency-matched collapse) for rigor.
 
 ---
 
@@ -212,14 +227,16 @@ The experiments form a conceptual dependency chain for *winner selection*:
 - **Exp1 → Exp2**: Exp1 selects the best *tokenization regime* (quantizer + clinical anchoring + fused/unfused). Exp2 should use that regime for the final discrete baselines.
 - **Exp2 → Exp3**: Exp2 selects the best *(representation, temporal)* mechanics; Exp3 should apply that winner when comparing MEDS vs CLIF semantics.
 
-However, not all Exp2 work must wait for Exp1 completion. In practice we support a two-phase Exp2 schedule:
+All Exp2 work must wait for Exp1 winner selection in this benchmark.
 
-- **Exp2 “immune” subset (can start before Exp1 winner is known)**:
-  - soft/continuous × {time_tokens, time2vec} (4 configs)
-  - requires **unfused** tokenization
-- **Exp2 discrete-only subset (run after Exp1 winner is known)**:
-  - discrete × {time_tokens, time2vec} (2 configs)
-  - can use the Exp1 winner’s fused/unfused setting
+**Rationale (method faithfulness + internal validity for RQ2)**:
+- Our **soft discretization** implementation (ConSE-inspired) explicitly requires the Exp1 bin boundaries (stored in `vocab.aux`) to interpolate between adjacent bins; therefore Exp2-soft is not defined without choosing the Exp1 quantizer/anchoring regime.
+- Our **continuous encoder** is inspired by xVal [7], but in our *MEDS-compatible adaptation* we do **not** replace numbers with a dedicated `[NUM]` token. Instead, we apply the continuous embedding at **quantile-token positions** in the tokenized sequence (see §3.5). This means Exp2-continuous still depends on the Exp1 tokenization regime to define the quantile-token stream (number of bins and which tokens represent numeric values).
+- Consequently, running Exp2 under an arbitrary pre-registered tokenization while Exp1 is still underway would contaminate the interpretation of RQ2 (“representation mechanics”), because differences could be driven by a mismatched discretization regime rather than by soft/continuous mechanics.
+
+**Operational rule**:
+- Exp2 tokenization and training must be parameterized by the Exp1 winner regime.
+- Soft/continuous runs must use the Exp1 winner *within the unfused group* (since soft/continuous require unfused tokenization).
 
 To prevent accidental “placeholder winners”, the job generator enforces:
 
@@ -236,6 +253,11 @@ Therefore, Exp3 requires *re-training the MEDS-format model* under the Exp1+Exp2
 
 ### 3.5. Representation Methods
 
+This section specifies the algorithms used in Experiment 2, with
+links to the original literature and the adaptations required by our
+MEDS tokenization pipeline. We separate conceptual model definitions (what the
+paper claims) from implementation choices (what is executed).
+
 **Clinically-Anchored Quantization**
 
 For laboratory code $c$ with reference range $[L_c, U_c]$, we partition values into three clinical regions:
@@ -246,32 +268,81 @@ For laboratory code $c$ with reference range $[L_c, U_c]$, we partition values i
 Within each region, we apply equal-frequency quantile binning. For 5-10-5 ventile allocation:
 $$Q = \{q_{0.2}, q_{0.4}, q_{0.6}, q_{0.8}\}_{below} \cup \{L_c\} \cup \{q_{0.1}, \ldots, q_{0.9}\}_{within} \cup \{U_c\} \cup \{q_{0.2}, q_{0.4}, q_{0.6}, q_{0.8}\}_{above}$$
 
-**Soft Discretization**
+**Soft Discretization (ConSE-inspired) [14]**
+
+ConSE defines a convex combination of semantic embeddings using classifier
+probabilities. Our adaptation replaces classifier probabilities with *local
+interpolation weights* derived from bin boundaries, yielding a continuous
+embedding along an ordered quantile axis.
 
 For value $v$ falling between bin boundaries $b_i$ and $b_{i+1}$:
 $$\alpha = \frac{v - b_i}{b_{i+1} - b_i}$$
 $$\mathbf{e}(v) = (1 - \alpha) \cdot \mathbf{E}[b_i] + \alpha \cdot \mathbf{E}[b_{i+1}]$$
 
-This interpolation ensures monotonicity and interpretability while maintaining embedding dimensionality.
+**Edge handling**: if $v < b_0$, we return $\mathbf{E}[b_0]$; if
+$v \ge b_{K-1}$, we return $\mathbf{E}[b_K]$. This preserves monotonicity while
+using only two embeddings per value, matching ConSE’s convexity property but
+specialized to ordered numeric bins.
 
-**Continuous Encoder**
+**Implementation alignment**:
+1. Bin boundaries are derived from the tokenizer’s quantile auxiliary data.
+2. A vectorized path uses `code_ids` to fetch per-code boundary tensors.
+3. The embedding dimensionality is identical to the base LM token embedding.
 
-For value $v$ with laboratory code $c$ having training statistics $(\mu_c, \sigma_c)$:
+**Continuous Encoder (xVal-adapted) [7]**
+
+xVal embeds a numeric value by multiplying a learnable embedding direction by
+the scalar value, using a dedicated `[NUM]` token and (optionally) multi-scale
+variants with $\tanh(x \cdot 10^i)$ factors. We preserve the *core continuous
+inductive bias* while adapting to our MEDS pipeline:
+
+1. **Tokenization constraint**: numeric values are aligned to *quantile tokens*
+   (not replaced by a `[NUM]` token). We therefore compute a continuous numeric
+   embedding *at quantile-token positions* and replace those embeddings.
+2. **Normalization**: values are standardized per code using training statistics
+   $(\mu_c, \sigma_c)$ and clipped to $\pm 5$ standard deviations to prevent
+   outliers from dominating training dynamics.
+3. **Number head**: xVal’s number prediction head is omitted because we do not
+   generate numeric tokens; the benchmark evaluates representation quality via
+   downstream prediction.
+
+Mathematically, for a value $v$ with code $c$:
 $$z = \text{clip}\left(\frac{v - \mu_c}{\sigma_c}, -5, 5\right)$$
-$$\mathbf{e}(v) = \text{MLP}(z) = W_2 \cdot \text{GELU}(W_1 \cdot z + b_1) + b_2$$
+$$\mathbf{e}(v) =
+\begin{cases}
+z \cdot \mathbf{u} & \text{(default, }k=0\text{)} \\
+\sum_{i=-k}^{k} \tanh(z \cdot 10^i)\cdot \mathbf{u}_i & \text{(multiscale)}
+\end{cases}$$
+where $\mathbf{u}$ (and $\mathbf{u}_i$) are learned embedding directions.
+In this study we use the default $k=0$ setting to avoid introducing
+representation-specific hyperparameter tuning.
 
-**Time2Vec Temporal Encoding**
+**Time2Vec Temporal Encoding [15]**
 
-For relative time $\tau$ (hours since admission):
+For relative time $\tau$ (hours since admission), Time2Vec defines a vector
+embedding:
 $$t2v(\tau) = \left[w_0 \tau + \phi_0, \sin(w_1 \tau + \phi_1), \ldots, \sin(w_k \tau + \phi_k)\right]$$
 
-This learned representation is added to token embeddings before transformer processing. Relative time is computed as `τ = (event_time - admission_time).total_seconds() / 3600` hours, respecting MIMIC-IV's deidentification policy where "a single date shift was assigned to each subject_id" [13]. Using relative rather than absolute time ensures within-patient temporal patterns are preserved while avoiding spurious cross-patient temporal correlations.
+**Implementation alignment**:
+1. We use $\sin$ as the periodic activation, as in the canonical Time2Vec
+   configuration.
+2. We compute $\tau$ as relative hours since admission, consistent with MIMIC-IV
+   date shifting [13].
+3. We add Time2Vec embeddings to token embeddings and apply layer normalization
+   (additive composition), which is a common transformer-compatible integration
+   strategy. For a clean comparison, the Time2Vec condition **removes time
+   spacing tokens** at tokenization, so temporal information is carried solely
+   by the continuous encoding.
+
+**Figure placeholder**: Schematic of Exp2 representation flow (token embedding →
+value embedding replacement → Time2Vec addition → transformer).
+
 
 ### 3.6. Implementation Details
 
 **Model Configuration**:
 - Architecture: decoder-only transformer initialized from the LLaMA family configuration (RoPE positional encoding) [12], then scaled down for tractable experimentation
-- Parameters: ~67.3M (exact count depends on tokenizer vocabulary size)
+- Parameters: **≈87M** in our pipeline (exact count depends on tokenizer vocabulary size)
 - Hidden dimension: 1024
 - Intermediate size: 2048
 - Layers: 8
@@ -280,14 +351,99 @@ This learned representation is added to token embeddings before transformer proc
 
 **Training Configuration**:
 - Pretraining objective: causal language modeling with cross-entropy loss (as in ETHOS-style autoregressive timeline modeling [1])
-- Pretraining implementation (Exp 1): `fms_ehrs/scripts/tune_model.py` (TRL SFT training with packed collation), run for 5 epochs per trial with Optuna tuning over learning rate (default range \(5\times10^{-5}\)–\(5\times10^{-4}\)) and gradient accumulation (default range 1–3)
-- Representation training (Exp 2): `fms_ehrs/scripts/train_representation.py` (5 epochs by default; per-device batch size 4; gradient accumulation 2 by default)
-- Downstream evaluation: supervised fine-tuning for sequence classification via `fms_ehrs/scripts/fine_tune_classification.py` (5 epochs by default; early stopping on validation AUROC; per-device batch size 4; gradient accumulation 2 by default)
+- Pretraining implementation (Exp 1): `fms_ehrs/scripts/tune_model.py` (TRL SFT training with packed collation), following the `Quantifying-Surprise-EHRs` reference pattern:
+  - DDP via `torchrun` (4 or 8 GPUs/job, depending on queue packing)
+  - Optuna HPO with small `n_trials` (3 as in the reference SLURM script)
+  - **Single-epoch default**: `n_epochs=1` per trial (see “epoch budget” note below)
+  - HPO search space (reference): learning rate in \([5\times10^{-5}, 5\times10^{-4}]\) (log-uniform) and gradient accumulation steps in \(\{1,2,3\}\)
+  - Model architecture overrides (reference): `hidden_size=1024`, `intermediate_size=2048`, `num_hidden_layers=8`, `num_attention_heads=8` (≈87M parameters in our runs; exact depends on vocab size)
+  - Packed datasets trained in **iterable** mode (no materialization), consistent with the reference `Datasets.get_train_dataset(..., iterable=True)`
+- Representation training (Exp 2 / Exp 3): `fms_ehrs/scripts/train_representation.py` (default in this benchmark: `n_epochs=1`, `per_device_train_batch_size=1`, `gr_acc_min=4`, `gr_acc_max=12`). Optuna can additionally tune essential representation knobs (categorical choices) under the same trial budget.
+- Downstream evaluation: representation-based prediction using logistic regression on extracted hidden states, mirroring the Quantifying-Surprise-EHRs workflow in technical detail:
+  - **Extract reps (gpuq; 2 GPUs)**: vendored `slurm/ref_qse/09_extract_reps.sh` runs `torchrun --nproc_per_node=2 ... extract_hidden_states.py`, saving `features-<model>.npy` into each split folder
+  - **Predict (tier2q; CPU-only)**: vendored `slurm/ref_qse/10_xfer_rep_based_preds.sh` runs `transfer_rep_based_preds.py --classifier logistic_regression`; we scale tier2q resources (CPUs/RAM) for our larger cohort via `slurm/11_run_stage3_tier2q_lr.sh`
 - Random seeds: 5 per configuration (42, 123, 456, 789, 1024)
+
+**Epoch budget (engineering choice; preregistered)**:
+Modern pretraining practice prioritizes *more diverse, high-quality data* over repeated epochs on a fixed dataset. Because this benchmark is explicitly a multi-run sweep (20–100+ training runs), we default to **single-epoch training** for Exp1–Exp3 to:
+1. Reduce overfitting risk from repeated exposure under small trial budgets,
+2. Keep the compute budget comparable across many conditions (internal validity of comparisons), and
+3. Improve experimental throughput under a 24h/job SLURM limit.
+
+Operationally, our training scripts implement “epochs” as dataset repetition and compute:
+\[
+\texttt{max\_steps} \propto \frac{n_{\text{train}} \cdot n_{\text{epochs}}}{\texttt{per\_device\_train\_batch\_size} \cdot \#\text{GPUs}}
+\]
+so reducing to \(n_{\text{epochs}}=1\) directly reduces the number of optimizer steps per Optuna trial.
+
+**Fairness and HPO budget control (Exp 1–3)**:
+We use **matched-budget tuning of essential hyperparameters** to ensure that
+each method is evaluated under valid operating conditions without granting
+extra compute advantages. Concretely:
+1. **Same HPO protocol**: Optuna is used across Experiments 1–3 with the same
+   trial counts and epoch budgets (unless explicitly stated otherwise).  
+2. **Method-specific essential knobs (matched budget)**: representation-specific
+   hyperparameters that materially affect **internal validity** of the mechanistic comparison (e.g., Time2Vec dimension,
+   xVal multiscale depth, soft-discretization bin count) are tuned within *the
+   same* trial budget per method.
+3. **Matched compute per run**: identical GPU counts, epochs, and gradient
+   accumulation ranges are used across Exp2 variants to ensure walltime and
+   token exposure are comparable.
+4. **Parameter count transparency**: added parameters from Time2Vec or xVal are
+   reported alongside results.
+
+We pre-register candidate values for each essential knob and restrict Optuna to
+categorical choices from those lists. This preserves fairness while avoiding
+method under-optimization that could bias comparisons.
+
+**Table placeholder**: HPO search space and matched budgets for Exp2 (learning
+rate/grad accumulation + essential representation knobs), including total
+trials and GPU-hours per method.
+
+**Default pre-registered grids (Exp2)**:
+- Time2Vec dimension: $\{32, 64, 128\}$ (covers low/medium/high capacity while
+  keeping added parameters modest relative to the base LM).
+- xVal multiscale depth: $\{1, 3\}$ (default $k=0$ vs. a minimal multiscale
+  variant with $k=1$).
+- Soft discretization bin count: fixed to the Experiment 1 winning granularity
+  (to avoid confounding the Exp1 granularity effect).
+
+**Selection rationale**:
+1. **Coverage**: include a low/medium/high range to capture diminishing returns
+   without exploding the search space.
+2. **Compute parity**: restrict to categorical grids that keep trial counts and
+   walltime comparable across methods.
+3. **Internal validity**: only tune knobs that materially affect representation
+   mechanics (e.g., Time2Vec dimension, xVal scales), not downstream training
+   hyperparameters beyond the shared Optuna space.
+
+**Max sequence length policy**:
+We fix `max_seq_length=1024` across all experiments for comparability and to
+fit within the 24h walltime constraint. If we increase this ceiling, we must
+rerun tokenization and training for **all** experiments, because Exp1 uses
+packed sequences (longer context increases packing cost) while Exp2/Exp3 use
+padded sequences (longer context increases per-step memory and compute). A
+length change would therefore shift compute and truncation profiles differently
+across experiments, violating fairness unless applied uniformly.
+
+**Feasibility under a 24h walltime limit (benchmark data scale)**:
+
+The reference workflow reduces walltime per Optuna trial by using 8-GPU DDP. 
+Our benchmark additionally uses a larger cohort (MIMIC-HOSP + MIMIC-ICU) and a broader set of MEDS-derived
+columns (see `methods/data-columns.md`), increasing token volume per admission. As a representative example,
+for `deciles_none_unfused_time_tokens` (MEDS; all-hospitalizations cohort):
+
+- Train admissions: 297,817
+- Validation admissions: 41,869
+- Mean `seq_len` (train): 2,041 tokens
+- Max `seq_len` (train): 569,422 tokens (rare extreme outliers)
+
+These facts motivate matching the reference infrastructure pattern (8-GPU DDP + iterable packed datasets)
+to keep walltime per trial within the 24h constraint.
 
 **Infrastructure**:
 - Experiment orchestration: bash job files + SLURM arrays (fms-ehrs pattern)
-- Job scheduling: SLURM arrays with capped concurrency (≤8 GPUs at a time)
+- Job scheduling: SLURM arrays with capped concurrency, respecting per-job GPU requests (e.g., Exp1 Stage1 uses 8 GPUs/job under the reference pattern)
 - Logging: Weights & Biases
 - Hardware: Randi cluster (gpuq partition; nodes advertise `gpu:8` via Slurm GRES). [PLACEHOLDER: insert GPU model from `nvidia-smi` once recorded]
 
@@ -314,7 +470,7 @@ This learned representation is added to token embeddings before transformer proc
 
 **Cohorts**: We define two cohorts based on experimental requirements:
 - **Experiments 1 & 2**: All hospitalizations with stay ≥24 hours
-- **Experiment 3**: ICU patients with hospital stay ≥24 hours (to match CLIF's natural scope and ensure data parity between MEDS and CLIF pipelines)
+- **Experiment 3**: ICU-eligible hospitalizations with stay ≥24 hours, where **all Exp3 arms are constructed from the same event rows** and differ only by code-namespace emission (native vs standardized vs null controls).
 
 **Splitting**: Patient-level 70/10/20 train/validation/test split with temporal ordering respected within each patient.
 
@@ -328,7 +484,7 @@ This learned representation is added to token embeddings before transformer proc
 | ETHOS-Ventile | 20-bin population quantization | This work |
 | Clinical-Ventile | 5-10-5 reference-anchored | This work |
 | Soft-Discrete | Convex combinations of bin embeddings | Adapted from [14] |
-| Continuous-MLP | Z-score + 2-layer MLP | Inspired by [7] |
+| Continuous-xVal | Z-score + xVal-style scaled embedding | Inspired by [7] |
 | Time2Vec | Learned temporal encoding | [15] |
 
 ### 4.3. Evaluation Metrics
@@ -343,13 +499,14 @@ We evaluate representation quality using the four prediction tasks used in `fms-
 
 **MEDS (Experiments 1–2, and Experiment 3 MEDS arm)**: We do **not** compute IMV timing from token presence because the MEDS tokenizer configuration `fms_ehrs/config/mimic-meds-ed.yaml` appends procedures as **suffix tokens at discharge time** (`suffix: PROC`), which destroys procedure timing and makes `imv_event_24h` incorrect if derived from a 24h-truncated token sequence. Instead, we compute outcomes directly from **MEDS event timestamps** under storetime semantics (`benchmarks/mimic-meds-extraction/configs/event_configs_v3.1_full.yaml`) and join them onto tokenized timelines using `scripts/extract_outcomes_meds.py`. IMV is defined by MEDS `PROCEDURE//{itemid}` events with \(itemid \in \{224385, 225792\}\) (initial mapping; validated against CLIF in Experiment 3).
 
-**Discrimination**:
+**Discrimination (current code)**:
 - AUROC: Area under ROC curve, threshold-independent discrimination
-- AUPRC: Area under precision-recall curve, appropriate for class imbalance
 
-**Calibration**:
-- Brier Score: $\frac{1}{N}\sum_i (p_i - y_i)^2$, jointly measures discrimination and calibration
-- ECE: Expected calibration error with 10 bins, $\sum_b \frac{|B_b|}{N}|\text{acc}(B_b) - \text{conf}(B_b)|$
+**Threshold metrics (current code)**:
+- Accuracy, balanced accuracy, precision, recall (computed by `fms_ehrs/framework/logger.py`)
+
+**Calibration + additional discrimination (planned)**:
+We will add AUPRC, Brier score, and ECE once implemented end-to-end in the LR evaluation stage and logged consistently for all experiments.
 
 **Fairness**:
 - Subgroup AUROC Gap: Maximum AUROC difference across sex, race, age quartiles
@@ -363,7 +520,7 @@ We evaluate representation quality using the four prediction tasks used in `fms-
 
 **Training**: Causal language modeling with cross-entropy loss. Early stopping on validation perplexity with patience of 5 epochs.
 
-**Evaluation**: For each pretrained checkpoint, we perform supervised sequence classification for each outcome by initializing `AutoModelForSequenceClassification` from the pretrained language model and fine-tuning end-to-end on 24h-truncated token sequences. We select the best checkpoint by validation AUROC with early stopping and compute downstream metrics (AUROC/AUPRC; Brier/ECE for calibration; subgroup gaps for fairness) from predicted probabilities, following the definitions in §4.3 and the evaluation principles in [10,20].
+**Evaluation (reference-repo-aligned)**: For each trained checkpoint, we extract fixed patient-level representations using `extract_hidden_states.py` and evaluate them using `transfer_rep_based_preds.py --classifier logistic_regression`, mirroring the `Quantifying-Surprise-EHRs` workflow. We report discrimination metrics from the resulting probabilistic predictions and summarize results across five random seeds.
 
 **Experiment 2 numeric value channel**: For soft discretization and continuous encoders, the model consumes the raw per-event scalar measurement (`numeric_value`) aligned to token positions. Tokenization emits a parallel `numeric_values` array aligned to `tokens` (and `padded_numeric_values` aligned to `padded`) such that only quantile-token positions carry the measurement and all other positions are null/masked. This preserves true measurement values while keeping the discrete code-token channel unchanged.
 
@@ -415,7 +572,7 @@ We evaluate representation quality using the four prediction tasks used in `fms-
 
 [PLACEHOLDER: Component-wise ablations for soft discretization]
 
-[PLACEHOLDER: MLP architecture variations for continuous encoder]
+[PLACEHOLDER: xVal scale variants (k=0 vs multiscale) and sensitivity]
 
 [PLACEHOLDER: Time2Vec dimensionality and periodicity analysis]
 
@@ -457,7 +614,7 @@ We evaluate representation quality using the four prediction tasks used in `fms-
 
 1. **Single-site evaluation**: All experiments use MIMIC-IV from a single institution. Cross-site validation on eICU, institutional EHRs, and international cohorts is essential to establish generalizability.
 
-2. **Model scale**: Our 67.3M parameter model is substantially smaller than state-of-the-art foundation models. Optimal representation choices may differ at larger scales.
+2. **Model scale**: Our ≈87M parameter model is substantially smaller than state-of-the-art foundation models. Optimal representation choices may differ at larger scales.
 
 3. **Reference range limitations**: MIMIC-IV provides population-level reference ranges without demographic stratification. Age-, sex-, and race-specific reference intervals would improve clinical anchoring.
 
@@ -629,11 +786,86 @@ Validated on MEDS-formatted MIMIC data using `fms_ehrs/config/mimic-meds-ed.yaml
 
 This represents the first non-CLIF configuration for `fms-ehrs`, demonstrating successful adaptation to MEDS-formatted data from the ETHOS extraction pipeline.
 
-### D.3. Reference Range Validation
+**Sequence length distribution (train split, deciles/non-fused/time tokens)**:
+mean 2,041.07; median 296; p90 4,286; p95 8,452; p99 32,732; max 569,422.
+Coverage at fixed lengths: 75.9% ≤ 1,024 tokens; 82.6% ≤ 2,048 tokens.
+These statistics justify `max_seq_length=1024` for tractable 24h runs while
+making the truncation trade-off explicit.
+
+### D.3. Minimal Preprocessing and QC (NeurIPS-style transparency)
+
+We apply a conservative, pre-registered cleaning policy that avoids hidden
+filtering while ensuring schema validity and temporal fidelity. Each rule is
+deterministic and applied uniformly across all experiments, consistent with
+NeurIPS reproducibility checklist norms that emphasize transparent preprocessing
+and explicit exclusion criteria.
+
+**Evidence-based inspection (tokenized timelines)**:
+We manually inspected the five shortest (length 10–12) and five longest
+(length 339k–569k) timelines from the train split. Shortest timelines contain
+only demographic and administrative tokens (e.g., sex/race/insurance/admit/discharge),
+with **no numeric values** (numeric fraction = 0.0). Longest timelines contain
+dense vitals, labs, medications, ICU transfers, and time-spacing tokens; all
+begin with `TL_START` and end with `TL_END`, and their numeric-value fraction
+is stable (≈0.27–0.32). We observed no malformed sequences, implying that the
+extremes reflect true long-stay or high-frequency event admissions rather than
+tokenization artifacts.
+
+We also reviewed the ICU vital-sign tokenization generated from `chartevents`.
+Vitals are encoded as `VITAL//{itemid}//{unit}` tokens with aligned numeric
+values and time-spacing tokens. In the longest timelines, repeated vital
+measurements retain consistent `{itemid, unit}` identities and appear in
+chronological order, indicating that high-frequency charting increases length
+but does **not** collapse distinct clinical semantics. Therefore, we retain
+fine-grained vital events rather than aggregating them, and rely on the explicit
+time-spacing tokens to preserve temporal structure.
+
+**QC rules and justifications**:
+1. **Schema validity** (drop rows missing `subject_id`, `time`, or `code`):  
+   *Justification*: these fields define the MEDS event identity; missing values
+   cannot be imputed without unverifiable assumptions.  
+   *Evidence*: tokenized sequences show intact `TL_START/TL_END` structure even
+   at extremes, indicating schema completeness post-extraction.
+
+2. **Timeline integrity** (drop admissions with zero events after filtering;
+   enforce chronological ordering under `storetime`):  
+   *Justification*: empty timelines are undefined for autoregressive modeling;
+   storetime ordering prevents label leakage.  
+   *Evidence*: shortest observed timelines (length 10–12) are non-empty and
+   semantically coherent, so no additional pruning is warranted.
+
+3. **Value sanity** (remove non-finite numeric values; keep zeros):  
+   *Justification*: NaN/Inf propagate to loss/gradients and create invalid
+   embeddings; zeros are valid clinical measurements.  
+   *Evidence*: numeric fraction remains plausible in the longest sequences and
+   zero numeric fraction in the shortest sequences is expected (no numeric events).
+
+4. **Reference range completeness** (anchored binning only when both
+   `ref_range_lower` and `ref_range_upper` are present; otherwise fall back to
+   population quantiles for that code):  
+   *Justification*: partial ranges are not clinically interpretable; mixing
+   anchored and unanchored bins within a code would bias discretization.  
+   *Evidence*: MIMIC-IV reference ranges are always paired or absent (Appendix D.2).
+
+5. **Deterministic filtering** (all criteria fixed *a priori* and applied
+   uniformly across cohorts and experiments):  
+   *Justification*: prevents “p‑hacking” via selective exclusion.  
+   *Evidence*: we do not remove extreme‑length timelines; instead we document
+   truncation coverage at fixed `max_seq_length` and apply it uniformly.
+
+**Non‑numeric columns**:
+All non‑numeric event types (diagnoses, procedures, medications, transfers,
+etc.) are encoded as categorical code tokens and do **not** enter the numeric
+value channel. Only rows with valid `numeric_value` populate the aligned numeric
+array used for soft discretization or continuous encoding; all other positions
+are masked as null/NaN. This preserves the discrete semantic stream while
+ensuring continuous encoders operate only on valid numeric measurements.
+
+### D.4. Reference Range Validation
 
 **Critical Finding**: Reference ranges in MIMIC-IV v3.1 are always paired (both `ref_range_lower` and `ref_range_upper` present) or both missing. Zero instances of partial ranges across 142M events.
 
-### D.4. Clinical Validation: Glucose Example
+### D.5. Clinical Validation: Glucose Example
 
 ```
 Lab: Glucose (itemid 50931)
@@ -671,82 +903,9 @@ Above (>105): [115, 127, 146, 184]         = 5 bins
 - Tokenization: `fms-ehrs` framework
 - Model: HuggingFace Transformers
 
-**Reproduction Instructions**:
-```bash
-# Clone repositories (sibling directories; required by default paths)
-git clone https://github.com/bbj-lab/input-representation-benchmark.git
-cd input-representation-benchmark
-git clone --branch dev-input-rep --single-branch https://github.com/bbj-lab/fms-ehrs.git ../fms-ehrs
-
-# (Optional) Configure Weights & Biases for live tracking
-echo 'export WANDB_API_KEY="YOUR_KEY_HERE"' >> ~/.bashrc
-echo 'export WANDB_ENTITY="YOUR_ENTITY_HERE"' >> ~/.bashrc
-source ~/.bashrc
-
-# Environments
-# We use TWO conda environments due to a hard dependency conflict:
-# - MEDS extraction (ETHOS-ARES-compatible) uses MEDS_transforms==0.1.1, which requires polars<=1.27.9
-# - fms-ehrs/clifpy require polars>=1.33 (for CLIF support and modern Polars APIs)
-# Therefore, keep MEDS extraction isolated from training/tokenization.
-#
-# 1) MEDS extraction environment (used for Phase 0 only)
-bash scripts/setup_conda_env_meds_extract.sh
-
-# 2) Training/tokenization environment (used for Phases 1–3)
-# NOTE: torch installation is hardware-dependent; see script output for guidance.
-bash scripts/setup_conda_env_input_rep.sh --with-training-deps
-
-# Phase 0: Extract MEDS data from raw MIMIC-IV (CPU-heavy)
-# Precondition: MIMIC-IV v3.1 exists under physionet.org/files/mimiciv/3.1/
-# The SLURM wrapper `slurm/00_extract_meds.sh` activates `meds-extract` internally.
-sbatch slurm/00_extract_meds.sh
-# Output: benchmarks/mimic-meds-extraction/data/meds/
-
-# Phase 1: Generate experiment job files (bash scripts)
-# The remaining SLURM jobs activate `input-rep` internally.
-python run_experiments.py --mode demo --exp 1
-python run_experiments.py --mode demo --exp 2
-python run_experiments.py --mode demo --exp 3
-
-# (Experiment 3 prerequisite) Prepare CLIF data splits + reference ranges
-# 1) Convert MIMIC-IV → CLIF parquet tables using the CLIF-MIMIC pipeline (external).
-# 2) Build ICU cohort split lists from raw MIMIC-IV:
-python scripts/align_cohorts.py \
-  --mimic_dir physionet.org/files/mimiciv/3.1 \
-  --output_dir data/cohorts/exp3_icu_24h \
-  --data_seed 42
-# 3) Split the unsplit CLIF tables into data/clif/raw/{train,val,test}/:
-python scripts/split_clif_by_patient_splits.py \
-  --clif_in_dir /path/to/CLIF-parquet-output \
-  --splits_dir data/cohorts/exp3_icu_24h \
-  --clif_out_root data/clif
-# 4) Add lab reference range bounds to CLIF labs (enables clinically anchored binning in Exp3):
-python scripts/augment_clif_labs_with_ref_ranges.py \
-  --mimic_dir physionet.org/files/mimiciv/3.1 \
-  --clif_root data/clif \
-  --clif_version_in raw \
-  --inplace
-
-# Phase 2: Submit training/evaluation as SLURM arrays
-# We cap concurrency at 8 GPUs (array parallelism) to bound GPU usage.
-# Exp1 is two-stage to avoid redundant tokenization across seeds/configs:
-#   Stage 0 (CPU): tokenize + outcome extraction (12 configs)
-sbatch --array=0-11%2 slurm/02_run_from_jobfile_cpu.sh slurm/04_exp1_tokenize_jobs.sh
-#   Stage 1 (GPU): pretrain + classify (12 configs × 1 seed for demo)
-sbatch --array=0-11%8 slurm/run_from_jobfile.sh slurm/07_exp1_train_jobs_demo.sh
-# After Exp 1 completes:
-# Exp2 is also two-stage because multiple representation variants share the same
-# tokenization outputs (would otherwise race/overwrite in SLURM arrays).
-#   Stage 0 (CPU): tokenize + outcome extraction (deduplicated; 2 data versions)
-sbatch --array=0-1%2 slurm/02_run_from_jobfile_cpu.sh slurm/08_exp2_tokenize_jobs.sh
-#   Stage 1 (GPU): train + classify (6 configs × 1 seed for demo)
-sbatch --array=0-5%8 slurm/run_from_jobfile.sh slurm/10_exp2_train_jobs_demo.sh
-# After Exp 2 completes (and after CLIF preprocessing is done):
-#   Stage 0 (CPU): tokenize + outcome extraction (2 configs: MEDS vs CLIF)
-sbatch --array=0-1%2 slurm/02_run_from_jobfile_cpu.sh slurm/12_exp3_tokenize_jobs.sh
-#   Stage 1 (GPU): train + classify (2 configs × 1 seed for demo)
-sbatch --array=0-1%8 slurm/run_from_jobfile.sh slurm/14_exp3_train_jobs_demo.sh
-```
+**Reproduction instructions** are maintained as an operational document in the top-level `README.md`
+(SLURM submission details, environment setup, and CLIF preprocessing), to keep this manuscript focused on
+scientific claims, methods, and results.
 
 **Computational Requirements**:
 - **GPU (training)**: 1 GPU per job; max 8 concurrent jobs (policy). [PLACEHOLDER: insert GPU model(s) once recorded]
@@ -754,3 +913,26 @@ sbatch --array=0-1%8 slurm/run_from_jobfile.sh slurm/14_exp3_train_jobs_demo.sh
 - **CPU/RAM (training jobs)**: we provision 4 CPUs and 64GB RAM per training job.
 - **Storage**: [PLACEHOLDER: quantify disk required for raw MIMIC + MEDS parquet + tokenized artifacts + checkpoints]
 - **Runtime**: hardware-dependent; we will report measured wall-clock time and GPU-hours per run alongside performance metrics.
+
+---
+
+## Appendix G: Parameter Deltas for Exp2 Grids
+
+We report **additional parameters** introduced by Exp2 representation and
+temporal modules (over the base LM). Counts exclude non-trainable buffers.
+Let $H$ denote the LM hidden size (here $H=1024$).
+
+| Component | Candidate setting | $\Delta$ parameters (formula) | $\Delta$ parameters (H=1024) |
+|----------|-------------------|-------------------------------|-------------------------------|
+| Time2Vec | $d=32$ | $2d + dH + 3H$ | 35,904 |
+| Time2Vec | $d=64$ | $2d + dH + 3H$ | 68,736 |
+| Time2Vec | $d=128$ | $2d + dH + 3H$ | 134,400 |
+| xVal | scales $S=1$ | $S \cdot H$ | 1,024 |
+| xVal | scales $S=3$ | $S \cdot H$ | 3,072 |
+| Soft discretization | $N^*$ bins | $N^* \cdot H$ | $N^* \times 1{,}024$ (e.g., 20 → 20,480) |
+
+**Notes**:
+- Time2Vec parameters include the projection to $H$ and layer norm.
+- $N^*$ is fixed to the Exp1 winner for final Exp2 runs; if Exp2 runs before Exp1,
+  $N^*$ is set to the pre-registered default (ventiles) and rerun if Exp1 selects
+  a different granularity.

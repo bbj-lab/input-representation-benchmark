@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Split CLIF parquet tables into train/val/test directories using patient ID lists.
+Split CLIF parquet tables into train/val/test directories using cohort split lists.
 
 Why this exists
 ---------------
@@ -19,7 +19,9 @@ creates split directories by filtering tables using provided patient ID lists.
 Filtering rules
 ---------------
 For each split:
-1) Filter `clif_hospitalization.parquet` by `patient_id ∈ split_patient_ids`.
+1) Filter `clif_hospitalization.parquet` by the selected cohort key:
+   - patient_id ∈ split_patient_ids (patient-level cohort), OR
+   - hospitalization_id ∈ split_hadm_ids (ICU-eligible hospitalizations within patient splits; recommended for Exp3).
 2) Derive the set of `hospitalization_id` for that split from the filtered
    hospitalization table.
 3) For each other `clif_*.parquet` table:
@@ -34,6 +36,9 @@ Inputs
     - train_patient_ids.csv
     - val_patient_ids.csv
     - test_patient_ids.csv
+    - train_hadm_ids.csv (optional; required if --filter_key=hospitalization_id)
+    - val_hadm_ids.csv   (optional; required if --filter_key=hospitalization_id)
+    - test_hadm_ids.csv  (optional; required if --filter_key=hospitalization_id)
   produced by `scripts/align_cohorts.py` (column name: `subject_id`)
 
 Output
@@ -57,6 +62,12 @@ def _load_patient_ids(csv_path: Path) -> pl.LazyFrame:
     return df.select(pl.col(col).cast(pl.String, strict=False).alias("patient_id")).lazy()
 
 
+def _load_hadm_ids(csv_path: Path) -> pl.LazyFrame:
+    df = pl.read_csv(csv_path)
+    col = "hadm_id" if "hadm_id" in df.columns else "hospitalization_id"
+    return df.select(pl.col(col).cast(pl.String, strict=False).alias("hospitalization_id")).lazy()
+
+
 def _scan_parquet(path: Path) -> pl.LazyFrame:
     return pl.scan_parquet(path)
 
@@ -78,6 +89,17 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         required=True,
         help="Directory containing train/val/test patient ID CSVs.",
+    )
+    p.add_argument(
+        "--filter_key",
+        type=str,
+        choices=["patient_id", "hospitalization_id"],
+        default="patient_id",
+        help=(
+            "How to define the cohort filter. "
+            "patient_id uses <split>_patient_ids.csv; "
+            "hospitalization_id uses <split>_hadm_ids.csv (recommended for ICU-only Exp3)."
+        ),
     )
     p.add_argument(
         "--clif_out_root",
@@ -126,14 +148,23 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     for split in args.splits:
+        if args.filter_key == "patient_id":
         split_csv = splits_dir / f"{split}_patient_ids.csv"
         if not split_csv.exists():
             raise FileNotFoundError(f"Missing split file: {split_csv}")
-
         patient_ids = _load_patient_ids(split_csv)
-
-        # Filter hospitalization table by patient_id and derive hospitalization_id set.
         hosp_split = hosp.join(patient_ids, on="patient_id", how="semi")
+        else:
+            split_csv = splits_dir / f"{split}_hadm_ids.csv"
+            if not split_csv.exists():
+                raise FileNotFoundError(
+                    f"Missing split file: {split_csv}. "
+                    "Did you run scripts/align_cohorts.py that emits *_hadm_ids.csv?"
+                )
+            hadm_ids = _load_hadm_ids(split_csv)
+            hosp_split = hosp.join(hadm_ids, on="hospitalization_id", how="semi")
+            patient_ids = hosp_split.select("patient_id").unique()
+
         hosp_ids = hosp_split.select("hospitalization_id").unique()
 
         out_dir = clif_out_root / "raw" / split

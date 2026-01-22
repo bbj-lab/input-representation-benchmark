@@ -14,17 +14,21 @@ fi
 job_id="${SLURM_JOB_ID:-${SLURM_JOBID:-}}"
 name=$(
     if [[ -n "${job_id}" ]]; then
-        scontrol show job "${job_id}" \
-    | grep -m 1 "Command=" \
-    | cut -d "=" -f2 \
-            | xargs -I {} basename {} .sh 2>/dev/null
+        # NOTE: This preamble is sourced by scripts that commonly run with
+        # `set -euo pipefail`. Any non-match in grep (exit 1) would therefore
+        # abort the entire job before environment initialization. We treat all
+        # metadata extraction as best-effort and never fatal.
+        scontrol show job "${job_id}" 2>/dev/null \
+            | grep -m 1 "Command=" \
+            | cut -d "=" -f2 \
+            | xargs -I {} basename {} .sh 2>/dev/null || true
     fi
 )
 name="${name:-unknown}"
 jname=$(
     if [[ -n "${job_id}" ]]; then
-        scontrol show job "${job_id}" \
-            | grep -oP 'JobName=\K\S+' 2>/dev/null
+        scontrol show job "${job_id}" 2>/dev/null \
+            | grep -oP 'JobName=\K\S+' 2>/dev/null || true
     fi
 )
 jname="${jname:-unknown}"
@@ -37,7 +41,16 @@ hm="/gpfs/data/bbj-lab/users/$(whoami)"
 # Project paths (default: infer from this repository location)
 IRB_HOME="${IRB_HOME:-${parent_dir}}"
 FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
-DATA_DIR="${DATA_DIR:-${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds}"
+# IMPORTANT: `DATA_DIR` is standardized to point to the MEDS *events directory*
+# that contains split subdirectories (train/val/test or train/tuning/test) and
+# the raw MEDS parquet shards (or a raw/ shim). Concretely:
+#   ${DATA_DIR}/train/
+#   ${DATA_DIR}/tuning/ (or val/)
+#   ${DATA_DIR}/test/
+#   ${DATA_DIR}/*.parquet  (sharded meds table)
+#
+# This avoids ambiguous "root vs events" semantics like ${DATA_DIR}/data.
+DATA_DIR="${DATA_DIR:-${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data}"
 MODEL_DIR="${MODEL_DIR:-${IRB_HOME}/models}"
 OUTPUT_DIR="${OUTPUT_DIR:-${IRB_HOME}/outputs}"
 export IRB_HOME FMS_EHRS_HOME DATA_DIR MODEL_DIR OUTPUT_DIR hm
@@ -120,3 +133,4 @@ echo "  DATA_DIR: ${DATA_DIR}"
 echo "  HF_HOME: ${HF_HOME}"
 echo "  Python: $(which python 2>/dev/null || echo 'not found')"
 echo "=============================================="
+

@@ -62,6 +62,7 @@ results/
 logs/
 *.log
 slurm/output/
+slurm/generated/
 
 # MEDS and tokenized data
 data/

@@ -160,7 +160,7 @@ See the README for setup instructions.
 }
 ```
 
-### Scaled-Down Configuration (67.3M parameters)
+### Scaled-Down Configuration (≈87M parameters; exact depends on vocabulary size)
 
 The specific scaled-down model configuration (hidden_size=1024, intermediate_size=2048,
 num_layers=8, num_heads=8) is borrowed from:

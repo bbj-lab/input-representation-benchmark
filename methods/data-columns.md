@@ -78,6 +78,11 @@ These tables are **excluded** because billing codes are assigned after discharge
 
 **Important implementation detail**: The **quantizer setting** (deciles/ventiles/trentiles/centiles) is applied uniformly to *all* MEDS event types with a scalar `numeric_value` (e.g., LAB, VITAL, FLUID_OUTPUT, INFUSION_START). However, **clinical anchoring** requires reference intervals and therefore applies only to laboratory events that carry `ref_range_lower`/`ref_range_upper`.
 
+**Tokenization inclusion note (MEDS)**:
+Although the MEDS extraction config includes `hosp/omr` rows (e.g., “Blood Pressure”, “BMI (kg/m2)”), our current MEDS tokenizer config (`fms_ehrs/config/mimic-meds-ed.yaml`) does **not** include OMR-derived events in the tokenized timelines. This is intentional to avoid expanding the vocabulary with heterogeneous free-form `result_name` strings and because OMR largely overlaps with ICU `chartevents` vitals for the in-hospital prediction tasks considered here.
+
+Similarly, while MEDS extraction includes both infusion start rates and infusion end amounts, the current tokenizer config treats `INFUSION_END` as a **categorical** event (no numeric quantile token is emitted for its amount). If we decide to include infusion end amounts later, tokenization must be rerun and sequence-length statistics updated accordingly.
+
 | Condition | Data Columns Used |
 |-----------|-------------------|
 | Deciles (10 bins) | `valuenum` → population quantiles |
@@ -97,7 +102,7 @@ These tables are **excluded** because billing codes are assigned after discharge
 |-----------|-------------------|-------------|
 | Discrete | `valuenum` → quantile token | Categorical embedding lookup |
 | Soft discretization | `valuenum` (raw) | Convex combination of adjacent bin embeddings |
-| Continuous encoder | `valuenum` (raw) | MLP projection of z-score normalized value |
+| Continuous encoder (xVal-adapted) | `valuenum` (raw) | xVal-style multiplicative numeric embedding (z-score normalized per code) |
 | Time tokens | `storetime` differences | Categorical time interval tokens |
 | Time2Vec | `storetime` (relative hours) | Learned sinusoidal time embedding |
 
@@ -105,12 +110,31 @@ These tables are **excluded** because billing codes are assigned after discharge
 
 ### Experiment 3: Data Format / Vocabulary Semantics
 
-**Target data**: Same as Exp 2 winner, but comparing vocabulary mappings
+**Target data**: Same numeric/time representation as the Exp2 winner, but Experiment 3 manipulates **only the code namespace** (vocabulary semantics) while holding the underlying event rows fixed.
 
 | Format | Vocabulary Source | Example Code |
 |--------|-------------------|--------------|
 | MEDS | Native MIMIC itemid | `LAB//50931` |
 | CLIF | Standardized clinical concepts | `LAB//glucose_serum` |
+
+### Experiment 3 design (rigor-first; paired events)
+
+The core **internal validity** goal of Exp3 is to ensure that any performance difference is attributable to **vocabulary semantics** rather than cohort/feature confounds. Therefore, Exp3 is implemented as a *paired* comparison over the same cohort and the same underlying event rows.
+
+**External validity trade-off**: Exp3 intentionally restricts to a matched-signal ICU cohort (vitals+labs) for parity with CLIF. This strengthens internal validity for the “semantics intervention” but reduces generalizability to other settings/modalities.
+
+- **Fixed cohort**: ICU-eligible hospitalizations with LOS ≥24h (see `scripts/align_cohorts.py` for split logic and emitted `{train,val,test}_hadm_ids.csv`).
+- **Fixed event rows**: a matched-signal subset (by default **labs + vitals**) extracted from the same raw MIMIC-IV source tables under the same timestamp semantics.
+- **Only manipulated variable**: whether we emit **native** codes (MEDS) or **standardized** concept codes (CLIF semantics) for the code-token stream; numeric values (`numeric_values`) and times are held fixed.
+
+In practice, CLIF-MIMIC conversion rules provide the mapping from raw identifiers (e.g., MIMIC `itemid`/units) to standardized concept labels. We use those mappings to construct the standardized-code arm while retaining the original timestamps and raw numeric values.
+
+### Exp3 negative controls (null models; required)
+
+To avoid over-claiming “semantic” effects when the benefit is actually due to vocabulary collapse/regularization, we require two explicit null controls:
+
+- **Randomized mapping control**: permute native→standardized mappings within domain (labs within labs, vitals within vitals). If this performs similarly to the standardized arm, the interpretation “semantics helps” lacks internal validity (it could be vocabulary support/regularization rather than semantics).
+- **Frequency-matched collapse control**: collapse native codes into \(K\) pseudo-categories with a matched frequency profile to the standardized vocabulary. This tests whether gains arise from controlled vocabulary size rather than semantic alignment.
 
 **Clinical anchoring in CLIF (reference ranges)**:
 
@@ -159,7 +183,8 @@ MIMIC-IV Raw Data
 ┌──────────────────────────────────────────────────────────────┐
 │ Phase 3: Evaluation                                          │
 │   - 4 outcomes: mortality, LOS, ICU admission, IMV           │
-│   - Metrics: AUROC, AUPRC, Brier, ECE                        │
+│   - Metrics (current code): AUROC, accuracy, balanced accuracy, precision, recall │
+│   - Metrics (planned manuscript): add AUPRC, Brier, ECE once implemented end-to-end │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -176,12 +201,12 @@ MIMIC-IV Raw Data
 
 This section records the **exact commands executed** and the **falsifiable readouts** that were checked for:
 
-- Phase 0: MEDS extraction (`slurm/00_extract_meds.sh`)
-- Phase 1: Tokenization (`slurm/01_tokenize.sh`)
+- Phase 0: MEDS extraction (`slurm/01_phase0_extract_meds.sh`)
+- Phase 1: Tokenization (`slurm/90_stage0_tokenize_only_debug.sh`)
 
 The goal is reproducibility: a third-party researcher should be able to clone the repos, run these commands, and verify the same output layout and basic statistics.
 
-### Phase 0 (MEDS extraction): `slurm/00_extract_meds.sh`
+### Phase 0 (MEDS extraction): `slurm/01_phase0_extract_meds.sh`
 
 - **Model (pipeline)**: MIMIC-IV v3.1 raw tables → pre-MEDS parquet materialization → MEDS_transforms extraction stages → finalized MEDS cohort split into `train/`, `tuning/`, `test/`.
 - **Hypothesis (minimal assumptions)**:
@@ -290,23 +315,24 @@ MEDS_transform-runner "pipeline_config_fp=$PIPELINE_CONFIG_FP" \
     - train: `255239` subjects
     - tuning: `36463` subjects
     - test: `72925` subjects
-  - **Tokenization shim created automatically** (by `slurm/00_extract_meds.sh` post-step):
+  - **Tokenization shim created automatically** (by `slurm/01_phase0_extract_meds.sh` post-step):
     - `.../data/raw/train -> ../train`
     - `.../data/raw/val   -> ../tuning` (or `../val` if present)
     - `.../data/raw/test  -> ../test`
 
-### Phase 1 (tokenization): `slurm/01_tokenize.sh`
+### Phase 1 (tokenization): `slurm/90_stage0_tokenize_only_debug.sh`
 
 - **Model (pipeline)**: MEDS split parquet shards → `Tokenizer21` (fms-ehrs) → tokenized timelines written as Parquet + vocabulary saved.
 - **Hypothesis (minimal assumptions)**:
-  - MEDS splits exist at `${DATA_DIR}/data/{train,tuning,test}`.
-  - A `raw/` shim exists at `${DATA_DIR}/data/raw/{train,val,test}` (created automatically by `slurm/01_tokenize.sh` if missing).
+  - MEDS splits exist at `${DATA_DIR}/{train,tuning,test}`.
+  - A `raw/` shim exists at `${DATA_DIR}/raw/{train,val,test}` (created automatically by `slurm/90_stage0_tokenize_only_debug.sh` if missing).
   - The tokenization config `fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml` matches the MEDS schema produced by our extraction.
 - **Falsifiable consequences (what must be true if Phase 1 succeeded)**:
   - Tokenized artifacts exist:
-    - `${DATA_DIR}/data/deciles_none_unfused-tokenized/{train,val,test}/tokens_timelines.parquet`
-    - `${DATA_DIR}/data/deciles_none_unfused_first_24h-tokenized/{train,val,test}/tokens_timelines.parquet`
+    - `${DATA_DIR}/deciles_none_unfused-tokenized/{train,val,test}/tokens_timelines.parquet`
+    - `${DATA_DIR}/deciles_none_unfused_first_24h-tokenized/{train,val,test}/tokens_timelines.parquet`
     - `vocab.gzip` exists at least for `train/` (and for `*_first_24h/train/`).
+    - `numeric_stats.json` exists at `*-tokenized/train/numeric_stats.json` and `*_first_24h-tokenized/train/numeric_stats.json` (required for continuous encoder normalization; generated during tokenization).
   - Non-zero timeline counts are logged per split.
   - Runtime can be computed from the log’s start/end timestamps.
 
@@ -321,7 +347,7 @@ conda activate input-rep
 cd /home/ihlee/Desktop/input-representation-benchmark
 mkdir -p slurm/output
 LOG_FILE="slurm/output/local_tokenize_$(date +%Y%m%d_%H%M%S).log"
-(bash slurm/01_tokenize.sh >"${LOG_FILE}" 2>&1 & echo $! > slurm/output/local_tokenize.pid)
+(bash slurm/90_stage0_tokenize_only_debug.sh >"${LOG_FILE}" 2>&1 & echo $! > slurm/output/local_tokenize.pid)
 echo "Log: ${LOG_FILE}"
 ```
 
