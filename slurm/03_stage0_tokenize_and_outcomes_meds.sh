@@ -158,6 +158,130 @@ if [[ ! -f "${LINK_24H}/train/numeric_stats.json" ]]; then
   H24_OK=0
 fi
 
+# -----------------------------------------------------------------------------
+# Stage0E fast path (avoid re-tokenizing raw MEDS):
+#
+# If this Stage0 invocation is an evaluation-time retokenization (i.e., we are
+# given a *training vocab* via --vocab_path and we are producing ONLY the 24h-cut
+# dataset), we can cheaply derive the eval dataset from an existing 24h-cut
+# tokenized dataset that already contains full variable-length `tokens`:
+#   - Drop fully-padded fixed-length columns (e.g., `padded`, `padded_*`)
+#   - Optionally truncate variable-length sequences to max_padded_len and append TRUNC
+#   - Reuse vocab.gzip + numeric_stats.json from the training condition
+#   - Reuse outcomes parquet (same cohort/labels) while dropping padded columns
+#
+# This is dramatically faster than re-parsing raw MEDS events and is sufficient
+# because Stage2 extraction dynamically pads per-batch when `padded` is absent.
+# -----------------------------------------------------------------------------
+if [[ "${ONLY_24H_CUT}" == "true" && -n "${VOCAB_PATH}" && -n "${MAX_PADDED_LEN}" ]]; then
+  VOCAB_DIR="$(dirname "${VOCAB_PATH}")"                # .../<dv>-tokenized/train
+  TOKENIZED_DIR="$(dirname "${VOCAB_DIR}")"             # .../<dv>-tokenized
+  DV_TRAIN="$(basename "${TOKENIZED_DIR}")"
+  DV_TRAIN="${DV_TRAIN%-tokenized}"
+  SRC_24H="${MEDS_DATA_DIR}/${DV_TRAIN}_first_24h-tokenized"
+
+  # Only proceed if the source 24h-cut dataset exists and looks complete.
+  SRC_OK=1
+  for s in train val test; do
+    if [[ ! -f "${SRC_24H}/${s}/tokens_timelines.parquet" ]]; then
+      SRC_OK=0
+      break
+    fi
+  done
+  if [[ ! -f "${SRC_24H}/train/vocab.gzip" || ! -f "${SRC_24H}/train/numeric_stats.json" ]]; then
+    SRC_OK=0
+  fi
+
+  if [[ "${SRC_OK}" -eq 1 && "${H24_OK}" -ne 1 ]]; then
+    echo "[stage0] Stage0E fast-path: deriving eval tokenization from existing 24h-cut tokens."
+    echo "  train dv: ${DV_TRAIN}"
+    echo "  src_24h:  ${SRC_24H}"
+    echo "  dst_24h:  ${LINK_24H}"
+    echo "  max_len:  ${MAX_PADDED_LEN}"
+
+    # Ensure split directories exist in the destination.
+    mkdir -p "${LINK_24H}/train" "${LINK_24H}/val" "${LINK_24H}/test"
+
+    # Reuse vocab + numeric stats exactly (token IDs must match the pretrained model).
+    ln -sf "${SRC_24H}/train/vocab.gzip" "${LINK_24H}/train/vocab.gzip"
+    ln -sf "${SRC_24H}/train/numeric_stats.json" "${LINK_24H}/train/numeric_stats.json"
+
+    export SRC_24H
+    export DST_24H="${LINK_24H}"
+    export MAX_PADDED_LEN
+
+    python - <<'PY'
+import os
+import polars as pl
+
+IRB_HOME = os.environ["IRB_HOME"]
+FMS_EHRS_HOME = os.environ["FMS_EHRS_HOME"]
+SRC_24H = os.environ["SRC_24H"]
+DST_24H = os.environ["DST_24H"]
+MAX_LEN = int(os.environ["MAX_PADDED_LEN"])
+
+import sys
+sys.path.insert(0, FMS_EHRS_HOME)
+from fms_ehrs.framework.vocabulary import Vocabulary
+
+vocab = Vocabulary().load(os.path.join(SRC_24H, "train", "vocab.gzip"))
+TRUNC = int(vocab("TRUNC"))
+
+def _transform(in_fp: str, out_fp: str):
+    lf = pl.scan_parquet(in_fp)
+    cols = set(lf.collect_schema().names())
+    drop_cols = [c for c in cols if c.startswith("padded")]
+    if drop_cols:
+        lf = lf.drop(drop_cols)
+
+    # Truncate variable-length lists and append TRUNC to tokens (and null to aligned arrays).
+    lf = lf.with_columns(seq_len=pl.col("tokens").list.len())
+    lf = lf.with_columns(
+        tokens=pl.when(pl.col("seq_len") > MAX_LEN).then(
+            pl.concat_list(pl.col("tokens").list.slice(0, MAX_LEN - 1), pl.lit(TRUNC))
+        ).otherwise(pl.col("tokens"))
+    )
+    if "times" in cols:
+        lf = lf.with_columns(
+            times=pl.when(pl.col("seq_len") > MAX_LEN).then(
+                pl.concat_list(
+                    pl.col("times").list.slice(0, MAX_LEN - 1),
+                    pl.lit(None).cast(pl.Datetime(time_unit="ms")),
+                )
+            ).otherwise(pl.col("times"))
+        )
+    if "numeric_values" in cols:
+        lf = lf.with_columns(
+            numeric_values=pl.when(pl.col("seq_len") > MAX_LEN).then(
+                pl.concat_list(
+                    pl.col("numeric_values").list.slice(0, MAX_LEN - 1),
+                    pl.lit(None).cast(pl.Float32),
+                )
+            ).otherwise(pl.col("numeric_values"))
+        )
+    lf = lf.drop("seq_len")
+    lf.collect().write_parquet(out_fp)
+
+for split in ("train", "val", "test"):
+    os.makedirs(os.path.join(DST_24H, split), exist_ok=True)
+    _transform(
+        os.path.join(SRC_24H, split, "tokens_timelines.parquet"),
+        os.path.join(DST_24H, split, "tokens_timelines.parquet"),
+    )
+
+    src_out = os.path.join(SRC_24H, split, "tokens_timelines_outcomes.parquet")
+    if os.path.exists(src_out):
+        _transform(
+            src_out,
+            os.path.join(DST_24H, split, "tokens_timelines_outcomes.parquet"),
+        )
+PY
+
+    # Mark H24_OK so downstream branches skip the expensive raw tokenization.
+    H24_OK=1
+  fi
+fi
+
 if [[ "${MAIN_OK}" -eq 1 && "${H24_OK}" -eq 1 ]]; then
   echo "[stage0] Tokenization outputs already exist for ${DATA_VERSION_OUT}; skipping tokenization."
 else
