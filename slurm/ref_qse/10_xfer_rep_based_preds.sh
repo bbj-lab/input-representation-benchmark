@@ -37,5 +37,6 @@ python3 "${FMS_EHRS_HOME}/fms_ehrs/scripts/transfer_rep_based_preds.py" \
   --data_version "${data_version}" \
   --model_loc "${model_loc}" \
   --classifier logistic_regression \
-  --save_preds
+  --save_preds \
+  ${IRB_XFER_PRED_ARGS:-}
 

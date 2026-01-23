@@ -91,7 +91,9 @@ if [[ "${DATA_FORMAT}" = "meds_icu" || "${DATA_FORMAT}" = "meds_randomized" || "
     --tokenized_dir "${DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized" \
     --splits train,val,test
 else
-  python "${FMS_EHRS_HOME}/fms_ehrs/scripts/extract_outcomes.py" \
+  # Exp3 CLIF arm tokenizes only labs+vitals for matched-signal parity, so outcomes must be computed
+  # from raw CLIF tables (ADT + respiratory support), not from token presence.
+  python "${IRB_HOME}/scripts/extract_outcomes_clif.py" \
     --data_dir "${DATA_DIR}" \
     --ref_version "${DATA_VERSION_OUT}" \
     --data_version "${DATA_VERSION_OUT}_first_24h"

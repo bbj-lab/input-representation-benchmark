@@ -47,6 +47,9 @@ echo "Job File: ${JOBFILE}"
 echo "Host: $(hostname)"
 echo "=============================================="
 
+START_TS="$(date +%s)"
+echo "Start time: $(date -Is)"
+
 TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
 CMD=$(grep -v '^#' "$JOBFILE" | grep -v '^[[:space:]]*$' | sed -n "$((TASK_ID + 1))p")
 if [[ -z "$CMD" ]]; then
@@ -61,4 +64,8 @@ echo ""
 echo "=============================================="
 
 eval "$CMD"
+
+END_TS="$(date +%s)"
+echo "End time: $(date -Is)"
+echo "Walltime (s): $((END_TS - START_TS))"
 

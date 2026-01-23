@@ -122,13 +122,17 @@ class TestExtractOutcomesMeds(unittest.TestCase):
             row100 = out.filter(pl.col("hospitalization_id") == "100").row(0, named=True)
             self.assertFalse(row100["same_admission_death"])
             self.assertFalse(row100["long_length_of_stay"])
+            self.assertAlmostEqual(float(row100["icu_length_of_stay"]), 18.0, places=3)
             self.assertTrue(row100["icu_admission"])
             self.assertFalse(row100["icu_admission_24h"])
             self.assertTrue(row100["imv_event"])
             self.assertTrue(row100["imv_event_24h"])
+            self.assertFalse(row100["prolonged_icu_stay"])
 
             row200 = out.filter(pl.col("hospitalization_id") == "200").row(0, named=True)
             self.assertTrue(row200["same_admission_death"])
+            self.assertAlmostEqual(float(row200["icu_length_of_stay"]), 0.0, places=3)
             self.assertFalse(row200["icu_admission"])
             self.assertFalse(row200["imv_event"])
+            self.assertFalse(row200["prolonged_icu_stay"])
 

@@ -49,6 +49,9 @@ echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-auto}"
 echo "Host: $(hostname)"
 echo "=============================================="
 
+START_TS="$(date +%s)"
+echo "Start time: $(date -Is)"
+
 nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader 2>/dev/null || echo "GPU info unavailable"
 
 TASK_ID=${SLURM_ARRAY_TASK_ID:-0}
@@ -65,4 +68,8 @@ echo ""
 echo "=============================================="
 
 eval "$CMD"
+
+END_TS="$(date +%s)"
+echo "End time: $(date -Is)"
+echo "Walltime (s): $((END_TS - START_TS))"
 

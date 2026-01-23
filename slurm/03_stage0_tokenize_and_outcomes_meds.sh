@@ -16,7 +16,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 --data_version_out <name> --quantizer <deciles|ventiles|trentiles|centiles> --clinical_anchoring <none|5-10-5|10-10-10> --include_ref_ranges <true|false> --fused_category_values <true|false>"
+  echo "Usage: $0 --data_version_out <name> --quantizer <deciles|ventiles|trentiles|centiles> --clinical_anchoring <none|5-10-5|10-10-10> --include_ref_ranges <true|false> --fused_category_values <true|false> [--vocab_path <path>] [--max_padded_len <int>] [--only_24h_cut <true|false>]"
 }
 
 DATA_VERSION_OUT=""
@@ -25,6 +25,9 @@ CLINICAL_ANCHORING=""
 INCLUDE_REF_RANGES=""
 FUSED_CATEGORY_VALUES=""
 INCLUDE_TIME_SPACING_TOKENS="true"
+VOCAB_PATH=""
+MAX_PADDED_LEN=""
+ONLY_24H_CUT="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +37,9 @@ while [[ $# -gt 0 ]]; do
     --include_ref_ranges) INCLUDE_REF_RANGES="$2"; shift 2 ;;
     --fused_category_values) FUSED_CATEGORY_VALUES="$2"; shift 2 ;;
     --include_time_spacing_tokens) INCLUDE_TIME_SPACING_TOKENS="$2"; shift 2 ;;
+    --vocab_path) VOCAB_PATH="$2"; shift 2 ;;
+    --max_padded_len) MAX_PADDED_LEN="$2"; shift 2 ;;
+    --only_24h_cut) ONLY_24H_CUT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: Unknown arg: $1"; usage; exit 1 ;;
   esac
@@ -86,7 +92,10 @@ TARGET_24H="${IRB_TOKEN_CACHE_ROOT}/${DATA_VERSION_OUT}_first_24h-tokenized"
 LINK_MAIN="${MEDS_DATA_DIR}/${DATA_VERSION_OUT}-tokenized"
 LINK_24H="${MEDS_DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized"
 
-mkdir -p "${TARGET_MAIN}" "${TARGET_24H}"
+mkdir -p "${TARGET_24H}"
+if [[ "${ONLY_24H_CUT}" != "true" ]]; then
+  mkdir -p "${TARGET_MAIN}"
+fi
 
 ensure_symlink() {
   local target="$1"
@@ -109,26 +118,30 @@ ensure_symlink() {
   ln -s "${target}" "${link}"
 }
 
-ensure_symlink "${TARGET_MAIN}" "${LINK_MAIN}"
 ensure_symlink "${TARGET_24H}" "${LINK_24H}"
 
 MAIN_OK=1
-for s in train val test; do
-  if [[ ! -f "${LINK_MAIN}/${s}/tokens_timelines.parquet" ]]; then
+if [[ "${ONLY_24H_CUT}" == "true" ]]; then
+  MAIN_OK=1
+else
+  ensure_symlink "${TARGET_MAIN}" "${LINK_MAIN}"
+  for s in train val test; do
+    if [[ ! -f "${LINK_MAIN}/${s}/tokens_timelines.parquet" ]]; then
+      MAIN_OK=0
+      break
+    fi
+  done
+  if [[ ! -f "${LINK_MAIN}/train/vocab.gzip" ]]; then
     MAIN_OK=0
-    break
   fi
-done
-if [[ ! -f "${LINK_MAIN}/train/vocab.gzip" ]]; then
-  MAIN_OK=0
-fi
-# Continuous encoders require quantizer/anchoring-independent numeric stats
-# computed from raw training values. This file is produced by
-# `fms_ehrs/scripts/tokenize_w_config.py` (train split) and must exist for
-# Experiment 2 continuous configurations to be method-faithful and fair across
-# quantization/anchoring settings.
-if [[ ! -f "${LINK_MAIN}/train/numeric_stats.json" ]]; then
-  MAIN_OK=0
+  # Continuous encoders require quantizer/anchoring-independent numeric stats
+  # computed from raw training values. This file is produced by
+  # `fms_ehrs/scripts/tokenize_w_config.py` (train split) and must exist for
+  # Experiment 2 continuous configurations to be method-faithful and fair across
+  # quantization/anchoring settings.
+  if [[ ! -f "${LINK_MAIN}/train/numeric_stats.json" ]]; then
+    MAIN_OK=0
+  fi
 fi
 
 H24_OK=1
@@ -155,8 +168,18 @@ else
     --config_loc "${TOKENIZER_CONFIG}"
     --quantizer "${QUANTIZER}"
     --clinical_anchoring "${CLINICAL_ANCHORING}"
-    --include_24h_cut
   )
+  if [[ "${ONLY_24H_CUT}" == "true" ]]; then
+    tokenize_args+=( --only_24h_cut )
+  else
+    tokenize_args+=( --include_24h_cut )
+  fi
+  if [[ -n "${VOCAB_PATH}" ]]; then
+    tokenize_args+=( --vocab_path "${VOCAB_PATH}" )
+  fi
+  if [[ -n "${MAX_PADDED_LEN}" ]]; then
+    tokenize_args+=( --max_padded_len "${MAX_PADDED_LEN}" )
+  fi
 
   case "${INCLUDE_REF_RANGES}" in
     true) tokenize_args+=( --include_ref_ranges ) ;;
@@ -186,27 +209,33 @@ else
   # required for method-faithful continuous encoders (numeric_stats.json).
   # ---------------------------------------------------------------------------
   for s in train val test; do
-    if [[ ! -f "${LINK_MAIN}/${s}/tokens_timelines.parquet" ]]; then
-      echo "ERROR: missing tokenization output: ${LINK_MAIN}/${s}/tokens_timelines.parquet" >&2
-      exit 1
+    if [[ "${ONLY_24H_CUT}" != "true" ]]; then
+      if [[ ! -f "${LINK_MAIN}/${s}/tokens_timelines.parquet" ]]; then
+        echo "ERROR: missing tokenization output: ${LINK_MAIN}/${s}/tokens_timelines.parquet" >&2
+        exit 1
+      fi
     fi
     if [[ ! -f "${LINK_24H}/${s}/tokens_timelines.parquet" ]]; then
       echo "ERROR: missing tokenization output: ${LINK_24H}/${s}/tokens_timelines.parquet" >&2
       exit 1
     fi
   done
-  if [[ ! -f "${LINK_MAIN}/train/vocab.gzip" ]]; then
-    echo "ERROR: missing vocabulary: ${LINK_MAIN}/train/vocab.gzip" >&2
-    exit 1
+  if [[ "${ONLY_24H_CUT}" != "true" ]]; then
+    if [[ ! -f "${LINK_MAIN}/train/vocab.gzip" ]]; then
+      echo "ERROR: missing vocabulary: ${LINK_MAIN}/train/vocab.gzip" >&2
+      exit 1
+    fi
   fi
   if [[ ! -f "${LINK_24H}/train/vocab.gzip" ]]; then
     echo "ERROR: missing vocabulary: ${LINK_24H}/train/vocab.gzip" >&2
     exit 1
   fi
-  if [[ ! -f "${LINK_MAIN}/train/numeric_stats.json" ]]; then
-    echo "ERROR: missing required numeric stats: ${LINK_MAIN}/train/numeric_stats.json" >&2
-    echo "  Continuous encoders require these quantizer/anchoring-independent per-code statistics." >&2
-    exit 1
+  if [[ "${ONLY_24H_CUT}" != "true" ]]; then
+    if [[ ! -f "${LINK_MAIN}/train/numeric_stats.json" ]]; then
+      echo "ERROR: missing required numeric stats: ${LINK_MAIN}/train/numeric_stats.json" >&2
+      echo "  Continuous encoders require these quantizer/anchoring-independent per-code statistics." >&2
+      exit 1
+    fi
   fi
   if [[ ! -f "${LINK_24H}/train/numeric_stats.json" ]]; then
     echo "ERROR: missing required numeric stats: ${LINK_24H}/train/numeric_stats.json" >&2

@@ -18,6 +18,8 @@
 #
 # Optional (risky) flags:
 #   --delete-token-cache   # deletes IRB token cache root (expensive to rebuild)
+#   --delete-tokenized-symlinks # deletes *-tokenized symlinks under DATA_DIR (safe-ish; recreatable)
+#   --delete-stage2-stage3-artifacts # deletes features-*.npy and *-preds-*.pkl under token cache + DATA_DIR symlinks
 #   --archive-slurm-output # move slurm/output to a timestamped dir under slurm/output_archive/
 #
 # =============================================================================
@@ -26,6 +28,8 @@ set -euo pipefail
 
 DRY_RUN=1
 DELETE_TOKEN_CACHE=0
+DELETE_TOKENIZED_SYMLINKS=0
+DELETE_STAGE2_STAGE3_ARTIFACTS=0
 ARCHIVE_SLURM_OUTPUT=0
 
 while [[ $# -gt 0 ]]; do
@@ -33,6 +37,8 @@ while [[ $# -gt 0 ]]; do
     --dry-run) DRY_RUN=1; shift ;;
     --apply) DRY_RUN=0; shift ;;
     --delete-token-cache) DELETE_TOKEN_CACHE=1; shift ;;
+    --delete-tokenized-symlinks) DELETE_TOKENIZED_SYMLINKS=1; shift ;;
+    --delete-stage2-stage3-artifacts) DELETE_STAGE2_STAGE3_ARTIFACTS=1; shift ;;
     --archive-slurm-output) ARCHIVE_SLURM_OUTPUT=1; shift ;;
     -h|--help)
       sed -n '1,120p' "$0"
@@ -127,6 +133,55 @@ if [[ "${DELETE_TOKEN_CACHE}" -eq 1 ]]; then
   else
     echo "No cache root found at: ${CACHE_ROOT}"
   fi
+  echo ""
+fi
+
+# 6) Optionally delete tokenized symlinks under DATA_DIR (helps avoid Stage0 collisions)
+if [[ "${DELETE_TOKENIZED_SYMLINKS}" -eq 1 ]]; then
+  echo "== Deleting *-tokenized symlinks under DATA_DIR (opt-in) =="
+  source "${IRB_HOME}/slurm/00_preamble.sh" >/dev/null 2>&1 || true
+  DATA_DIR="${DATA_DIR:-${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data}"
+  if [[ -d "${DATA_DIR}" ]]; then
+    while IFS= read -r link; do
+      # Only delete symlinks; refuse to delete real directories.
+      if [[ -L "${link}" ]]; then
+        run rm -f "${link}"
+      fi
+    done < <(find "${DATA_DIR}" -maxdepth 1 -type l -name '*-tokenized' -print)
+  else
+    echo "No DATA_DIR found at: ${DATA_DIR}"
+  fi
+  echo ""
+fi
+
+# 7) Optionally delete Stage2/Stage3 artifacts (features/preds)
+if [[ "${DELETE_STAGE2_STAGE3_ARTIFACTS}" -eq 1 ]]; then
+  echo "== Deleting Stage2/Stage3 artifacts (opt-in) =="
+  source "${IRB_HOME}/slurm/00_preamble.sh" >/dev/null 2>&1 || true
+  DATA_DIR="${DATA_DIR:-${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data}"
+  # Stage2/Stage3 artifacts are written into the tokenized directories (features/preds)
+  # which typically live under the IRB token cache root and are symlinked into DATA_DIR.
+  #
+  # We delete in both places:
+  # - IRB token cache roots (preferred; actual storage)
+  # - DATA_DIR (symlink view; safe if symlinks exist, no-op otherwise)
+  CACHE_ROOT_LOCAL="${IRB_HOME}/.cache/tokenized"
+  CACHE_ROOT_SCRATCH=""
+  if [[ -n "${hm:-}" && -d "${hm}" ]]; then
+    CACHE_ROOT_SCRATCH="${hm}/irb_scratch/tokenized"
+  fi
+
+  for ROOT in "${CACHE_ROOT_LOCAL}" "${CACHE_ROOT_SCRATCH}" "${DATA_DIR}"; do
+    if [[ -z "${ROOT}" ]]; then
+      continue
+    fi
+    if [[ -d "${ROOT}" ]]; then
+      echo "  - scanning: ${ROOT}"
+      while IFS= read -r f; do
+        run rm -f "${f}"
+      done < <(find "${ROOT}" -type f \( -name 'features-*.npy' -o -name '*-preds-*.pkl' \) -print)
+    fi
+  done
   echo ""
 fi
 

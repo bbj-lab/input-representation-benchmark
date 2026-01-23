@@ -22,10 +22,12 @@ onto tokenized timelines to produce `tokens_timelines_outcomes.parquet`.
 Outputs (per hospitalization)
 -----------------------------
 - length_of_stay (hours)
+- icu_length_of_stay (hours; derived from ICU admission/discharge events)
 - same_admission_death
 - long_length_of_stay  (length_of_stay > 7 days)
 - icu_admission        (ICU admission at any time during stay)
 - imv_event            (IMV procedure at any time during stay)
+- prolonged_icu_stay   (icu_length_of_stay > threshold; default 48h)
 - icu_admission_24h    (ICU admission within first 24h)
 - imv_event_24h        (IMV procedure within first 24h)
 
@@ -119,6 +121,7 @@ def _compute_outcomes_from_meds(
     imv_itemids: Sequence[int],
     los_days: float,
     observation_hours: float,
+    icu_los_hours_threshold: float,
 ) -> pl.LazyFrame:
     """Compute outcome labels keyed by `hospitalization_id` (string)."""
     meds = meds.select("subject_id", "hadm_id", "time", "code")
@@ -160,6 +163,14 @@ def _compute_outcomes_from_meds(
         .agg(icu_admission_time=pl.col("time").min())
     )
 
+    # ICU discharge time (by hadm_id) – use max to handle multiple segments.
+    icu_dsc = (
+        meds.filter(pl.col("hadm_id").is_not_null())
+        .filter(pl.col("code").str.starts_with("ICU_DISCHARGE"))
+        .group_by("hadm_id")
+        .agg(icu_discharge_time=pl.col("time").max())
+    )
+
     # IMV time (by hadm_id) from procedureevents itemids
     imv = (
         meds.filter(pl.col("hadm_id").is_not_null())
@@ -185,12 +196,14 @@ def _compute_outcomes_from_meds(
     base = (
         admissions.join(discharges, on="hadm_id", how="left", validate="1:1", maintain_order="left")
         .join(icu_adm, on="hadm_id", how="left", validate="1:1", maintain_order="left")
+        .join(icu_dsc, on="hadm_id", how="left", validate="1:1", maintain_order="left")
         .join(imv, on="hadm_id", how="left", validate="1:1", maintain_order="left")
         .join(death, on="subject_id", how="left", validate="m:1", maintain_order="left")
     )
 
     obs = pl.duration(hours=float(observation_hours))
     los_threshold_hours = float(los_days) * 24.0
+    icu_threshold_hours = float(icu_los_hours_threshold)
 
     discharge_is_death = (
         pl.col("discharge_loc")
@@ -212,6 +225,15 @@ def _compute_outcomes_from_meds(
         base.with_columns(
             hospitalization_id=pl.col("hadm_id").cast(pl.Int64).cast(pl.String),
             length_of_stay=(pl.col("discharge_time") - pl.col("admission_time")).dt.total_hours(),
+            # ICU LOS: approximate as (last ICU discharge - first ICU admission).
+            # If ICU discharge is missing but ICU admission exists, fall back to hospital discharge.
+            icu_length_of_stay=pl.when(pl.col("icu_admission_time").is_null())
+            .then(0.0)
+            .when(pl.col("icu_discharge_time").is_not_null())
+            .then((pl.col("icu_discharge_time") - pl.col("icu_admission_time")).dt.total_hours())
+            .when(pl.col("discharge_time").is_not_null())
+            .then((pl.col("discharge_time") - pl.col("icu_admission_time")).dt.total_hours())
+            .otherwise(0.0),
             same_admission_death=(discharge_is_death | death_between),
             icu_admission=pl.col("icu_admission_time").is_not_null(),
             imv_event=pl.col("imv_time").is_not_null(),
@@ -220,14 +242,20 @@ def _compute_outcomes_from_meds(
             imv_event_24h=pl.col("imv_time").is_not_null()
             & ((pl.col("imv_time") - pl.col("admission_time")) <= obs),
         )
+        .with_columns(
+            prolonged_icu_stay=pl.col("icu_admission_time").is_not_null()
+            & (pl.col("icu_length_of_stay") > icu_threshold_hours),
+        )
         .with_columns(long_length_of_stay=pl.col("length_of_stay") > los_threshold_hours)
         .select(
             "hospitalization_id",
             "length_of_stay",
+            "icu_length_of_stay",
             "same_admission_death",
             "long_length_of_stay",
             "icu_admission",
             "imv_event",
+            "prolonged_icu_stay",
             "icu_admission_24h",
             "imv_event_24h",
         )
@@ -237,6 +265,7 @@ def _compute_outcomes_from_meds(
             pl.col("long_length_of_stay").fill_null(False),
             pl.col("icu_admission").fill_null(False),
             pl.col("imv_event").fill_null(False),
+            pl.col("prolonged_icu_stay").fill_null(False),
             pl.col("icu_admission_24h").fill_null(False),
             pl.col("imv_event_24h").fill_null(False),
         )
@@ -294,6 +323,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Observation window (hours) for *_24h flags (default: 24).",
     )
     parser.add_argument(
+        "--icu_los_hours_threshold",
+        type=float,
+        default=48.0,
+        help="Threshold (hours) for prolonged_icu_stay (default: 48).",
+    )
+    parser.add_argument(
         "--timeline_filename",
         type=str,
         default="tokens_timelines.parquet",
@@ -341,6 +376,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             imv_itemids=imv_itemids,
             los_days=args.los_days,
             observation_hours=args.observation_hours,
+            icu_los_hours_threshold=args.icu_los_hours_threshold,
         )
 
         tt = pl.scan_parquet(timeline_path)

@@ -60,7 +60,7 @@ We treat `/gpfs/data/bbj-lab/users/daniel/Quantifying-Surprise-EHRs` as the refe
 
 - **Model architecture**: scaled-down Llama config (1024 hidden, 2048 MLP, 8 layers, 8 heads; ≈87M params for our vocab sizes)
 - **FM training + HPO**: Optuna HPO executed under DDP (`torchrun`), with small `n_trials` (3) as in the reference
-- **Downstream evaluation**: classification metrics logged by `fms-ehrs` (currently: AUROC, accuracy, balanced accuracy, precision, recall)
+- **Downstream evaluation**: representation-based prediction via `fms-ehrs`, including AUROC/AUPRC, calibration (Brier/ECE), bootstrap CIs, validation-tuned logistic regression regularization \(C\), and validation-selected decision thresholds for thresholded metrics
 
 Important update (benchmark engineering choice):
 - **Epoch budget**: We default to **single-epoch training** (`IRB_STAGE1_EPOCHS=1`) across Exp1–Exp3 to match modern pretraining practice (“more data, fewer epochs”) and to make 20–100+ run sweeps feasible under a 24h/job limit.
@@ -231,10 +231,11 @@ input-representation-benchmark/
 
 ## Operational notes (single source of truth)
 
-- **SLURM jobfiles are generated** (don’t hand-edit): `python run_experiments.py --mode {demo,full}` writes jobfiles under `slurm/generated/<mode>/`.
+- **SLURM jobfiles are generated** (don’t hand-edit): `python run_experiments.py --mode demo` writes jobfiles under `slurm/generated/demo/`.
 - **No UCMC transfer**: unlike the reference `Quantifying-Surprise-EHRs` transfer experiments, this benchmark evaluates within our MIMIC-derived cohorts; the same dataset is used for “orig” and “new” in LR evaluation.
 - **Vendored reference scripts**: we vendor the reference SLURM launchers under `slurm/ref_qse/` with minimal path/resource adaptations; see `slurm/ref_qse/PROVENANCE.md`.
 - **Utility CLIs**: see `scripts/INDEX.md` for what each helper script does (outcome extraction, cohort alignment, QC).
+- **Pre-rerun cleanup**: use `scripts/cleanup_artifacts.sh` (dry-run by default). For Stage0 collisions due to stale `*-tokenized` symlinks under `${DATA_DIR}`, use `--delete-tokenized-symlinks`. To rerun Stage2/Stage3 without collisions, use `--delete-stage2-stage3-artifacts`.
 
 ## Experiment Pipeline
 
@@ -250,6 +251,37 @@ Each experiment follows this pipeline (orchestrated by `run_experiments.py`; Opt
   tokenize_w_config.py    tune_model.py OR        extract_hidden_states.py     transfer_rep_based_preds.py
                           train_representation.py  (torchrun; 2 GPUs)          (--classifier logistic_regression)
 ```
+
+### Evaluation-time retokenization (Exp1 Stage0E; fused vs unfused fairness)
+
+If Exp1 comparisons are intended to isolate **token semantics** (rather than *token budget / event coverage*),
+then a fixed training-time `max_padded_len=1024` can be unfair: **fused** tokenization may fit materially more
+events into the same context window.
+
+This repo supports an evaluation-only retokenization step that:
+- **reuses the original training vocabulary** (`vocab.gzip`) so token IDs stay aligned with the pretrained model
+- **retokenizes with a larger `max_padded_len`** to reduce truncation differences
+- **does not require rerunning Exp1 Stage1** (only Stage0E + Stage2 + Stage3)
+
+Mechanics:
+- `run_experiments.py --exp1_eval_max_padded_len <L>` generates an Exp1 Stage0E jobfile and points Exp1 Stage2/3
+  at the resulting `*_evalL<L>_first_24h-tokenized/` dataset version.
+- Choose \(L\) from the observed token-length distribution using `qc/eval_maxlen_analysis.py`. A practical first
+  pass is **4096**, then bump to **8192** if unfused truncation remains material.
+
+Empirical check (centiles, 24h; train split):
+- Versions:
+  - `centiles_none_unfused_time_tokens_first_24h-tokenized`
+  - `centiles_none_fused_time_tokens_first_24h-tokenized`
+- Results (from `outputs/eval_maxlen_centiles.json`):
+  - At `L=2048`: truncation **3.53% (unfused)** vs **0.66% (fused)**
+  - At `L=4096`: truncation **0.041% (unfused)** vs **0.0% (fused)**
+  - At `L=8192`: truncation **0.0%** for both
+- Recommendation: **`eval_max_padded_len=4096`** is the smallest candidate that makes fused vs unfused truncation
+  essentially negligible for this cohort and tokenization pattern.
+  - Note: these length statistics are effectively **quantizer-invariant** (deciles/centiles change token IDs, not
+    the number of tokens emitted per event), so this conclusion transfers across Exp1 quantizers under the same
+    fused/unfused + temporal-token settings.
 
 ### Experiment 1: Granularity
 - **Tokenization**: Varies quantizer (deciles/ventiles/trentiles/centiles) and clinical anchoring

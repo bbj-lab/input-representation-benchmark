@@ -26,23 +26,45 @@ import polars as pl
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Minimal local dry run for MEDS pipeline pieces.")
+    # Repo roots (avoid hard-coded absolute paths; default to sibling layout).
+    irb_home = Path(__file__).resolve().parents[1]
+    p.add_argument(
+        "--irb_home",
+        type=Path,
+        default=irb_home,
+        help="Path to input-representation-benchmark repo root (default: inferred from this file).",
+    )
+    p.add_argument(
+        "--fms_ehrs_home",
+        type=Path,
+        default=(irb_home / "../fms-ehrs").resolve(),
+        help="Path to sibling fms-ehrs repo (default: ../fms-ehrs).",
+    )
     p.add_argument(
         "--meds_shard",
         type=Path,
         default=Path(
-            "/home/ihlee/Desktop/input-representation-benchmark/benchmarks/mimic-meds-extraction/data/meds/data/train/0.parquet"
+            (irb_home / "benchmarks/mimic-meds-extraction/data/meds/data/train/0.parquet")
         ),
         help="Path to a MEDS shard parquet to sample from.",
     )
     p.add_argument(
         "--tokenizer_config",
         type=Path,
-        default=Path("/home/ihlee/Desktop/fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml"),
+        default=Path((irb_home / "../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml").resolve()),
         help="Tokenizer YAML config (fms-ehrs).",
     )
     p.add_argument("--n_hadm", type=int, default=5, help="Number of admissions (hadm_id) to sample.")
+    p.add_argument(
+        "--eval_max_padded_len",
+        type=int,
+        default=4096,
+        help="Also run an eval-retokenization pass reusing the train vocab, with this max_padded_len.",
+    )
     args = p.parse_args(argv)
 
+    irb_home = args.irb_home.expanduser().resolve()
+    fms_ehrs_home = args.fms_ehrs_home.expanduser().resolve()
     meds_shard = args.meds_shard.expanduser().resolve()
     cfg = args.tokenizer_config.expanduser().resolve()
 
@@ -91,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         # Tokenize (fms-ehrs)
         import sys
 
-        sys.path.insert(0, "/home/ihlee/Desktop/fms-ehrs")
+        sys.path.insert(0, str(fms_ehrs_home))
         from fms_ehrs.framework.tokenizer import Tokenizer21
 
         tkzr = Tokenizer21(data_dir=split_dir, config_file=cfg)
@@ -108,8 +130,27 @@ def main(argv: list[str] | None = None) -> int:
         tt.write_parquet(tok_dir / "tokens_timelines.parquet")
         tkzr.vocab.save(tok_dir / "vocab.gzip")
 
+        # Eval-time retokenization (Stage0E analogue): reuse vocab, change max_padded_len.
+        eval_L = int(args.eval_max_padded_len)
+        if eval_L <= 1:
+            raise ValueError("--eval_max_padded_len must be >= 2")
+        tkzr_eval = Tokenizer21(
+            data_dir=split_dir,
+            config_file=cfg,
+            vocab_path=(tok_dir / "vocab.gzip"),
+            max_padded_len=eval_L,
+        )
+        tt_eval = tkzr_eval.get_tokens_timelines()
+        tt_eval = tkzr_eval.pad_and_truncate(tt_eval)
+        assert "padded" in tt_eval.columns
+        assert int(tt_eval.select(pl.col("padded").list.len().max()).item()) == eval_L
+        tok_eval_dir = root / f"tokenized_evalL{eval_L}" / "train"
+        tok_eval_dir.mkdir(parents=True)
+        tt_eval.write_parquet(tok_eval_dir / "tokens_timelines.parquet")
+        tkzr_eval.vocab.save(tok_eval_dir / "vocab.gzip")
+
         # Compute outcomes (input-representation-benchmark)
-        sys.path.insert(0, "/home/ihlee/Desktop/input-representation-benchmark")
+        sys.path.insert(0, str(irb_home))
         from scripts.extract_outcomes_meds import main as extract_outcomes_main
 
         rc = extract_outcomes_main(

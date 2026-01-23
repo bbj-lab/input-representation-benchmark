@@ -11,8 +11,7 @@
 #
 # Usage:
 #   # Generate job files
-#   python run_experiments.py --mode demo   # 20 single-seed runs
-#   python run_experiments.py --mode full   # 100 runs (5 seeds)
+#   python run_experiments.py --mode demo   # 22 single-seed runs (22 configs × 1 seed)
 #   
 #   # Submit via SLURM
 #   # Exp1–Exp3 are 4-stage:
@@ -68,7 +67,7 @@ data_format: meds
 #   - data_seed: FIXED at 42 across all experiments (ensures same data partition)
 #   - training_seed: VARIED to quantify training stochasticity
 data_seed: 42                       # FIXED - do not change
-training_seed: 42                   # VARIES: 42, 123, 456, 789, 1024
+training_seed: 42                   # Standardized to one seed; uncertainty via bootstrap CIs downstream
 
 # Train/val/test split ratios (patient-level)
 split_ratios:
