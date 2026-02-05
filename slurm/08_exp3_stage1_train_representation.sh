@@ -50,9 +50,6 @@ MODEL_DIR="${MODEL_DIR:-${IRB_HOME}/models}"
 JOB_NAME="exp3_${CONFIG_ID}_s${SEED}"
 JID="s${SEED}"
 
-OUT_DIR="${MODEL_DIR}/exp3_${CONFIG_ID}-${REPRESENTATION}-${TEMPORAL}-s${SEED}"
-mkdir -p "${OUT_DIR}"
-
 NNODES="${SLURM_JOB_NUM_NODES:-1}"
 NODE_RANK="${SLURM_NODEID:-0}"
 
@@ -82,7 +79,7 @@ fi
 torchrun "${torchrun_args[@]}" \
   --data_dir "${DATA_DIR}" \
   --data_version "${DATA_VERSION}" \
-  --model_dir "${OUT_DIR}" \
+  --model_dir "${MODEL_DIR}" \
   --model_version "exp3_${CONFIG_ID}" \
   --model_name "meta-llama/Llama-3.2-1B" \
   --use_bf16 "${IRB_USE_BF16}" \
