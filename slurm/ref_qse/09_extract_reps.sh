@@ -5,7 +5,7 @@
 # Source: /gpfs/data/bbj-lab/users/daniel/Quantifying-Surprise-EHRs/slurm/09_extract_reps.sh
 # =============================================================================
 #
-# Vendored to preserve the exact 2-GPU torchrun extraction pattern.
+# Vendored to preserve the exact torchrun extraction pattern.
 #
 # - jobfile sets: data_dir, data_version, model_loc
 # - remove the (mimic/ucmc × method × pct) grid; our grid is config×seed
@@ -15,7 +15,7 @@
 #SBATCH --job-name=extract-states
 #SBATCH --output=./slurm/output/%A_%a-%x.stdout
 #SBATCH --partition=gpuq
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #SBATCH --time=1-00:00:00
 
 set -euo pipefail
@@ -30,7 +30,7 @@ source slurm/ref_qse/preamble.sh
 : "${model_loc:?Set model_loc (HF model directory)}"
 
 echo "Extracting representations..."
-torchrun --nproc_per_node=2 \
+torchrun --nproc_per_node=1 \
   --rdzv_backend c10d \
   --rdzv-id "${SLURM_ARRAY_TASK_ID:-0}" \
   --rdzv-endpoint=localhost:0 \

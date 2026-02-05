@@ -1,14 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=irb-extract-2gpu
+#SBATCH --job-name=irb-extract-1gpu
 #SBATCH --output=./slurm/output/%A_%a-%x.stdout
 #SBATCH --partition=gpuq
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #SBATCH --mem=128GB
 #SBATCH --cpus-per-task=8
 #SBATCH --time=1-00:00:00
 
 # =============================================================================
-# Runner (Stage 2; 2 GPUs): executes the Nth line of a jobfile
+# Runner (Stage 2; 1 GPU): executes the Nth line of a jobfile
 # =============================================================================
 
 set -euo pipefail
@@ -16,7 +16,7 @@ set -euo pipefail
 JOBFILE=${1:-""}
 if [[ -z "$JOBFILE" ]]; then
   echo "ERROR: Job file not provided." >&2
-  echo "Usage: sbatch --array=0-N slurm/09_run_stage2_gpu2_extract.sh <jobfile>" >&2
+  echo "Usage: sbatch --array=0-N slurm/09_run_stage2_gpu2_extract.sh <jobfile>  # Stage2 runner (1 GPU)" >&2
   exit 1
 fi
 if [[ ! -f "$JOBFILE" ]]; then

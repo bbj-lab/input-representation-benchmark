@@ -91,7 +91,7 @@ fi
 S0_DEP=""
 if [[ "${N_S0}" -gt 0 ]]; then
   echo "[gate] Submitting Exp2 Stage0 (tokenize/outcomes) array on tier2q..."
-  JID_S0=$(sbatch --parsable --time=1-00:00:00 --array=0-$((N_S0-1))%2 slurm/02_run_stage0_tier2q_tokenize.sh "${EXP2_S0_JOBFILE}")
+  JID_S0=$(sbatch --parsable --time=1-00:00:00 --array=0-$((N_S0-1)) slurm/02_run_stage0_tier2q_tokenize.sh "${EXP2_S0_JOBFILE}")
   echo "[gate] Submitted Exp2 Stage0 job: ${JID_S0}"
   S0_DEP="--dependency=afterok:${JID_S0}"
 else
@@ -99,15 +99,15 @@ else
 fi
 
 echo "[gate] Submitting Exp2 Stage1 (discrete-only) array..."
-JID_S1=$(sbatch --parsable ${S0_DEP} --array=0-$((N_S1-1))%2 slurm/05_run_stage1_gpu8_train.sh "${EXP2_S1_JOBFILE}")
+JID_S1=$(sbatch --parsable ${S0_DEP} --array=0-$((N_S1-1)) slurm/05_run_stage1_gpu4_train.sh "${EXP2_S1_JOBFILE}")
 echo "[gate] Submitted Exp2 Stage1 discrete-only job: ${JID_S1}"
 
-echo "[gate] Submitting Exp2 Stage2 (extract reps; 2 GPUs/job) array..."
-JID_S2=$(sbatch --parsable --dependency=afterok:"${JID_S1}" --array=0-$((N_S2-1))%2 slurm/09_run_stage2_gpu2_extract.sh "${EXP2_S2_JOBFILE}")
+echo "[gate] Submitting Exp2 Stage2 (extract reps; 1 GPU/job) array..."
+JID_S2=$(sbatch --parsable --dependency=afterok:"${JID_S1}" --array=0-$((N_S2-1)) slurm/09_run_stage2_gpu2_extract.sh "${EXP2_S2_JOBFILE}")
 echo "[gate] Submitted Exp2 Stage2 job: ${JID_S2}"
 
 echo "[gate] Submitting Exp2 Stage3 (LR; CPU tier2q) array..."
-JID_S3=$(sbatch --parsable --dependency=afterok:"${JID_S2}" --array=0-$((N_S3-1))%4 slurm/11_run_stage3_tier2q_lr.sh "${EXP2_S3_JOBFILE}")
+JID_S3=$(sbatch --parsable --dependency=afterok:"${JID_S2}" --array=0-$((N_S3-1)) slurm/11_run_stage3_tier2q_lr.sh "${EXP2_S3_JOBFILE}")
 echo "[gate] Submitted Exp2 Stage3 job: ${JID_S3}"
 
 echo "[gate] Done."

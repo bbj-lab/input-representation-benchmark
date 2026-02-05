@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """
-Create an Exp3 MEDS events directory by filtering MEDS parquet splits by ICU-eligible hadm_ids.
+Create an Exp3 MEDS events directory by filtering MEDS parquet splits by a split-specific `hadm_id` list.
 
 Why this exists
 ---------------
-Exp3 must isolate vocabulary semantics (MEDS vs CLIF). Since CLIF is ICU-scoped,
-we restrict the MEDS arm to the *same ICU-eligible hospitalizations*.
+Exp3 must isolate vocabulary semantics (identifier rewriting) rather than cohort drift.
+We therefore restrict MEDS to a fixed hospitalization cohort \(H_{\mathrm{ICU}}\), defined as
+MIMIC-IV admissions (`hadm_id`) with:
+  - hospital LOS \(\ge\) 24h (computed from `hosp/admissions.csv.gz` admittime/dischtime), AND
+  - \(\ge\)1 linked ICU stay record in `icu/icustays.csv.gz` for the same `hadm_id`.
+
+The `*_hadm_ids.csv` inputs are produced by `scripts/align_cohorts.py`, which performs a
+patient-level 70/10/20 split by `subject_id` with a fixed RNG seed, then projects that split
+onto admissions and intersects with \(H_{\mathrm{ICU}}\).
 
 Inputs
 ------
@@ -93,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         lf = lf.join(keep.lazy(), on="hadm_id", how="semi")
         lf.sink_parquet(out_fp)
 
-    print(f"Wrote ICU-aligned MEDS events to: {meds_out}")
+    print(f"Wrote MEDS events filtered to Exp3 H_ICU hadm_id lists to: {meds_out}")
     return 0
 
 

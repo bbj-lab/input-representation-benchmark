@@ -34,5 +34,5 @@ fi
 extract_array_max=$((extract_tasks - 1))
 pred_array_max=$((pred_tasks - 1))
 
-EXTRACT_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN_JOBID}" --array=0-"${extract_array_max}"%4 slurm/09_run_stage2_gpu2_extract.sh "${EXTRACT_JOBFILE}")
-sbatch --dependency=afterok:"${EXTRACT_JID}" --array=0-"${pred_array_max}"%8 slurm/11_run_stage3_tier2q_lr.sh "${PRED_JOBFILE}"
+EXTRACT_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN_JOBID}" --array=0-"${extract_array_max}" slurm/09_run_stage2_gpu2_extract.sh "${EXTRACT_JOBFILE}")
+sbatch --dependency=afterok:"${EXTRACT_JID}" --array=0-"${pred_array_max}" slurm/11_run_stage3_tier2q_lr.sh "${PRED_JOBFILE}"

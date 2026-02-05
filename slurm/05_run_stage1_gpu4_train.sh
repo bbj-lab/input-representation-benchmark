@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:4
 #SBATCH --mem=256GB
 #SBATCH --cpus-per-task=16
-#SBATCH --time=1-00:00:00
+#SBATCH --time=0-12:00:00
 
 # =============================================================================
 # Runner (Stage 1; 4 GPUs): executes the Nth line of a jobfile
@@ -44,6 +44,14 @@ mkdir -p slurm/output
 
 # Ensure torchrun launches the correct number of processes for the allocated GPUs.
 export IRB_NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-4}"
+if [[ "${IRB_NPROC_PER_NODE}" -ne 4 ]]; then
+  echo "ERROR: IRB_NPROC_PER_NODE must be 4 for benchmark runs (got ${IRB_NPROC_PER_NODE})." >&2
+  exit 2
+fi
+if [[ "${SLURM_JOB_NUM_NODES:-1}" -ne 1 ]]; then
+  echo "ERROR: This benchmark assumes single-node training (got SLURM_JOB_NUM_NODES=${SLURM_JOB_NUM_NODES})." >&2
+  exit 2
+fi
 
 echo "=============================================="
 echo "SLURM Array Task: ${SLURM_ARRAY_TASK_ID:-0}"

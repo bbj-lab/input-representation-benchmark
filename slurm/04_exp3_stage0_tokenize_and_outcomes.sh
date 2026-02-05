@@ -14,6 +14,7 @@ CLINICAL_ANCHORING=""
 INCLUDE_REF_RANGES=""
 INCLUDE_TIME_SPACING_TOKENS=""
 FUSED_CATEGORY_VALUES=""
+MAX_PADDED_LEN=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -26,6 +27,7 @@ while [[ $# -gt 0 ]]; do
     --include_ref_ranges) INCLUDE_REF_RANGES="$2"; shift 2 ;;
     --include_time_spacing_tokens) INCLUDE_TIME_SPACING_TOKENS="$2"; shift 2 ;;
     --fused_category_values) FUSED_CATEGORY_VALUES="$2"; shift 2 ;;
+    --max_padded_len) MAX_PADDED_LEN="$2"; shift 2 ;;
     *)
       echo "Unknown argument: $1" >&2
       exit 2
@@ -37,8 +39,8 @@ if [[ -z "${DATA_FORMAT}" || -z "${DATA_DIR_IN}" || -z "${DATA_VERSION_OUT}" || 
   echo "Missing required args." >&2
   exit 2
 fi
-if [[ "${DATA_FORMAT}" != "meds_icu" && "${DATA_FORMAT}" != "clif" && "${DATA_FORMAT}" != "meds_randomized" && "${DATA_FORMAT}" != "meds_freqmatched" ]]; then
-  echo "Invalid --data_format: ${DATA_FORMAT} (expected: meds_icu|clif|meds_randomized|meds_freqmatched)" >&2
+if [[ "${DATA_FORMAT}" != "meds_icu" && "${DATA_FORMAT}" != "meds_mapped" && "${DATA_FORMAT}" != "meds_randomized" && "${DATA_FORMAT}" != "meds_freqmatched" ]]; then
+  echo "Invalid --data_format: ${DATA_FORMAT} (expected: meds_icu|meds_mapped|meds_randomized|meds_freqmatched)" >&2
   exit 2
 fi
 if [[ "${FUSED_CATEGORY_VALUES}" != "true" && "${FUSED_CATEGORY_VALUES}" != "false" ]]; then
@@ -50,6 +52,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IRB_HOME="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${IRB_HOME}/slurm/00_preamble.sh"
 FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
+
+if [[ -z "${MAX_PADDED_LEN}" ]]; then
+  MAX_PADDED_LEN="${IRB_MAX_PADDED_LEN}"
+fi
 
 DATA_DIR="${DATA_DIR_IN}"
 if [[ "${DATA_DIR}" != /* ]]; then
@@ -78,6 +84,7 @@ python "${FMS_EHRS_HOME}/fms_ehrs/scripts/tokenize_w_config.py" \
   --data_version_in raw \
   --data_version_out "${DATA_VERSION_OUT}" \
   --config_loc "${TOKENIZER_CONFIG}" \
+  --max_padded_len "${MAX_PADDED_LEN}" \
   --quantizer "${QUANTIZER}" \
   --clinical_anchoring "${CLINICAL_ANCHORING}" \
   --include_ref_ranges "${INCLUDE_REF_RANGES}" \
@@ -85,17 +92,10 @@ python "${FMS_EHRS_HOME}/fms_ehrs/scripts/tokenize_w_config.py" \
   --fused_category_values "${FUSED_CATEGORY_VALUES}" \
   --include_24h_cut
 
-if [[ "${DATA_FORMAT}" = "meds_icu" || "${DATA_FORMAT}" = "meds_randomized" || "${DATA_FORMAT}" = "meds_freqmatched" ]]; then
+if [[ "${DATA_FORMAT}" = "meds_icu" || "${DATA_FORMAT}" = "meds_mapped" || "${DATA_FORMAT}" = "meds_randomized" || "${DATA_FORMAT}" = "meds_freqmatched" ]]; then
   python "${IRB_HOME}/scripts/extract_outcomes_meds.py" \
     --meds_events_dir "${DATA_DIR}" \
     --tokenized_dir "${DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized" \
     --splits train,val,test
-else
-  # Exp3 CLIF arm tokenizes only labs+vitals for matched-signal parity, so outcomes must be computed
-  # from raw CLIF tables (ADT + respiratory support), not from token presence.
-  python "${IRB_HOME}/scripts/extract_outcomes_clif.py" \
-    --data_dir "${DATA_DIR}" \
-    --ref_version "${DATA_VERSION_OUT}" \
-    --data_version "${DATA_VERSION_OUT}_first_24h"
 fi
 

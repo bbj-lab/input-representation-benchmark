@@ -9,28 +9,38 @@ This repository evaluates input representation methods for EHR foundation models
 | Experiment | Focus | Configurations | Training Runs (single-seed dev) |
 |------------|-------|----------------|---------------|
 | **Exp 1** | Granularity & Semantic Anchoring | Decile, Ventile, Trentile, Centile × Fused tokens | 12 (12 × 1 seed) |
-| **Exp 2** | Representation Mechanics | Discrete, Soft, Continuous × Time tokens/Time2Vec (**requires Exp1 winner binning**) | 6 (6 × 1 seed) |
-| **Exp 3** | Vocabulary Semantics | **4-arm design**: MEDS-native, CLIF, randomized-mapping control, frequency-matched collapse control (ICU-aligned cohort) | 4 (4 × 1 seed) |
+| **Exp 2** | Representation Mechanics | Discrete, Soft, xVal × Time tokens/Time2Vec (**requires Exp1 winner binning**) | 6 (6 × 1 seed) |
+| **Exp 3** | Vocabulary Semantics | **4-arm design**: MEDS-native, MEDS→CLIF mapped, randomized-mapping control, frequency-matched mapping control (Exp3 ICU-hospitalization cohort; see below) | 4 (4 × 1 seed) |
 | **Total (when Exp3 controls enabled)** | | 22 configurations | **22 training runs** |
 
 Notes:
-- Exp3 requires additional **data preparation** (CLIF build + semantic control-arm construction). Until those artifacts exist, Exp3 may be run as a 2-arm smoke test (MEDS vs CLIF) or skipped.
+- Exp3 requires additional **data preparation**: constructing the 3 derived arms (`meds_mapped`, `meds_randomized`, `meds_freqmatched`) from a fixed MEDS events directory. The transformation uses CLIF-MIMIC mapping CSVs, but does **not** require building CLIF parquet tables.
 
 **Model**: **Scaled-down LLaMA 3.2** (config overrides: `hidden_size=1024`, `intermediate_size=2048`, `num_hidden_layers=8`, `num_attention_heads=8`; **≈87M parameters** for our vocab sizes; 128K context window in the base architecture).
 
 ### Current run status (live)
 
-Snapshot time: **2026-01-15** (from SLURM at time of writing)
+Snapshot time: **2026-01-25** (from SLURM at time of writing)
 
-| Experiment | Stage 0 (tier2q: tokenize+outcomes) | Stage 1 (gpuq: train/HPO) | Stage 2 (gpuq: extract reps) | Stage 3 (tier2q: LR) |
+| Experiment | Stage 0 (tier2q: tokenize+outcomes) | Stage 1 (gpuq: train) | Stage 2 (gpuq: extract reps) | Stage 3 (tier2q: LR) |
 |---|---|---|---|---|
-| **Exp1 (granularity)** | **Running/queued**: `4924779` (12 tasks) | **Queued (afterok)**: `4924780` (12 tasks) | not submitted | not submitted |
-| **Exp2 (rep mechanics)** | **Queued**: `4924781` (2 tasks; dedup by `data_version`) | **Queued (afterok)**: `4924782` (4 tasks) | not submitted | not submitted |
-| **Exp3 (MEDS vs CLIF)** | **Pending**: CLIF build + cohort-parity prep | not submitted | not submitted | not submitted |
+| **Exp1 (granularity)** | **Complete** (12 configs) | **Complete** (12 configs; training array `5109786` with rerun `5208762_11`) | **Complete**: `5354107` (12 tasks) | **Complete**: `5354108` (12 tasks) |
+| **Exp2 (rep mechanics)** | not submitted | not submitted | not submitted | not submitted |
+| **Exp3 (vocab semantics; 4 MEDS-derived arms)** | not submitted | not submitted | not submitted | not submitted |
+
+#### Exp1 evaluation-time retokenization (Stage0E; optional fairness knob)
+
+Exp1 also ran **Stage0E fast-path** (eval-only retokenization) for all 12 configs under:
+
+- **SLURM array**: `5331731` (12 tasks; all completed)
+- **Max padded length**: `4096` (confirmed in logs)
+- **Artifacts**: `${DATA_DIR}/*_evalL4096_first_24h-tokenized/` (each contains `train/`, `val/`, `test/`)
+
+Stage2 writes `features-*.npy` into each split directory, and Stage3 writes `logistic_regression-preds-*.pkl` into `test/`.
 
 #### Tokenization artifact status (why Stage 0 is re-running)
 
-We already have tokenized timelines + outcomes for the demo `data_version`s, but **`numeric_stats.json` is missing** for all of them. Since **continuous Exp2/Exp3** uses `numeric_stats.json` for quantizer/anchoring-independent scaling, Stage 0 is designed to re-run until it is present.
+We already have tokenized timelines + outcomes for the demo `data_version`s, but **`numeric_stats.json` is missing** for all of them. Since **xVal (Exp2/Exp3)** uses `numeric_stats.json` for quantizer/anchoring-independent scaling, Stage 0 is designed to re-run until it is present.
 
 ### Data directory conventions
 
@@ -63,7 +73,13 @@ We treat `/gpfs/data/bbj-lab/users/daniel/Quantifying-Surprise-EHRs` as the refe
 - **Downstream evaluation**: representation-based prediction via `fms-ehrs`, including AUROC/AUPRC, calibration (Brier/ECE), bootstrap CIs, validation-tuned logistic regression regularization \(C\), and validation-selected decision thresholds for thresholded metrics
 
 Important update (benchmark engineering choice):
-- **Epoch budget**: We default to **single-epoch training** (`IRB_STAGE1_EPOCHS=1`) across Exp1–Exp3 to match modern pretraining practice (“more data, fewer epochs”) and to make 20–100+ run sweeps feasible under a 24h/job limit.
+- **Epoch budget / token-exposure fairness**: We default to **single-epoch training** for all three experiments:
+  - Exp1: `IRB_EXP1_STAGE1_EPOCHS=1` (packed collation; implemented via a deterministic `max_steps` budget in `fms_ehrs/scripts/tune_model.py`)
+  - Exp2–3: `IRB_EXP23_STAGE1_EPOCHS=1` (padded collation; deterministic 1-epoch pass over the expanded windowed dataset in `fms_ehrs/scripts/train_representation.py`)
+  This enforces the fairness budget we care about: **each configuration trains through its entire one-epoch training dataset** (Exp2/3 do not use early stopping).
+- **Windowed padded training (Exp2/3 Stage1)**: We train on full variable-length admission timelines by slicing each admission into fixed-length windows of length `IRB_MAX_SEQ_LENGTH` (default 4096). We use **non-overlapping windows** (no overlap between consecutive windows), and we prefix continuation windows with `TL_CONT`.
+  - Stride control: `IRB_WINDOW_STRIDE` (default `IRB_MAX_SEQ_LENGTH`).
+  - Extreme-length guardrail: `IRB_MAX_WINDOWS_PER_ADMISSION` (default 128). If an admission would emit more windows, we **subsample windows deterministically** (uniformly across the timeline, always including the first and last window) to bound compute for pathological outliers.
 - **GPU packing**: On `gpuq` (8-GPU nodes), we often submit Stage 1 as **4 GPUs/job** so that **two jobs can share one node**, improving queue throughput. Use `slurm/05_run_stage1_gpu4_train.sh` for this mode.
 
 Because our benchmark uses a larger cohort (MIMIC-HOSP + MIMIC-ICU) and more MEDS-derived columns, we follow
@@ -78,9 +94,8 @@ cd input-representation-benchmark
 # IMPORTANT: this benchmark currently targets the `dev-input-rep` branch of fms-ehrs.
 git clone --branch dev-input-rep --single-branch https://github.com/bbj-lab/fms-ehrs.git ../fms-ehrs
 
-# Optional (Exp3 only): CLIF build depends on CLIF-MIMIC conversion rules.
-# If you already have CLIF-2.1 parquet tables under data/clif/raw/{train,val,test}/,
-# you do NOT need this repo.
+# Exp3 mapping uses CLIF-MIMIC mapping CSVs (labs/vitals categories).
+# This is NOT a CLIF-parquet extraction dependency for the primary Exp3 arms.
 git clone https://github.com/bbj-lab/CLIF-MIMIC.git ../CLIF-MIMIC
 
 # MEDS extraction environment
@@ -93,7 +108,7 @@ bash scripts/setup_conda_env_input_rep.sh --with-training-deps
 Dependency notes:
 - **ETHOS-ARES is not required as a sibling repo**. We use its approach and cite it, but this repository contains the MEDS extraction adapter and uses the `MEDS_transforms` Python package during Phase 0.
 - **`../fms-ehrs` is required** (tokenization + training + evaluation live there).
-- **`../CLIF-MIMIC` is only required if you want to (re)build CLIF parquet tables for Exp3**.
+- **`../CLIF-MIMIC` is required for Exp3** because the primary mapped arm uses its mapping CSVs (`data/mappings/... labs.csv` and `... vitals.csv`).
 
 **Note**: The MIMIC-IV dataset (`physionet.org/`) is excluded from git. You must download it separately and place it under this repository.
 MIMIC-IV is a **single-site dataset** from Beth Israel Deaconess Medical Center (Boston, MA), which matters for external validity and motivates our explicit “vocabulary semantics” controls in Exp3.
@@ -115,36 +130,35 @@ python run_experiments.py --mode demo  # Exp1–Exp3 (4-stage; jobfiles under sl
 #
 # Exp1
 # Stage 0 (tier2q CPU): tokenize + outcomes ONCE per config (12 tasks)
-sbatch --array=0-11%2 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/04_exp1_stage0_tokenize.jobfile
+sbatch --array=0-11 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/04_exp1_stage0_tokenize.jobfile
 # Stage 1 (GPU): FM pretraining/HPO per config×seed (demo = 12 tasks)
 # Recommended default: 1 epoch + 4 GPUs/job (packs 2 jobs/node on 8-GPU nodes).
-TRAIN_JID=$(sbatch --parsable --export=ALL,IRB_STAGE1_EPOCHS=1 --array=0-11%2 slurm/05_run_stage1_gpu4_train.sh slurm/generated/demo/07a_exp1_stage1_train.jobfile)
-# Optional: 8 GPUs/job (faster per job, but harder to schedule when the partition is busy)
-# TRAIN_JID=$(sbatch --parsable --export=ALL,IRB_STAGE1_EPOCHS=1 --array=0-11%2 slurm/05_run_stage1_gpu8_train.sh slurm/generated/demo/07a_exp1_stage1_train.jobfile)
-# Stage 2 (GPU; 2 GPUs/job): extract representations AFTER training
-EXTRACT_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN_JID}" --array=0-11%4 slurm/09_run_stage2_gpu2_extract.sh slurm/generated/demo/07b_exp1_stage2_extract_reps.jobfile)
-# Stage 3 (CPU tier2q): logistic regression on extracted reps AFTER extraction
-sbatch --dependency=afterok:"${EXTRACT_JID}" --array=0-11%8 slurm/11_run_stage3_tier2q_lr.sh slurm/generated/demo/07c_exp1_stage3_lr.jobfile
+TRAIN_JID=$(sbatch --parsable --export=ALL,IRB_EXP1_STAGE1_EPOCHS=1 --array=0-11 slurm/05_run_stage1_gpu4_train.sh slurm/generated/demo/07a_exp1_stage1_train.jobfile)
+# Stage 2 (GPU; 1 GPU/job): extract representations AFTER training
+EXTRACT_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN_JID}" --array=0-11 slurm/09_run_stage2_gpu2_extract.sh slurm/generated/demo/07b_exp1_stage2_extract_reps.jobfile)
+# Stage 3 (CPU tier2q; 8 CPUs/job): logistic regression on extracted reps AFTER extraction
+sbatch --dependency=afterok:"${EXTRACT_JID}" --array=0-11 slurm/11_run_stage3_tier2q_lr.sh slurm/generated/demo/07c_exp1_stage3_lr.jobfile
 
 # Exp2
 # Stage 0 (tier2q CPU): tokenize + outcomes (deduplicated by data_version; 2 tasks)
-sbatch --array=0-1%2 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/08_exp2_stage0_tokenize.jobfile
+sbatch --array=0-1 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/08_exp2_stage0_tokenize.jobfile
 # Stage 1 (GPU): train (6 configs × 1 seed = 6 tasks)
-TRAIN2_JID=$(sbatch --parsable --export=ALL,IRB_STAGE1_EPOCHS=1 --array=0-5%2 slurm/05_run_stage1_gpu4_train.sh slurm/generated/demo/10a_exp2_stage1_train.jobfile)
-# Stage 2 (2 GPUs/job): extract reps
-EXTRACT2_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN2_JID}" --array=0-5%4 slurm/09_run_stage2_gpu2_extract.sh slurm/generated/demo/10b_exp2_stage2_extract_reps.jobfile)
-# Stage 3 (tier2q): logistic regression
-sbatch --dependency=afterok:"${EXTRACT2_JID}" --array=0-5%8 slurm/11_run_stage3_tier2q_lr.sh slurm/generated/demo/10c_exp2_stage3_lr.jobfile
+TRAIN2_JID=$(sbatch --parsable --export=ALL,IRB_EXP23_STAGE1_EPOCHS=1 --array=0-5 slurm/05_run_stage1_gpu4_train.sh slurm/generated/demo/10a_exp2_stage1_train.jobfile)
+# Stage 2 (1 GPU/job): extract reps
+EXTRACT2_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN2_JID}" --array=0-5 slurm/09_run_stage2_gpu2_extract.sh slurm/generated/demo/10b_exp2_stage2_extract_reps.jobfile)
+# Stage 3 (tier2q; 8 CPUs/job): logistic regression
+sbatch --dependency=afterok:"${EXTRACT2_JID}" --array=0-5 slurm/11_run_stage3_tier2q_lr.sh slurm/generated/demo/10c_exp2_stage3_lr.jobfile
 
-# Exp3 (requires CLIF preprocessing; see methods/manuscript.md)
-# Stage 0 (CPU): tokenize + outcomes (2 tasks: MEDS vs CLIF)
-sbatch --array=0-1%2 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/12_exp3_stage0_tokenize.jobfile
-# Stage 1 (GPU): train (2 configs × 1 seed = 2 tasks)
-TRAIN3_JID=$(sbatch --parsable --export=ALL,IRB_STAGE1_EPOCHS=1 --array=0-1%2 slurm/05_run_stage1_gpu4_train.sh slurm/generated/demo/14a_exp3_stage1_train.jobfile)
-# Stage 2 (2 GPUs/job): extract reps
-EXTRACT3_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN3_JID}" --array=0-1%4 slurm/09_run_stage2_gpu2_extract.sh slurm/generated/demo/14b_exp3_stage2_extract_reps.jobfile)
-# Stage 3 (tier2q): logistic regression
-sbatch --dependency=afterok:"${EXTRACT3_JID}" --array=0-1%8 slurm/11_run_stage3_tier2q_lr.sh slurm/generated/demo/14c_exp3_stage3_lr.jobfile
+# Exp3 (vocabulary semantics; 4 MEDS-derived arms)
+# Prereq: construct Exp3 cohort + arms (see below), then generate jobs.
+# Stage 0 (CPU): tokenize + outcomes (4 tasks)
+sbatch --array=0-3 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/12_exp3_stage0_tokenize.jobfile
+# Stage 1 (GPU): train (4 configs × 1 seed = 4 tasks)
+TRAIN3_JID=$(sbatch --parsable --export=ALL,IRB_EXP23_STAGE1_EPOCHS=1 --array=0-3 slurm/05_run_stage1_gpu4_train.sh slurm/generated/demo/14a_exp3_stage1_train.jobfile)
+# Stage 2 (1 GPU/job): extract reps
+EXTRACT3_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN3_JID}" --array=0-3 slurm/09_run_stage2_gpu2_extract.sh slurm/generated/demo/14b_exp3_stage2_extract_reps.jobfile)
+# Stage 3 (tier2q; 8 CPUs/job): logistic regression
+sbatch --dependency=afterok:"${EXTRACT3_JID}" --array=0-3 slurm/11_run_stage3_tier2q_lr.sh slurm/generated/demo/14c_exp3_stage3_lr.jobfile
 ```
 
 ## Architecture
@@ -162,7 +176,6 @@ This benchmark uses a **two-repository architecture**:
 - **Tokenization**: `fms_ehrs/scripts/tokenize_w_config.py`
 - **Pretraining (Exp 1)**: `fms_ehrs/scripts/tune_model.py`
 - **Representation Training (Exp 2)**: `fms_ehrs/scripts/train_representation.py`
-- **Legacy (not used in benchmark)**: `fms_ehrs/scripts/fine_tune_classification.py`
 - **Framework**: Vocabulary, dataset, model wrapper, encoders
 
 ## Project Structure
@@ -175,8 +188,6 @@ input-representation-benchmark/
 ├── run_experiments.py             # Job generation for all experiments
 │
 ├── methods/
-│   ├── manuscript.md              # Manuscript draft
-│   ├── data-columns.md            # Data columns used in each experiment
 │   └── overall-pipeline.mmd       # Pipeline diagram (Mermaid)
 │
 ├── configs/
@@ -196,15 +207,13 @@ input-representation-benchmark/
 │   ├── 01_phase0_extract_meds.sh  # Phase 0: MEDS extraction wrapper
 │   ├── 02_run_stage0_tier2q_tokenize.sh  # Stage 0 runner (tier2q; CPU-only)
 │   ├── 03_stage0_tokenize_and_outcomes_meds.sh  # Stage 0 (MEDS): tokenize + outcomes
-│   ├── 04_exp3_stage0_tokenize_and_outcomes.sh  # Exp3 Stage 0 (MEDS/CLIF): tokenize + outcomes
-│   ├── 05_run_stage1_gpu8_train.sh        # Stage 1 runner (8 GPUs; Exp1)
+│   ├── 04_exp3_stage0_tokenize_and_outcomes.sh  # Exp3 Stage 0 (4 MEDS-derived arms): tokenize + outcomes
 │   ├── 05_run_stage1_gpu4_train.sh        # Stage 1 runner (4 GPUs; packs 2 jobs/node on gpuq)
-│   ├── 06_run_stage1_gpu1_train.sh        # Stage 1 runner (1 GPU; optional/debug)
 │   ├── 07_exp2_stage1_train_representation.sh   # Exp2 Stage 1 implementation
 │   ├── 08_exp3_stage1_train_representation.sh   # Exp3 Stage 1 implementation
-│   ├── 09_run_stage2_gpu2_extract.sh      # Stage 2 runner (2 GPUs): extract reps
+│   ├── 09_run_stage2_gpu2_extract.sh      # Stage 2 runner (1 GPU): extract reps
 │   ├── 10_submit_stage2_3_after_train.sh  # Helper: submit Stage 2 -> 3 with afterok deps
-│   ├── 11_run_stage3_tier2q_lr.sh         # Stage 3 runner (tier2q; CPU-only): LR
+│   ├── 11_run_stage3_tier2q_lr.sh         # Stage 3 runner (tier2q; 8 CPUs): LR
 │   ├── 12_gate_submit_exp2_discrete_after_exp1_winner.sh  # Gate: submit Exp2 discrete-only after Exp1 winner
 │   ├── 90_stage0_tokenize_only_debug.sh   # Manual tokenization helper (debug)
 │   ├── generated/                 # Auto-generated jobfiles (gitignored)
@@ -249,19 +258,23 @@ Each experiment follows this pipeline (orchestrated by `run_experiments.py`; Opt
         │                       │                       │                           │
         v                       v                       v                           v
   tokenize_w_config.py    tune_model.py OR        extract_hidden_states.py     transfer_rep_based_preds.py
-                          train_representation.py  (torchrun; 2 GPUs)          (--classifier logistic_regression)
+                          train_representation.py  (torchrun; 4 GPUs)          (--classifier logistic_regression)
 ```
 
 ### Evaluation-time retokenization (Exp1 Stage0E; fused vs unfused fairness)
 
 If Exp1 comparisons are intended to isolate **token semantics** (rather than *token budget / event coverage*),
-then a fixed training-time `max_padded_len=1024` can be unfair: **fused** tokenization may fit materially more
+then a fixed training-time `max_padded_len` can be unfair: **fused** tokenization may fit materially more
 events into the same context window.
 
 This repo supports an evaluation-only retokenization step that:
 - **reuses the original training vocabulary** (`vocab.gzip`) so token IDs stay aligned with the pretrained model
 - **retokenizes with a larger `max_padded_len`** to reduce truncation differences
 - **does not require rerunning Exp1 Stage1** (only Stage0E + Stage2 + Stage3)
+- **uses a fast-path when possible**: instead of re-parsing raw MEDS, Stage0E can derive eval artifacts directly
+  from an existing `*_first_24h-tokenized/` dataset by rewriting parquet (drop `padded*`, truncate `tokens` to \(L\)
+  with a trailing `TRUNC`, and keep aligned arrays like `times` / `numeric_values` aligned). This is much faster and
+  avoids storing huge fixed-width padded arrays for evaluation.
 
 Mechanics:
 - `run_experiments.py --exp1_eval_max_padded_len <L>` generates an Exp1 Stage0E jobfile and points Exp1 Stage2/3
@@ -277,11 +290,20 @@ Empirical check (centiles, 24h; train split):
   - At `L=2048`: truncation **3.53% (unfused)** vs **0.66% (fused)**
   - At `L=4096`: truncation **0.041% (unfused)** vs **0.0% (fused)**
   - At `L=8192`: truncation **0.0%** for both
-- Recommendation: **`eval_max_padded_len=4096`** is the smallest candidate that makes fused vs unfused truncation
+- Recommendation (based on current length histograms): **`eval_max_padded_len=4096`** often makes fused vs unfused truncation
   essentially negligible for this cohort and tokenization pattern.
   - Note: these length statistics are effectively **quantizer-invariant** (deciles/centiles change token IDs, not
     the number of tokens emitted per event), so this conclusion transfers across Exp1 quantizers under the same
     fused/unfused + temporal-token settings.
+
+**Limitation / compute note (train vs eval context)**:
+- Exp1 Stage1 training uses `fms_ehrs/scripts/tune_model.py` with default `max_seq_length=4096` (or override via `IRB_MAX_SEQ_LENGTH`)
+  overridden), for tractability under walltime and GPU-memory constraints.
+- Increasing the training context from 1024→4096 would substantially increase compute and memory because
+  transformer self-attention scales approximately as \(O(L^2)\). A 4× longer context implies \(\approx16\times\)
+  attention FLOPs and \(\approx16\times\) attention activation memory, typically forcing smaller batch sizes and
+  materially increasing GPU-hours. We therefore use longer context *only* for eval-time representation extraction
+  (Stage2/Stage3), where it serves as a fairness control on truncation rather than a training-budget change.
 
 ### Experiment 1: Granularity
 - **Tokenization**: Varies quantizer (deciles/ventiles/trentiles/centiles) and clinical anchoring
@@ -289,14 +311,215 @@ Empirical check (centiles, 24h; train split):
 - **Evaluation**: 4 outcomes (mortality, LOS, ICU admission, IMV)
 
 ### Experiment 2: Representation Mechanics
-- **Tokenization**: Uses Exp 1 winner's quantizer settings
-- **Training**: `train_representation.py` with padded collation (required for soft/continuous encoders and Time2Vec)
+- **Tokenization**: Uses Exp 1 winner's quantizer settings; for xVal, numeric events are tokenized as `(code_token, [NUM])` via `--numeric_encoding xval`
+- **Training**: `train_representation.py` with padded collation (required for soft discretization, xVal, and Time2Vec). Soft discretization uses a two-point soft target at quantile-token positions; xVal adds an auxiliary numeric regression loss at `[NUM]` positions.
 - **Configurations**: 3 representations × 2 temporal encodings = 6 configs
 
 ### Experiment 3: Vocabulary Semantics
-- **Comparison**: MEDS (native MIMIC) vs. CLIF (standardized) vocabularies
+- **Comparison**: alternative identifier schemes applied to the *same MEDS event rows* (native vs. mapped vs. two null controls)
 - **Training**: Uses Exp 2 winner's representation settings
-- **Cohort**: Aligned ICU patients (≥24h stays) for data parity
+- **Cohort (explicit; no shorthand)**:
+  - **Hospitalization-level inclusion**: \(H_{\mathrm{ICU}}\) is the set of MIMIC-IV hospital admissions (`hadm_id`) with **hospital LOS ≥ 24h** (computed from `hosp/admissions.csv.gz` `admittime`/`dischtime`) and **≥ 1 linked ICU stay record** in `icu/icustays.csv.gz` for the same `hadm_id`.
+  - **Splitting**: patients are split **at the patient level** by `subject_id` into 70/10/20 train/val/test using a fixed RNG seed; each split’s `hadm_id` list is then derived by taking all admissions for those patients and intersecting with \(H_{\mathrm{ICU}}\) (see `scripts/align_cohorts.py` outputs `*_hadm_ids.csv`).
+  - **Matched-signal restriction**: Exp3 tokenization restricts the event stream to labs+vitals, and all four arms are produced by rewriting only identifier strings (`code`) while holding event rows/timestamps/numeric values fixed.
+
+### Exp3 data preparation (cohort + arms)
+
+Exp3 requires one additional data-prep step (all in this repo; no CLIF-parquet arm):
+
+- **1) Build split lists for \(H_{\mathrm{ICU}}\)**: run `scripts/align_cohorts.py` to emit `train_hadm_ids.csv`, `val_hadm_ids.csv`, `test_hadm_ids.csv` (patient-level split projected onto `hadm_id` and intersected with ICU-stay + LOS≥24h eligibility).
+- **2) Filter MEDS events to \(H_{\mathrm{ICU}}\)**: run `scripts/split_meds_by_hadm_splits.py` to create an Exp3 MEDS events dir with `{train,val,test}/meds.parquet`.
+- **3) Build the 3 derived arms from the same rows**: run `scripts/build_exp3_meds_semantics_arms.py` to create:
+  - `meds_mapped` (MEDS→CLIF category identifiers, row-fixed),
+  - `meds_randomized` (null: randomized mapping within domain),
+  - `meds_freqmatched` (null: frequency-matched mapping within domain).
+
+These directories are then passed to `run_experiments.py` via the `--exp3_meds_*_data_dir` flags.
+
+### Data inclusion / leakage controls (merged from old methods docs)
+
+- **Timestamp semantics**: whenever available, MEDS extraction uses **`storetime`** ordering to approximate information availability (see `benchmarks/mimic-meds-extraction/configs/event_configs_v3.1_full.yaml`).
+- **Leakage-prone billing tables excluded**: we exclude `diagnoses_icd`, `procedures_icd`, `hcpcsevents`, `drgcodes` at extraction time.
+- **Tokenization inclusion notes**:
+  - **OMR excluded at tokenization** to avoid vocabulary inflation from heterogeneous names.
+  - **`INFUSION_END` treated as categorical** (the numeric channel focuses on rates via `INFUSION_START`).
+
+## Technical Implementation Details
+
+### Optional performance knobs (objective-preserving)
+
+We keep the training objective fixed (causal LM with the same loss definitions) but allow optional,
+reproducible performance switches that change only numerical precision and attention kernel backend:
+
+- **bf16 mixed precision**: set `IRB_USE_BF16=true` (default in `slurm/00_preamble.sh`).
+- **Attention backend** (Transformers): set `IRB_ATTN_IMPL=sdpa` (default) or `IRB_ATTN_IMPL=flash_attention_2`.
+
+Notes:
+- `flash_attention_2` requires the optional `flash-attn` package and a compatible GPU/CUDA build.
+- We do **not** use `accelerate launch`; we continue to use `torchrun` for distributed training.
+- **Stage applicability**: `IRB_ATTN_IMPL` affects only **Stage1 (training)** and **Stage2 (representation extraction)** because those are the only stages that instantiate a transformer model. Stage0/Stage0E/Stage3 do not benefit from FlashAttention-2.
+
+#### Installing `flash-attn` (optional; for `IRB_ATTN_IMPL=flash_attention_2`)
+
+This environment currently has `torch==2.9.1+cu128` and `transformers==4.57.3`. Prebuilt `flash-attn` wheels
+may not exist for every CUDA/PyTorch combination; if no wheel matches, installation requires compiling from source
+on a node with CUDA build toolchain (e.g., `nvcc`).
+
+Important cluster note:
+- Some prebuilt `flash-attn` wheels distributed as `linux_x86_64` can require newer GLIBC than is available on
+  RHEL8-like systems. If you see an error like `GLIBC_2.32 not found` when importing `flash_attn`, you must
+  build from source on a GPU node with `nvcc`/`CUDA_HOME`.
+
+Recommended workflow:
+1. Use the official wheel finder: `https://flashattn.dev/install` (select Python/PyTorch/CUDA; copy the command).
+2. Install into the active `input-rep` environment.
+3. Verify:
+   `python -c "import flash_attn; print('flash_attn ok')"`
+
+Verified on our cluster (`input-rep` env):
+- Built from source using `slurm/92_flashattn_install_and_preflight_gpuq.sh` (job `5647601`).
+- Installed: `flash-attn==2.8.3`.
+- Preflight (`scripts/preflight_perf_knobs.py`) confirmed:
+  - `torch==2.9.1+cu128`, `transformers==4.57.3`, `accelerate==1.12.0`
+  - `IRB_USE_BF16=true` (bf16 mixed precision) and `tf32=True` (Ampere matmul)
+  - `IRB_ATTN_IMPL=flash_attention_2` and `flash_attn_present=True` on NVIDIA A100-PCIE-40GB.
+
+### Hyperparameter Search Spaces (ML4H Paper Supplement)
+
+This section provides complete technical specifications referenced in the ML4H 2025 paper to maintain implementation transparency while keeping the main text focused.
+
+**Experiment 1 (Foundation Model Training)**:
+- Training script: `fms_ehrs/scripts/tune_model.py`
+- Hardware: 4 GPUs per job via `torchrun`
+- HPO: Optuna with 3 trials
+- Learning rate: $[5 \times 10^{-5}, 5 \times 10^{-4}]$ (log-uniform)
+- Gradient accumulation: fixed to $2$ (removed from HPO for fairness)
+- Collation: packed (iterable datasets)
+
+**Experiments 2--3 (Representation Training)**:
+- Training script: `fms_ehrs/scripts/train_representation.py`  
+- Hardware: 4 GPUs per job
+- HPO: **none** (no Optuna / trial-based tuning in Exp2/3; hyperparameters are fixed)
+- Batch size: 1 per device
+- Gradient accumulation: fixed to $2$ (removed from HPO for fairness)
+- Budget: **single epoch** (`IRB_EXP23_STAGE1_EPOCHS=1`) and **no early stopping** (Exp2/3 always consume the full 1-epoch training dataset)
+- Collation: padded + **windowed padded** over full admission timelines (required for soft discretization, xVal, and Time2Vec)
+- Windowing: window length \(L=\texttt{IRB\_MAX\_SEQ\_LENGTH}\) (default 4096), **non-overlapping windows** (\(\texttt{IRB\_WINDOW\_STRIDE}=L\)), and continuation marker `TL_CONT` on windows after the first.
+- Extreme-length guardrail: cap windows per admission with `IRB_MAX_WINDOWS_PER_ADMISSION` (default 128); when exceeded, windows are subsampled deterministically (uniformly across the admission, always including first+last).
+
+**Time2Vec Parameter Details**:
+- Dimension options: $\{32, 64, 128\}$
+- Parameter formula: $2d + dH + 3H$ where $H=1024$
+- Actual counts: 35,904 / 68,736 / 134,400 parameters
+
+**xVal Continuous Encoder Details**:
+- Tokenization: numeric events emit `(code_token, [NUM])` and align the scalar to `[NUM]` positions (`--numeric_encoding xval`)
+- Embedding: multiplicatively scale the `[NUM]` embedding by a per-code standardized scalar (train-split `numeric_stats.json`)
+- Objective: token cross-entropy + auxiliary numeric regression (MSE) via a numeric head
+- Parameter overhead: numeric head adds $H+1$ parameters (for $H=1024$, this is 1,025)
+
+**Training Step Calculation**:
+For Exp1 packed training (iterable datasets), we explicitly compute:
+$$\texttt{max\_steps} = \frac{n_{\text{train}} \times n_{\text{epochs}}}{\texttt{per\_device\_train\_batch\_size} \times \texttt{num\_gpus} \times \texttt{gradient\_accumulation\_steps}}\,.$$
+
+For Exp2/3 windowed padded training, we train for exactly **one epoch** over the expanded window dataset, i.e., each emitted window is consumed once (modulo the standard DDP sampler padding when \(n_{\text{train}}\) is not divisible by world size).
+
+### Evaluation Pipeline Technical Details
+
+**Stage2 (Representation Extraction)**:
+- Script: `fms_ehrs/scripts/extract_hidden_states.py`
+- Hardware: 1 GPU (torchrun `--nproc_per_node=1`)
+- Output: `features-<model>.npy` per split
+
+**Stage3 (Logistic Regression Evaluation)**:
+- Script: `fms_ehrs/scripts/transfer_rep_based_preds.py`
+- Hardware: 8 CPUs per job (tier2q)
+- Regularization: $C$ tuned on validation set
+- Threshold selection: Youden's $J$ (maximizes TPR - FPR)
+- Bootstrap CIs: 1000 resamples with replacement
+
+## Implementation appendix
+
+### Clinically anchored quantization
+
+Clinically anchored quantization partitions values relative to a reference interval \([L, U]\) and then performs quantile binning \emph{within each region} (below/within/above). The allocation scheme (e.g., 5-10-5 for ventiles) specifies the number of bins per region.
+
+```python
+def compute_anchored_breaks(values, ref_lower, ref_upper, allocation="5-10-5"):
+    below = values[values < ref_lower]
+    within = values[(values >= ref_lower) & (values <= ref_upper)]
+    above = values[values > ref_upper]
+
+    if allocation == "5-10-5":
+        n_below, n_within, n_above = 5, 10, 5
+    elif allocation == "10-10-10":
+        n_below, n_within, n_above = 10, 10, 10
+    else:
+        raise ValueError(f"Unknown allocation: {allocation}")
+
+    breaks = []
+    breaks.extend(np.quantile(below, np.linspace(0, 1, n_below + 1)[1:-1]))
+    breaks.append(ref_lower)
+    breaks.extend(np.quantile(within, np.linspace(0, 1, n_within + 1)[1:-1]))
+    breaks.append(ref_upper)
+    breaks.extend(np.quantile(above, np.linspace(0, 1, n_above + 1)[1:-1]))
+    return np.unique(breaks)
+```
+
+### Soft discretization
+
+Soft discretization is implemented as a \emph{local} convex combination between the two neighboring bin embeddings based on within-bin position:
+
+- Find \(i\) such that \(b_i \le v < b_{i+1}\)
+- Compute \(\alpha = (v-b_i)/(b_{i+1}-b_i)\)
+- Emit \((1-\alpha)\mathbf{E}[b_i] + \alpha\mathbf{E}[b_{i+1}]\)
+
+The implementation is vectorized and uses per-code boundary tensors (indexed by integer code IDs) to avoid per-example branching.
+
+### Tokenization validation snapshot (example run)
+
+One Phase-1 validation run (Deciles, Unfused, Time Tokens) produced:
+- Vocabulary size: 19,363
+- Train/val/test timelines (\(\ge\)24h): 297,817 / 41,869 / 85,530
+- Mean/median unpadded tokens: 2,041 / 296
+- Peak RSS: \(\approx\) 58 GB
+- Runtime (8 CPUs): \(\approx\) 41 min
+
+### QC rules (tokenization/outcome extraction)
+
+Deterministic QC rules applied before training/evaluation:
+- **Schema validity**: drop rows missing `subject_id`, `time`, or `code`
+- **Timeline integrity**: drop admissions with zero events after filtering; enforce chronological ordering (storetime where available)
+- **Value sanity**: drop NaN/Inf numeric values; retain zeros
+- **Reference ranges**: apply clinical anchoring only when both bounds exist; otherwise fall back to population quantiles
+
+### Script inventory (single place to look)
+
+Phase 0 (MEDS extraction):
+- `benchmarks/mimic-meds-extraction/scripts/01_extract_meds_full.sh`
+- `benchmarks/mimic-meds-extraction/configs/event_configs_v3.1_full.yaml`
+
+Phase 1 (tokenize + outcomes):
+- `slurm/03_stage0_tokenize_and_outcomes_meds.sh`
+- `qc/eval_maxlen_analysis.py` (selecting evaluation truncation cap, e.g., 4096)
+
+Phase 2 & 3 (train + evaluate):
+- `slurm/04_exp1_stage1_tune_packed.sh` (Exp1 Stage1; packed FM training + small LR sweep)
+- `slurm/07_exp2_stage1_train_representation.sh` (Exp2 Stage1; representation mechanics)
+- `slurm/08_exp3_stage1_train_representation.sh` (Exp3 Stage1; vocabulary semantics arms)
+- `slurm/05_run_stage1_gpu4_train.sh` (Stage1 runner; 4 GPUs/config)
+- `slurm/09_run_stage2_gpu2_extract.sh` (Stage2 runner; 1 GPU)
+- `slurm/11_run_stage3_tier2q_lr.sh` (Stage3 runner; CPU tier2q)
+- `slurm/ref_qse/09_extract_reps.sh`
+- `slurm/ref_qse/10_xfer_rep_based_preds.sh`
+
+### Parameter overhead (representation modules)
+
+Let hidden size \(H=1024\). Added parameter counts:
+
+- Time2Vec: 35,904 (32), 68,736 (64), 134,400 (128)
+- xVal: 1,025 (numeric head)
+- Soft discretization: \(K \times H\) (learned bin-embedding table; e.g., ventiles \(K=20\Rightarrow 20{,}480\))
 
 ## Dependencies and Attribution
 
@@ -306,9 +529,9 @@ All tokenization, model training, and evaluation is performed through **fms-ehrs
 
 - `fms_ehrs/framework/tokenizer.py`: Configurable tokenizer with time-spacing, 24h truncation
 - `fms_ehrs/framework/dataset.py`: Dataset loader with numeric_values and relative_times support
-- `fms_ehrs/framework/model_wrapper.py`: Wrapper for soft/continuous encoders and Time2Vec
-- `fms_ehrs/framework/soft_discretization.py`: ConSE-inspired convex combination encoder
-- `fms_ehrs/framework/continuous_encoder.py`: xVal-inspired MLP encoder
+- `fms_ehrs/framework/model_wrapper.py`: Wrapper for soft discretization and Time2Vec; routes xVal to `XValModelWrapper`
+- `fms_ehrs/framework/soft_discretization.py`: Convex-combination encoder for numeric values
+- `fms_ehrs/framework/xval.py`: xVal wrapper (`[NUM]` tokenization + multiplicative scaling + numeric head)
 - `fms_ehrs/framework/time2vec.py`: Learned temporal embeddings
 
 **Setup**: Clone `fms-ehrs` as a sibling directory and install with `pip install -e ../fms-ehrs`.

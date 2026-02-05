@@ -26,6 +26,23 @@ source "${IRB_HOME}/slurm/00_preamble.sh"
 
 # Match reference cache behavior
 export HF_HOME="${HF_HOME:-/gpfs/data/bbj-lab/cache/huggingface/}"
-export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-/scratch/$(whoami)/}"
-export WANDB_DIR="${WANDB_DIR:-/scratch/$(whoami)/}"
+_irb_username() {
+  # Some compute nodes do not have a working uid->username mapping (so `whoami`/`id -un` can fail).
+  # Fall back to a deterministic uid-based directory in that case.
+  if [[ -n "${USER:-}" ]]; then
+    echo "${USER}"
+    return 0
+  fi
+  local u=""
+  u="$(id -un 2>/dev/null || true)"
+  if [[ -n "${u}" ]]; then
+    echo "${u}"
+    return 0
+  fi
+  echo "uid_$(id -u)"
+}
+
+_IRB_USER="$(_irb_username)"
+export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-/scratch/${_IRB_USER}/}"
+export WANDB_DIR="${WANDB_DIR:-/scratch/${_IRB_USER}/}"
 

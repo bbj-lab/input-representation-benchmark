@@ -39,6 +39,7 @@ env/
 *.swo
 *~
 .DS_Store
+*.code-workspace
 
 # Jupyter
 .ipynb_checkpoints
@@ -63,6 +64,16 @@ logs/
 *.log
 slurm/output/
 slurm/generated/
+
+# Local caches / scratch artifacts (do not commit)
+.cache/
+models_archive/
+combined_logs.txt
+extracted_lines*.txt
+get_metrics.py
+parse_logs.py
+parse_metrics.py
+read_metrics_safe.py
 
 # MEDS and tokenized data
 data/

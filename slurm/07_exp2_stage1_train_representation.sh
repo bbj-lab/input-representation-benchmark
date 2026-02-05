@@ -48,33 +48,22 @@ JID="s${SEED}"
 OUT_DIR="${MODEL_DIR}/exp2_${CONFIG_ID}-${REPRESENTATION}-${TEMPORAL}-s${SEED}"
 mkdir -p "${OUT_DIR}"
 
-NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-8}"
 NNODES="${SLURM_JOB_NUM_NODES:-1}"
 NODE_RANK="${SLURM_NODEID:-0}"
 
+# Benchmark contract: 4 GPUs per configuration (single node).
+NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-4}"
+if [[ "${NPROC_PER_NODE}" -ne 4 ]]; then
+  echo "ERROR: IRB_NPROC_PER_NODE must be 4 for benchmark runs (got ${NPROC_PER_NODE})." >&2
+  exit 2
+fi
+if [[ "${NNODES}" -ne 1 ]]; then
+  echo "ERROR: This benchmark assumes single-node training (got SLURM_JOB_NUM_NODES=${NNODES})." >&2
+  exit 2
+fi
+
 # Optional override for fast dev/debug runs (defaults preserve paper runs).
-N_EPOCHS="${IRB_STAGE1_EPOCHS:-4}"
-
-extra_args=()
-if [[ "${IRB_TUNE_REP_HPARAMS:-}" == "true" ]]; then
-  extra_args+=( --tune_representation_hparams true )
-fi
-NUM_BINS_CHOICES_DEFAULT="${IRB_NUM_BINS_CHOICES:-[${NUM_BINS}]}"
-TIME2VEC_DIM_CHOICES_DEFAULT="${IRB_TIME2VEC_DIM_CHOICES:-[32,64,128]}"
-CONTINUOUS_NUM_SCALES_CHOICES_DEFAULT="${IRB_CONTINUOUS_NUM_SCALES_CHOICES:-[1,3]}"
-if [[ "${IRB_TUNE_REP_HPARAMS:-}" == "true" ]]; then
-  extra_args+=( --num_bins_choices "${NUM_BINS_CHOICES_DEFAULT}" )
-  extra_args+=( --time2vec_dim_choices "${TIME2VEC_DIM_CHOICES_DEFAULT}" )
-  extra_args+=( --continuous_num_scales_choices "${CONTINUOUS_NUM_SCALES_CHOICES_DEFAULT}" )
-fi
-
-# xVal-only tuning knobs (matched-budget HPO):
-# Keep Optuna trial *count* fixed across conditions, but allow xVal to tune
-# numeric_loss_weight on a tiny fixed grid.
-XVAL_NUMERIC_LOSS_WEIGHT_CHOICES_DEFAULT="${IRB_XVAL_NUMERIC_LOSS_WEIGHT_CHOICES:-[0.1,1.0,10.0]}"
-if [[ "${REPRESENTATION}" == "xval" ]]; then
-  extra_args+=( --numeric_loss_weight_choices "${XVAL_NUMERIC_LOSS_WEIGHT_CHOICES_DEFAULT}" )
-fi
+N_EPOCHS="${IRB_EXP23_STAGE1_EPOCHS:-${IRB_STAGE1_EPOCHS:-1}}"
 
 torchrun_args=( "${FMS_EHRS_HOME}/fms_ehrs/scripts/train_representation.py" )
 if [[ "${NNODES}" -gt 1 ]]; then
@@ -91,24 +80,37 @@ torchrun "${torchrun_args[@]}" \
   --model_dir "${OUT_DIR}" \
   --model_version "exp2_${CONFIG_ID}" \
   --model_name "meta-llama/Llama-3.2-1B" \
+  --use_bf16 "${IRB_USE_BF16}" \
+  --attn_implementation "${IRB_ATTN_IMPL}" \
   --hidden_size "${IRB_MODEL_HIDDEN_SIZE:-1024}" \
   --intermediate_size "${IRB_MODEL_INTERMEDIATE_SIZE:-2048}" \
   --num_hidden_layers "${IRB_MODEL_NUM_HIDDEN_LAYERS:-8}" \
   --num_attention_heads "${IRB_MODEL_NUM_ATTENTION_HEADS:-8}" \
+  --max_seq_length "${IRB_MAX_SEQ_LENGTH}" \
+  --windowed_padded "${IRB_WINDOWED_PADDED:-true}" \
+  --window_stride "${IRB_WINDOW_STRIDE:-${IRB_MAX_SEQ_LENGTH}}" \
+  --max_windows_per_admission "${IRB_MAX_WINDOWS_PER_ADMISSION:-128}" \
+  --add_cont_token "${IRB_ADD_CONT_TOKEN:-true}" \
   --representation "${REPRESENTATION}" \
   --temporal "${TEMPORAL}" \
   --num_bins "${NUM_BINS}" \
-  --do_hpo true \
-  --n_trials "${IRB_EXP2_OPTUNA_TRIALS:-3}" \
+  --time2vec_dim "${IRB_TIME2VEC_DIM:-128}" \
+  --numeric_loss_weight "${IRB_XVAL_NUMERIC_LOSS_WEIGHT:-1.0}" \
+  --clip_sigma "${IRB_XVAL_CLIP_SIGMA:-5.0}" \
+  --optimizer "${IRB_STAGE1_OPTIMIZER:-muon}" \
+  --learning_rate "${IRB_STAGE1_LR:-1e-4}" \
+  --muon_learning_rate "${IRB_MUON_LR:-${IRB_STAGE1_LR:-1e-4}}" \
+  --aux_adamw_learning_rate "${IRB_AUX_ADAMW_LR:-${IRB_STAGE1_LR:-1e-4}}" \
+  --weight_decay "${IRB_STAGE1_WEIGHT_DECAY:-0.01}" \
   --n_epochs "${N_EPOCHS}" \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 1 \
-  --gr_acc_min 4 \
-  --gr_acc_max 12 \
+  --gradient_accumulation_steps 2 \
   --seed "${SEED}" \
   --jid "${JID}" \
-  --wandb_project input-rep-benchmark-exp2 \
-  "${extra_args[@]}"
+  --wandb_project input-rep-benchmark-exp2
+
+# NOTE: Exp2/Exp3 Stage1 no longer runs Optuna HPO; all hypers are fixed.
 
 echo "=== Completed ${JOB_NAME} ==="
 

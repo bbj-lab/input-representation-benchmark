@@ -53,11 +53,15 @@ data_format: meds
 
 # NOTE (critical scheduling / correctness):
 # Experiment 3 must wait until Experiments 1 & 2 winners are known because Exp3 is *not*
-# "extra work for CLIF only". Exp3 compares MEDS vs CLIF on an ICU-aligned cohort
-# (hospital stays ≥24h), so the MEDS arm must be (re)trained under the *same* cohort and
-# under the selected Exp1+Exp2 winner configuration. Reusing an Exp2 MEDS checkpoint that
-# was trained on the all-hospitalizations cohort would confound vocabulary semantics with
-# cohort shift and be methodologically invalid.
+# "extra work for CLIF only". Exp3 compares alternative identifier schemes using a fixed
+# ICU-hospitalization cohort \(H_{\mathrm{ICU}}\):
+#   - admissions (`hadm_id`) with hospital LOS>=24h in `hosp/admissions.csv.gz`, AND
+#   - >=1 linked ICU stay record in `icu/icustays.csv.gz` for the same `hadm_id`
+# (see `scripts/align_cohorts.py` outputs `*_hadm_ids.csv`).
+#
+# Therefore, the MEDS-native arm must be (re)trained under the *same* \(H_{\mathrm{ICU}}\) cohort
+# and under the selected Exp1+Exp2 winner configuration. Reusing an Exp2 checkpoint trained on
+# the all-hospitalizations cohort would confound vocabulary semantics with cohort shift.
 
 # =============================================================================
 # Data Configuration
@@ -102,7 +106,8 @@ model:
 
 training:
   # Optimizer
-  optimizer: adamw
+  # NOTE: Exp2/Exp3 use Muon (+ aux AdamW); Exp1 uses the packed-tuning script.
+  optimizer: muon
   learning_rate: 1.0e-4
   weight_decay: 0.01
   adam_beta1: 0.9

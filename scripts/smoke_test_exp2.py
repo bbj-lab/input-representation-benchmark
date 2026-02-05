@@ -251,7 +251,7 @@ def test_config(
         # Prepare inputs based on config
         inputs = {"input_ids": batch["input_ids"]}
 
-        if representation in ("soft", "continuous"):
+        if representation in ("soft", "xval"):
             inputs["numeric_values"] = batch["numeric_values"]
 
         if temporal == "time2vec":
@@ -300,7 +300,7 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument(
         "--representation",
-        choices=["discrete", "soft", "continuous"],
+        choices=["discrete", "soft", "xval"],
         default=None,
         help="Test specific representation (default: all)",
     )
@@ -336,15 +336,15 @@ def main():
     elif args.representation:
         configs = [(args.representation, t) for t in ["time_tokens", "time2vec"]]
     elif args.temporal:
-        configs = [(r, args.temporal) for r in ["discrete", "soft", "continuous"]]
+        configs = [(r, args.temporal) for r in ["discrete", "soft", "xval"]]
     else:
         configs = [
             ("discrete", "time_tokens"),
             ("discrete", "time2vec"),
             ("soft", "time_tokens"),
             ("soft", "time2vec"),
-            ("continuous", "time_tokens"),
-            ("continuous", "time2vec"),
+            ("xval", "time_tokens"),
+            ("xval", "time2vec"),
         ]
 
     # Run tests

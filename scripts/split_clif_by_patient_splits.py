@@ -21,7 +21,9 @@ Filtering rules
 For each split:
 1) Filter `clif_hospitalization.parquet` by the selected cohort key:
    - patient_id ∈ split_patient_ids (patient-level cohort), OR
-   - hospitalization_id ∈ split_hadm_ids (ICU-eligible hospitalizations within patient splits; recommended for Exp3).
+   - hospitalization_id ∈ split_hadm_ids (Exp3 H_ICU hospitalizations within patient splits; recommended for Exp3).
+     Here H_ICU is admissions (`hadm_id`) with hospital LOS>=24h AND >=1 linked ICU stay record in
+     MIMIC-IV `icu/icustays.csv.gz` for the same `hadm_id` (see `scripts/align_cohorts.py`).
 2) Derive the set of `hospitalization_id` for that split from the filtered
    hospitalization table.
 3) For each other `clif_*.parquet` table:
@@ -98,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "How to define the cohort filter. "
             "patient_id uses <split>_patient_ids.csv; "
-            "hospitalization_id uses <split>_hadm_ids.csv (recommended for ICU-only Exp3)."
+            "hospitalization_id uses <split>_hadm_ids.csv (recommended for Exp3 H_ICU: LOS>=24h + linked ICU stay)."
         ),
     )
     p.add_argument(
@@ -149,11 +151,11 @@ def main(argv: list[str] | None = None) -> int:
 
     for split in args.splits:
         if args.filter_key == "patient_id":
-        split_csv = splits_dir / f"{split}_patient_ids.csv"
-        if not split_csv.exists():
-            raise FileNotFoundError(f"Missing split file: {split_csv}")
-        patient_ids = _load_patient_ids(split_csv)
-        hosp_split = hosp.join(patient_ids, on="patient_id", how="semi")
+            split_csv = splits_dir / f"{split}_patient_ids.csv"
+            if not split_csv.exists():
+                raise FileNotFoundError(f"Missing split file: {split_csv}")
+            patient_ids = _load_patient_ids(split_csv)
+            hosp_split = hosp.join(patient_ids, on="patient_id", how="semi")
         else:
             split_csv = splits_dir / f"{split}_hadm_ids.csv"
             if not split_csv.exists():

@@ -2,7 +2,16 @@
 """
 Cohort alignment script for Experiment 3.
 
-This script extracts the common patient cohort (ICU patients with ≥24h stays)
+This script extracts a shared cohort for Experiment 3 based on an explicit, reproducible
+hospitalization-level inclusion rule:
+
+\(H_{\mathrm{ICU}}\): MIMIC-IV hospital admissions (`hadm_id`) with hospital LOS \(\ge\)24h
+(computed from `hosp/admissions.csv.gz` `admittime`/`dischtime`) AND \(\ge\)1 linked ICU stay
+record in `icu/icustays.csv.gz` for the same `hadm_id`.
+
+We additionally produce a patient-level train/val/test split and then derive split-specific
+`hadm_id` lists by intersecting admissions for patients in each split with \(H_{\mathrm{ICU}}\).
+
 from MIMIC-IV data and creates patient ID lists that can be applied to both
 MEDS and CLIF pipelines to ensure data parity.
 
@@ -22,10 +31,10 @@ Output:
     - train_patient_ids.csv: Training set patient IDs
     - val_patient_ids.csv: Validation set patient IDs
     - test_patient_ids.csv: Test set patient IDs
-    - cohort_hadm_ids.csv: All ICU-eligible hadm_ids (LOS>=24h and >=1 ICU stay)
-    - train_hadm_ids.csv: ICU-eligible hadm_ids for the training patient split
-    - val_hadm_ids.csv: ICU-eligible hadm_ids for the validation patient split
-    - test_hadm_ids.csv: ICU-eligible hadm_ids for the test patient split
+    - cohort_hadm_ids.csv: All `hadm_id` in \(H_{\mathrm{ICU}}\) (LOS>=24h and >=1 ICU stay)
+    - train_hadm_ids.csv: \(H_{\mathrm{ICU}}\) `hadm_id` for the training patient split
+    - val_hadm_ids.csv: \(H_{\mathrm{ICU}}\) `hadm_id` for the validation patient split
+    - test_hadm_ids.csv: \(H_{\mathrm{ICU}}\) `hadm_id` for the test patient split
     - cohort_stats.json: Summary statistics
 
 Attribution:
@@ -118,9 +127,9 @@ def extract_icu_cohort(
     min_los_hours: float = 24.0
 ) -> Tuple[Set[int], Set[int]]:
     """
-    Extract ICU cohort:
-      - patient cohort: patients with ≥1 ICU stay AND hospital stay ≥24h
-      - hospitalization cohort: hadm_id with ≥1 ICU stay AND hospital LOS ≥24h
+    Extract Exp3 cohort objects based on the hospitalization-level ICU-admission cohort \(H_{\mathrm{ICU}}\):
+      - patient cohort: `subject_id` with ≥1 ICU stay AND ≥24h hospital LOS
+      - hospitalization cohort (H_ICU): `hadm_id` with ≥1 ICU stay AND ≥24h hospital LOS
     
     Args:
         admissions: Hospital admissions dataframe
@@ -137,11 +146,11 @@ def extract_icu_cohort(
     
     # Intersection: ICU patients with long stays
     cohort = icu_patients & long_stay_patients
-    logger.info(f"ICU cohort (≥{min_los_hours}h): {len(cohort):,} patients")
+    logger.info(f"H_ICU patient cohort (ICU stay + LOS≥{min_los_hours}h): {len(cohort):,} patients")
     
-    # ICU-eligible hospitalizations (hadm_id with ICU stay and LOS>=24h)
+    # H_ICU hospitalizations (hadm_id with ICU stay and LOS>=24h)
     cohort_hadm = icu_hadm & long_stay_hadm
-    logger.info(f"ICU cohort (≥{min_los_hours}h): {len(cohort_hadm):,} hospitalizations")
+    logger.info(f"H_ICU hospitalizations (ICU stay + LOS≥{min_los_hours}h): {len(cohort_hadm):,} hadm_id")
 
     return cohort, cohort_hadm
 
@@ -224,7 +233,7 @@ def save_cohort(
     _write_csv(output_dir / "val_patient_ids.csv", "subject_id", val_ids)
     _write_csv(output_dir / "test_patient_ids.csv", "subject_id", test_ids)
 
-    # Derive ICU-eligible hadm_ids per patient split.
+    # Derive H_ICU hadm_ids per patient split.
     # We use admissions to map subject_id -> hadm_id, then intersect with cohort_hadm_ids
     # (hadm-level ICU + LOS>=24 eligibility).
     def hadm_for(subject_ids: list[int]) -> list[int]:
@@ -256,7 +265,10 @@ def save_cohort(
         "val_ratio": len(val_ids) / len(cohort),
         "test_ratio": len(test_ids) / len(cohort),
         "data_seed": seed,
-        "cohort_criteria": "Patient-level split; ICU-eligible hospitalizations are those with ≥1 ICU stay and hospital LOS ≥24h"
+        "cohort_criteria": (
+            "Patient-level split; H_ICU hospitalizations are admissions (hadm_id) with "
+            ">=1 ICU stay record in icu/icustays and hospital LOS >=24h in hosp/admissions."
+        )
     }
     
     with open(output_dir / "cohort_stats.json", "w") as f:
@@ -269,7 +281,7 @@ def save_cohort(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Extract ICU cohort for Experiment 3 data parity"
+        description="Extract Exp3 H_ICU cohort (LOS>=24h + linked ICU stay) for data parity"
     )
     parser.add_argument(
         "--mimic_dir",

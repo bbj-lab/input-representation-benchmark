@@ -36,7 +36,18 @@ parent_dir="$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")"
 export name jname parent_dir
 
 # Base paths (bbj-lab cluster structure)
-hm="/gpfs/data/bbj-lab/users/$(whoami)"
+#
+# NOTE: On some cluster nodes, name service lookup can fail (e.g., numeric UID has
+# no passwd entry), which makes `whoami` fail and can abort jobs when `set -e` is active.
+# Prefer $USER, then `id -un`, and only then fall back to a literal UID string.
+_user="${USER:-}"
+if [[ -z "${_user}" ]]; then
+  _user="$(id -un 2>/dev/null || true)"
+fi
+if [[ -z "${_user}" ]]; then
+  _user="uid_$(id -u 2>/dev/null || echo unknown)"
+fi
+hm="/gpfs/data/bbj-lab/users/${_user}"
 
 # Project paths (default: infer from this repository location)
 IRB_HOME="${IRB_HOME:-${parent_dir}}"
@@ -54,6 +65,88 @@ DATA_DIR="${DATA_DIR:-${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/dat
 MODEL_DIR="${MODEL_DIR:-${IRB_HOME}/models}"
 OUTPUT_DIR="${OUTPUT_DIR:-${IRB_HOME}/outputs}"
 export IRB_HOME FMS_EHRS_HOME DATA_DIR MODEL_DIR OUTPUT_DIR hm
+
+# -----------------------------------------------------------------------------
+# Sequence-length defaults (single source of truth for jobs)
+#
+# - IRB_MAX_PADDED_LEN controls Stage0 tokenization truncation cap (TRUNC beyond cap).
+# - IRB_MAX_SEQ_LENGTH controls training-time context/window length.
+#
+# Both default to 4096 for the current benchmark runs, but are intentionally
+# overrideable per job (e.g., if training uses 4096 but evaluation uses 8192).
+# -----------------------------------------------------------------------------
+export IRB_MAX_PADDED_LEN="${IRB_MAX_PADDED_LEN:-4096}"
+export IRB_MAX_SEQ_LENGTH="${IRB_MAX_SEQ_LENGTH:-4096}"
+
+# -----------------------------------------------------------------------------
+# Windowed padded training defaults (Exp2/Exp3 Stage1)
+#
+# In Exp2/Exp3 Stage1, we train on full variable-length admission timelines by
+# slicing each admission into fixed-length windows of length IRB_MAX_SEQ_LENGTH.
+#
+# Design choices for fairness + compute stability:
+# - Non-overlapping windows (no overlap between consecutive windows): set stride=L.
+#   With TL_CONT enabled, subsequent windows carry (L-1) raw tokens plus a TL_CONT marker,
+#   so the implementation advances by (L-1) after the first window to avoid gaps/overlap.
+# - Extreme-length guardrail: cap the number of windows emitted per admission to bound
+#   compute for pathological outliers (top ~1%). Windows are subsampled deterministically
+#   (uniformly across the timeline, always including first+last).
+# -----------------------------------------------------------------------------
+export IRB_WINDOWED_PADDED="${IRB_WINDOWED_PADDED:-true}"
+export IRB_ADD_CONT_TOKEN="${IRB_ADD_CONT_TOKEN:-true}"
+export IRB_WINDOW_STRIDE="${IRB_WINDOW_STRIDE:-${IRB_MAX_SEQ_LENGTH}}"
+export IRB_MAX_WINDOWS_PER_ADMISSION="${IRB_MAX_WINDOWS_PER_ADMISSION:-128}"
+
+# -----------------------------------------------------------------------------
+# Stage1 (epoch budget + shared hypers)
+#
+# Rationale:
+# - Exp2/Exp3 no longer run Optuna HPO, so we use fixed hyperparameters and a
+#   fixed single-epoch budget per configuration (token-exposure fairness).
+# - We centralize defaults here so that job generation, SLURM launchers, and Python
+#   entrypoints do not silently diverge.
+#
+# Override any of these at submit-time by exporting the env var before sourcing
+# this preamble (or via `sbatch --export=...`).
+# -----------------------------------------------------------------------------
+#
+# IMPORTANT (budget accounting):
+# - Exp1 Stage1 is intentionally a *single-epoch* training per config (with a small LR sweep).
+# - Exp2/Exp3 Stage1 may use a longer budget, but should not silently inherit Exp1's setting.
+#
+# We therefore use explicit env vars per experiment family.
+export IRB_EXP1_STAGE1_EPOCHS="${IRB_EXP1_STAGE1_EPOCHS:-1}"
+export IRB_EXP23_STAGE1_EPOCHS="${IRB_EXP23_STAGE1_EPOCHS:-1}"
+# Backward-compat alias (older scripts referenced IRB_STAGE1_EPOCHS).
+export IRB_STAGE1_EPOCHS="${IRB_STAGE1_EPOCHS:-${IRB_EXP23_STAGE1_EPOCHS}}"
+export IRB_STAGE1_OPTIMIZER="${IRB_STAGE1_OPTIMIZER:-muon}"
+export IRB_STAGE1_LR="${IRB_STAGE1_LR:-1e-4}"
+export IRB_STAGE1_WEIGHT_DECAY="${IRB_STAGE1_WEIGHT_DECAY:-0.01}"
+# Muon-specific LR split:
+# - By default, preserve prior behavior by using the same LR for Muon and aux AdamW.
+# - Override explicitly to follow Muon recommendations (e.g., IRB_MUON_LR=0.02) while
+#   keeping aux AdamW near Exp1-tuned LR.
+export IRB_MUON_LR="${IRB_MUON_LR:-${IRB_STAGE1_LR}}"
+export IRB_AUX_ADAMW_LR="${IRB_AUX_ADAMW_LR:-${IRB_STAGE1_LR}}"
+
+# Method-specific (Exp2/Exp3):
+export IRB_TIME2VEC_DIM="${IRB_TIME2VEC_DIM:-128}"
+# xVal reference implementation uses unit weighting (loss_total = loss_mlm + loss_num).
+export IRB_XVAL_NUMERIC_LOSS_WEIGHT="${IRB_XVAL_NUMERIC_LOSS_WEIGHT:-1.0}"
+export IRB_XVAL_CLIP_SIGMA="${IRB_XVAL_CLIP_SIGMA:-5.0}"
+
+# -----------------------------------------------------------------------------
+# Optional training performance knobs (objective-preserving)
+#
+# These do not change the data, labels, or loss definitions; they only select
+# numerics / kernel implementations for speed and memory efficiency.
+#
+# - IRB_USE_BF16: enable bf16 mixed precision (A100 supports bf16).
+# - IRB_ATTN_IMPL: Transformers attention backend, e.g. "sdpa" or "flash_attention_2".
+#   (FlashAttention requires optional flash-attn install.)
+# -----------------------------------------------------------------------------
+export IRB_USE_BF16="${IRB_USE_BF16:-true}"
+export IRB_ATTN_IMPL="${IRB_ATTN_IMPL:-}"
 
 # Activate Python environment
 source ~/.bashrc 2>/dev/null || true
@@ -104,14 +197,33 @@ else
     HF_HOME="${HF_HOME:-${HOME}/.cache/huggingface}"
 fi
 if [[ -d /scratch ]]; then
-    WANDB_CACHE_DIR="/scratch/$(whoami)/"
-    WANDB_DIR="/scratch/$(whoami)/"
+    WANDB_CACHE_DIR="/scratch/${_user}/"
+    WANDB_DIR="/scratch/${_user}/"
 else
     WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-${HOME}/.cache/wandb}"
     WANDB_DIR="${WANDB_DIR:-${HOME}/.cache/wandb}"
 fi
 PYTHONPATH="${IRB_HOME}:${FMS_EHRS_HOME}:${PYTHONPATH:-}"
 export HF_HOME WANDB_CACHE_DIR WANDB_DIR PYTHONPATH
+
+# -----------------------------------------------------------------------------
+# Attention backend default (FlashAttention-2 when available)
+#
+# We default to FlashAttention-2 when the optional `flash-attn` package is importable
+# in the active environment; otherwise we fall back to PyTorch SDPA.
+#
+# Users can override explicitly by setting IRB_ATTN_IMPL before sourcing this preamble.
+# -----------------------------------------------------------------------------
+if [[ -z "${IRB_ATTN_IMPL}" ]]; then
+    if python - <<'PY' 2>/dev/null | grep -q '^1$'; then
+import importlib.util
+print(1 if importlib.util.find_spec("flash_attn") is not None else 0)
+PY
+        export IRB_ATTN_IMPL="flash_attention_2"
+    else
+        export IRB_ATTN_IMPL="sdpa"
+    fi
+fi
 
 # W&B Configuration
 # Users should set these in ~/.bashrc or .env:
@@ -126,7 +238,7 @@ fi
 echo "=============================================="
 echo "Environment initialized"
 echo "=============================================="
-echo "  User: $(whoami)"
+echo "  User: ${_user}"
 echo "  IRB_HOME: ${IRB_HOME}"
 echo "  FMS_EHRS_HOME: ${FMS_EHRS_HOME}"
 echo "  DATA_DIR: ${DATA_DIR}"

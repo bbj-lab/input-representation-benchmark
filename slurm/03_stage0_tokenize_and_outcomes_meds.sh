@@ -5,7 +5,7 @@
 #
 # Usage (recommended: via SLURM array on tier2q):
 #   python run_experiments.py --mode demo --exp 1
-#   sbatch --array=0-11%2 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/04_exp1_stage0_tokenize.jobfile
+#   sbatch --array=0-11 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/04_exp1_stage0_tokenize.jobfile
 #
 # Validity note:
 #   - Internal validity: stage0 enforces required tokenization artifacts (including numeric_stats.json)
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 --data_version_out <name> --quantizer <deciles|ventiles|trentiles|centiles> --clinical_anchoring <none|5-10-5|10-10-10> --include_ref_ranges <true|false> --fused_category_values <true|false> [--vocab_path <path>] [--max_padded_len <int>] [--only_24h_cut <true|false>]"
+  echo "Usage: $0 --data_version_out <name> --quantizer <deciles|ventiles|trentiles|centiles> --clinical_anchoring <none|5-10-5|10-10-10> --include_ref_ranges <true|false> --fused_category_values <true|false> [--numeric_encoding <quantile|xval>] [--vocab_path <path>] [--max_padded_len <int>] [--only_24h_cut <true|false>]"
 }
 
 DATA_VERSION_OUT=""
@@ -25,6 +25,7 @@ CLINICAL_ANCHORING=""
 INCLUDE_REF_RANGES=""
 FUSED_CATEGORY_VALUES=""
 INCLUDE_TIME_SPACING_TOKENS="true"
+NUMERIC_ENCODING=""
 VOCAB_PATH=""
 MAX_PADDED_LEN=""
 ONLY_24H_CUT="false"
@@ -37,6 +38,7 @@ while [[ $# -gt 0 ]]; do
     --include_ref_ranges) INCLUDE_REF_RANGES="$2"; shift 2 ;;
     --fused_category_values) FUSED_CATEGORY_VALUES="$2"; shift 2 ;;
     --include_time_spacing_tokens) INCLUDE_TIME_SPACING_TOKENS="$2"; shift 2 ;;
+    --numeric_encoding) NUMERIC_ENCODING="$2"; shift 2 ;;
     --vocab_path) VOCAB_PATH="$2"; shift 2 ;;
     --max_padded_len) MAX_PADDED_LEN="$2"; shift 2 ;;
     --only_24h_cut) ONLY_24H_CUT="$2"; shift 2 ;;
@@ -68,6 +70,12 @@ IRB_HOME="${IRB_HOME:-$(find_repo_root "${SUBMIT_DIR}")}"
 export IRB_CONDA_ENV="${IRB_CONDA_ENV:-input-rep}"
 source "${IRB_HOME}/slurm/00_preamble.sh"
 cd "${IRB_HOME}"
+
+# Default tokenization truncation cap: keep deterministic and centralized.
+# This controls where we append a TRUNC token when a timeline exceeds the cap.
+if [[ -z "${MAX_PADDED_LEN}" ]]; then
+  MAX_PADDED_LEN="${IRB_MAX_PADDED_LEN}"
+fi
 
 # `DATA_DIR` is standardized (via slurm/00_preamble.sh) to point to the MEDS
 # events directory (the one containing train/val/test or train/tuning/test and
@@ -304,6 +312,9 @@ else
   if [[ -n "${MAX_PADDED_LEN}" ]]; then
     tokenize_args+=( --max_padded_len "${MAX_PADDED_LEN}" )
   fi
+  if [[ -n "${NUMERIC_ENCODING}" ]]; then
+    tokenize_args+=( --numeric_encoding "${NUMERIC_ENCODING}" )
+  fi
 
   case "${INCLUDE_REF_RANGES}" in
     true) tokenize_args+=( --include_ref_ranges ) ;;
@@ -330,7 +341,7 @@ else
   #
   # Rationale: Stage0 is the source-of-truth for downstream training inputs.
   # We must not allow Stage0 to "succeed" while silently missing artifacts
-  # required for method-faithful continuous encoders (numeric_stats.json).
+  # required for method-faithful xVal scaling (numeric_stats.json).
   # ---------------------------------------------------------------------------
   for s in train val test; do
     if [[ "${ONLY_24H_CUT}" != "true" ]]; then

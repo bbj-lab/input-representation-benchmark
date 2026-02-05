@@ -3,11 +3,11 @@
 #SBATCH --output=./slurm/output/%A_%a-%x.stdout
 #SBATCH --partition=tier2q
 #SBATCH --mem=256GB
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=8
 #SBATCH --time=1-00:00:00
 
 # =============================================================================
-# Runner (Stage 3; tier2q; CPU-heavy): executes the Nth line of a jobfile
+# Runner (Stage 3; tier2q; CPU): executes the Nth line of a jobfile
 # =============================================================================
 
 set -euo pipefail
