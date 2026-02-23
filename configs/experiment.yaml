@@ -44,7 +44,7 @@ fused_category_values: false
 # Value representation: discrete | soft | continuous
 representation: discrete
 
-# Temporal encoding: time_tokens | time2vec
+# Temporal encoding: time_tokens | time_rope
 temporal_encoding: time_tokens
 
 # Experiment 3: Data Format / Vocabulary Semantics

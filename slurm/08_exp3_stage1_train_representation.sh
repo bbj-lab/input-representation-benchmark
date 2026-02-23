@@ -53,10 +53,11 @@ JID="s${SEED}"
 NNODES="${SLURM_JOB_NUM_NODES:-1}"
 NODE_RANK="${SLURM_NODEID:-0}"
 
-# Benchmark contract: 4 GPUs per configuration (single node).
-NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-4}"
-if [[ "${NPROC_PER_NODE}" -ne 4 ]]; then
-  echo "ERROR: IRB_NPROC_PER_NODE must be 4 for benchmark runs (got ${NPROC_PER_NODE})." >&2
+# Benchmark contract: 2 GPUs per configuration (single node).
+# Paper: "2 × A100 for Experiments 2–3, trading longer wall-clock time for faster queue throughput."
+NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-2}"
+if [[ "${NPROC_PER_NODE}" -ne 4 && "${NPROC_PER_NODE}" -ne 2 ]]; then
+  echo "ERROR: IRB_NPROC_PER_NODE must be 2 or 4 for benchmark runs (got ${NPROC_PER_NODE})." >&2
   exit 2
 fi
 if [[ "${NNODES}" -ne 1 ]]; then
@@ -96,7 +97,7 @@ torchrun "${torchrun_args[@]}" \
   --representation "${REPRESENTATION}" \
   --temporal "${TEMPORAL}" \
   --num_bins "${NUM_BINS}" \
-  --time2vec_dim "${IRB_TIME2VEC_DIM:-128}" \
+  --time_rope_scaling "${IRB_TIME_ROPE_SCALING:-60.0}" \
   --numeric_loss_weight "${IRB_XVAL_NUMERIC_LOSS_WEIGHT:-1.0}" \
   --clip_sigma "${IRB_XVAL_CLIP_SIGMA:-5.0}" \
   --optimizer "${IRB_STAGE1_OPTIMIZER:-muon}" \

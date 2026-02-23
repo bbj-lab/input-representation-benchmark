@@ -130,7 +130,8 @@ export IRB_MUON_LR="${IRB_MUON_LR:-${IRB_STAGE1_LR}}"
 export IRB_AUX_ADAMW_LR="${IRB_AUX_ADAMW_LR:-${IRB_STAGE1_LR}}"
 
 # Method-specific (Exp2/Exp3):
-export IRB_TIME2VEC_DIM="${IRB_TIME2VEC_DIM:-128}"
+export IRB_TIME_ROPE_SCALING="${IRB_TIME_ROPE_SCALING:-60.0}"
+
 # xVal reference implementation uses unit weighting (loss_total = loss_mlm + loss_num).
 export IRB_XVAL_NUMERIC_LOSS_WEIGHT="${IRB_XVAL_NUMERIC_LOSS_WEIGHT:-1.0}"
 export IRB_XVAL_CLIP_SIGMA="${IRB_XVAL_CLIP_SIGMA:-5.0}"

@@ -9,7 +9,7 @@ This repository evaluates input representation methods for EHR foundation models
 | Experiment | Focus | Configurations | Training Runs (single-seed dev) |
 |------------|-------|----------------|---------------|
 | **Exp 1** | Granularity & Semantic Anchoring | Decile, Ventile, Trentile, Centile × Fused tokens | 12 (12 × 1 seed) |
-| **Exp 2** | Representation Mechanics | Discrete, Soft, xVal × Time tokens/Time2Vec (**requires Exp1 winner binning**) | 6 (6 × 1 seed) |
+| **Exp 2** | Representation Mechanics | Discrete, Soft, xVal × Time tokens/Time-Aware RoPE (**requires Exp1 winner binning**) | 6 (6 × 1 seed) |
 | **Exp 3** | Vocabulary Semantics | **4-arm design**: MEDS-native, MEDS→CLIF mapped, randomized-mapping control, frequency-matched mapping control (Exp3 ICU-hospitalization cohort; see below) | 4 (4 × 1 seed) |
 | **Total (when Exp3 controls enabled)** | | 22 configurations | **22 training runs** |
 
@@ -20,23 +20,40 @@ Notes:
 
 ### Current run status (live)
 
-Snapshot time: **2026-01-25** (from SLURM at time of writing)
+Snapshot time: **2026-02-19**
 
 | Experiment | Stage 0 (tier2q: tokenize+outcomes) | Stage 1 (gpuq: train) | Stage 2 (gpuq: extract reps) | Stage 3 (tier2q: LR) |
 |---|---|---|---|---|
-| **Exp1 (granularity)** | **Complete** (12 configs) | **Complete** (12 configs; training array `5109786` with rerun `5208762_11`) | **Complete**: `5354107` (12 tasks) | **Complete**: `5354108` (12 tasks) |
-| **Exp2 (rep mechanics)** | not submitted | not submitted | not submitted | not submitted |
-| **Exp3 (vocab semantics; 4 MEDS-derived arms)** | not submitted | not submitted | not submitted | not submitted |
+| **Exp1 (granularity)** | **Complete** (12 configs) | **Complete** (12 configs; ctx=4096) | **Complete** (12 tasks) | **Complete** (12 tasks) |
+| **Exp2 (rep mechanics)** | **Complete** (6 configs) | **Complete** (6 configs) | **Complete** (6 tasks) | **Complete** (6 tasks) |
+| **Exp3 (vocab semantics; 4 MEDS-derived arms)** | **Complete** (4 arms) | **Complete** (4 arms) | **Complete** (4 tasks) | **Complete** (4 tasks) |
 
-#### Exp1 evaluation-time retokenization (Stage0E; optional fairness knob)
+#### Exp1 results summary (context length 4096)
 
-Exp1 also ran **Stage0E fast-path** (eval-only retokenization) for all 12 configs under:
+**Overall Exp1 winner**: deciles, population, fused (mortality AUROC 0.893, IMV AUROC 0.897).
+**Best unfused**: deciles, population, unfused (mortality AUROC 0.861, IMV AUROC 0.885).
 
-- **SLURM array**: `5331731` (12 tasks; all completed)
-- **Max padded length**: `4096` (confirmed in logs)
-- **Artifacts**: `${DATA_DIR}/*_evalL4096_first_24h-tokenized/` (each contains `train/`, `val/`, `test/`)
+Exp2 settings derived from Exp1 winner:
+- **Discrete baselines**: use Exp1 overall winner (deciles, population, fused)
+- **Soft discretization and xVal**: use Exp1 best unfused (deciles, population, unfused; soft/xVal require unfused tokenization)
 
-Stage2 writes `features-*.npy` into each split directory, and Stage3 writes `logistic_regression-preds-*.pkl` into `test/`.
+#### Exp2 results summary
+
+**Exp2 winner**: soft discretization + Time-Aware RoPE.
+
+| Config | Mortality | Long LoS | ICU Adm | IMV |
+|---|---|---|---|---|
+| Discrete + time tokens | 0.862 | 0.740 | 0.774 | 0.893 |
+| Discrete + Time-Aware RoPE | 0.861 | 0.744 | 0.770 | 0.894 |
+| Soft + time tokens | 0.871 | 0.748 | 0.778 | 0.897 |
+| **Soft + Time-Aware RoPE** | **0.869** | **0.749** | **0.780** | **0.898** |
+| xVal + time tokens | 0.818 | 0.698 | 0.722 | 0.839 |
+| xVal + Time-Aware RoPE | 0.828 | 0.698 | 0.726 | 0.837 |
+
+Key findings:
+- Soft discretization matches or exceeds discrete baselines on all outcomes (ΔAUROC ≤ 0.01)
+- xVal substantially underperforms discrete/soft encodings (ΔAUROC 0.04–0.06 across outcomes)
+- Time-Aware RoPE produces marginal, non-significant shifts vs. time tokens
 
 #### Tokenization artifact status (why Stage 0 is re-running)
 
@@ -47,22 +64,6 @@ We already have tokenized timelines + outcomes for the demo `data_version`s, but
 - **`DATA_DIR`** (environment variable used by SLURM scripts): points to the **MEDS events directory**, i.e., the directory containing split subdirectories like `train/`, `tuning/`, `test/` and a `raw/` shim used by tokenization. On this repo it defaults to:
   - `benchmarks/mimic-meds-extraction/data/meds/data`
 - Do **not** append `/data` to `DATA_DIR` in scripts; older versions of this repo did and it caused silent path ambiguity.
-
-| data_version | tokenized timelines | 24h timelines + outcomes | numeric_stats.json |
-|---|---:|---:|---:|
-| `deciles_none_unfused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `deciles_none_fused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `ventiles_none_unfused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `ventiles_none_fused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `ventiles_5-10-5_unfused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `ventiles_5-10-5_fused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `ventiles_5-10-5_unfused_time2vec` | yes | yes | **no (will regenerate)** |
-| `trentiles_none_unfused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `trentiles_none_fused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `trentiles_10-10-10_unfused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `trentiles_10-10-10_fused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `centiles_none_unfused_time_tokens` | yes | yes | **no (will regenerate)** |
-| `centiles_none_fused_time_tokens` | yes | yes | **no (will regenerate)** |
 
 ### Reference implementation alignment (lab standard)
 
@@ -243,7 +244,7 @@ input-representation-benchmark/
 - **SLURM jobfiles are generated** (don’t hand-edit): `python run_experiments.py --mode demo` writes jobfiles under `slurm/generated/demo/`.
 - **No UCMC transfer**: unlike the reference `Quantifying-Surprise-EHRs` transfer experiments, this benchmark evaluates within our MIMIC-derived cohorts; the same dataset is used for “orig” and “new” in LR evaluation.
 - **Vendored reference scripts**: we vendor the reference SLURM launchers under `slurm/ref_qse/` with minimal path/resource adaptations; see `slurm/ref_qse/PROVENANCE.md`.
-- **Utility CLIs**: see `scripts/INDEX.md` for what each helper script does (outcome extraction, cohort alignment, QC).
+- **Utility CLIs**: see `scripts/INDEX.md` for what each helper script does (outcome extraction, cohort alignment, qc).
 - **Pre-rerun cleanup**: use `scripts/cleanup_artifacts.sh` (dry-run by default). For Stage0 collisions due to stale `*-tokenized` symlinks under `${DATA_DIR}`, use `--delete-tokenized-symlinks`. To rerun Stage2/Stage3 without collisions, use `--delete-stage2-stage3-artifacts`.
 
 ## Experiment Pipeline
@@ -305,14 +306,54 @@ Empirical check (centiles, 24h; train split):
   materially increasing GPU-hours. We therefore use longer context *only* for eval-time representation extraction
   (Stage2/Stage3), where it serves as a fairness control on truncation rather than a training-budget change.
 
+### Clinical Prediction Targets
+
+All outcomes are extracted from MEDS events and defined relative to the first 24h observation window.
+Patients who experience the target event within 24h are excluded from that task to prevent temporal leakage.
+
+#### Canonical binary outcomes (Tier 1; `extract_outcomes_meds.py`)
+
+| Outcome | Definition |
+|---------|-----------|
+| `same_admission_death` | In-hospital mortality during the admission |
+| `long_length_of_stay` | Hospital LOS > 7 days |
+| `icu_admission` | Any ICU admission during the stay (Exp 1–2) |
+| `imv_event` | Invasive mechanical ventilation (itemids 224385, 225792) |
+| `prolonged_icu_stay` | ICU LOS > 48h (used instead of icu_admission in Exp 3) |
+
+#### Extended binary outcomes (Tier 3; `extract_extended_outcomes.py`)
+
+| Outcome | Definition |
+|---------|-----------|
+| `hyperkalemia` | Peak potassium > 6.0 mEq/L |
+| `severe_anemia` | Minimum hemoglobin < 7.0 g/dL |
+| `hypoglycemia` | Minimum glucose < 50 mg/dL |
+| `vasopressor_initiation` | Any vasopressor infusion (norepinephrine, epinephrine, vasopressin, phenylephrine, dopamine, dobutamine) |
+| `hypotension` | Any MAP < 65 mmHg or SBP < 90 mmHg |
+
+#### Continuous regression targets (Tier 2; `extract_extended_outcomes.py`)
+
+| Outcome | Definition |
+|---------|-----------|
+| `peak_creatinine` | Max creatinine during admission (mg/dL) |
+| `peak_troponin` | Max troponin T or I (ng/mL) |
+| `min_hemoglobin` | Min hemoglobin (g/dL) |
+| `peak_potassium` | Max potassium (mEq/L) |
+| `min_glucose` | Min glucose (mg/dL) |
+| `peak_bnp` | Max BNP or NT-proBNP (pg/mL) |
+| `time_to_icu_hours` | Hours from hospital admission to first ICU admission (null if no ICU) |
+
+Continuous targets are evaluated with Ridge regression (Spearman ρ).
+The evaluation sample size varies per target due to measurement missingness (post-24h only).
+
 ### Experiment 1: Granularity
 - **Tokenization**: Varies quantizer (deciles/ventiles/trentiles/centiles) and clinical anchoring
 - **Training**: `tune_model.py` with packed collation
-- **Evaluation**: 4 outcomes (mortality, LOS, ICU admission, IMV)
+- **Evaluation**: Tier 1 outcomes (mortality, LOS, ICU admission, IMV); Tier 2/3 extended outcomes via `13_extract_extended_outcomes.sh`
 
 ### Experiment 2: Representation Mechanics
 - **Tokenization**: Uses Exp 1 winner's quantizer settings; for xVal, numeric events are tokenized as `(code_token, [NUM])` via `--numeric_encoding xval`
-- **Training**: `train_representation.py` with padded collation (required for soft discretization, xVal, and Time2Vec). Soft discretization uses a two-point soft target at quantile-token positions; xVal adds an auxiliary numeric regression loss at `[NUM]` positions.
+- **Training**: `train_representation.py` with padded collation (required for soft discretization, xVal, and Time-Aware RoPE). Soft discretization uses a two-point soft target at quantile-token positions; xVal adds an auxiliary numeric regression loss at `[NUM]` positions.
 - **Configurations**: 3 representations × 2 temporal encodings = 6 configs
 
 ### Experiment 3: Vocabulary Semantics
@@ -321,7 +362,7 @@ Empirical check (centiles, 24h; train split):
 - **Cohort (explicit; no shorthand)**:
   - **Hospitalization-level inclusion**: \(H_{\mathrm{ICU}}\) is the set of MIMIC-IV hospital admissions (`hadm_id`) with **hospital LOS ≥ 24h** (computed from `hosp/admissions.csv.gz` `admittime`/`dischtime`) and **≥ 1 linked ICU stay record** in `icu/icustays.csv.gz` for the same `hadm_id`.
   - **Splitting**: patients are split **at the patient level** by `subject_id` into 70/10/20 train/val/test using a fixed RNG seed; each split’s `hadm_id` list is then derived by taking all admissions for those patients and intersecting with \(H_{\mathrm{ICU}}\) (see `scripts/align_cohorts.py` outputs `*_hadm_ids.csv`).
-  - **Matched-signal restriction**: Exp3 tokenization restricts the event stream to labs+vitals, and all four arms are produced by rewriting only identifier strings (`code`) while holding event rows/timestamps/numeric values fixed.
+  - **Full MEDS timeline**: All four arms train on the complete MEDS event timeline across all event families (labs, vitals, medications, infusions, transfers, procedures). The CLIF mapping selectively rewrites code identifiers for the four covered domains (LAB, VITAL, MEDICATION, INFUSION); all other codes are identical across arms.
 
 ### Exp3 data preparation (cohort + arms)
 
@@ -398,19 +439,17 @@ This section provides complete technical specifications referenced in the ML4H 2
 
 **Experiments 2--3 (Representation Training)**:
 - Training script: `fms_ehrs/scripts/train_representation.py`  
-- Hardware: 4 GPUs per job
+- Hardware: 2 GPUs per job (Exp2/3); 4 GPUs per job (Exp1)
 - HPO: **none** (no Optuna / trial-based tuning in Exp2/3; hyperparameters are fixed)
 - Batch size: 1 per device
 - Gradient accumulation: fixed to $2$ (removed from HPO for fairness)
 - Budget: **single epoch** (`IRB_EXP23_STAGE1_EPOCHS=1`) and **no early stopping** (Exp2/3 always consume the full 1-epoch training dataset)
-- Collation: padded + **windowed padded** over full admission timelines (required for soft discretization, xVal, and Time2Vec)
+- Collation: padded + **windowed padded** over full admission timelines (required for soft discretization, xVal, and Time-Aware RoPE)
 - Windowing: window length \(L=\texttt{IRB\_MAX\_SEQ\_LENGTH}\) (default 4096), **non-overlapping windows** (\(\texttt{IRB\_WINDOW\_STRIDE}=L\)), and continuation marker `TL_CONT` on windows after the first.
 - Extreme-length guardrail: cap windows per admission with `IRB_MAX_WINDOWS_PER_ADMISSION` (default 128); when exceeded, windows are subsampled deterministically (uniformly across the admission, always including first+last).
 
-**Time2Vec Parameter Details**:
-- Dimension options: $\{32, 64, 128\}$
-- Parameter formula: $2d + dH + 3H$ where $H=1024$
-- Actual counts: 35,904 / 68,736 / 134,400 parameters
+**Time-Aware RoPE Details**:
+- Time-Aware RoPE adds **0 additional parameters**; it reuses existing RoPE weights and replaces token-index position_ids with continuous relative timestamps scaled by a frequency factor (default $s=60$).
 
 **xVal Continuous Encoder Details**:
 - Tokenization: numeric events emit `(code_token, [NUM])` and align the scalar to `[NUM]` positions (`--numeric_encoding xval`)
@@ -517,7 +556,7 @@ Phase 2 & 3 (train + evaluate):
 
 Let hidden size \(H=1024\). Added parameter counts:
 
-- Time2Vec: 35,904 (32), 68,736 (64), 134,400 (128)
+- Time-Aware RoPE: 0 (reuses existing RoPE weights; changes position_ids only)
 - xVal: 1,025 (numeric head)
 - Soft discretization: \(K \times H\) (learned bin-embedding table; e.g., ventiles \(K=20\Rightarrow 20{,}480\))
 
@@ -529,10 +568,9 @@ All tokenization, model training, and evaluation is performed through **fms-ehrs
 
 - `fms_ehrs/framework/tokenizer.py`: Configurable tokenizer with time-spacing, 24h truncation
 - `fms_ehrs/framework/dataset.py`: Dataset loader with numeric_values and relative_times support
-- `fms_ehrs/framework/model_wrapper.py`: Wrapper for soft discretization and Time2Vec; routes xVal to `XValModelWrapper`
+- `fms_ehrs/framework/model_wrapper.py`: Wrapper for soft discretization and Time-Aware RoPE; routes xVal to `XValModelWrapper`
 - `fms_ehrs/framework/soft_discretization.py`: Convex-combination encoder for numeric values
 - `fms_ehrs/framework/xval.py`: xVal wrapper (`[NUM]` tokenization + multiplicative scaling + numeric head)
-- `fms_ehrs/framework/time2vec.py`: Learned temporal embeddings
 
 **Setup**: Clone `fms-ehrs` as a sibling directory and install with `pip install -e ../fms-ehrs`.
 
@@ -622,3 +660,82 @@ Please also cite the underlying frameworks:
     year = {2025}
 }
 ```
+
+## Paper Audit Trail
+
+This section maps every major verifiable claim in `paper.tex` to the exact file(s) in this
+repository where the number can be confirmed. All values listed here were cross-checked against
+actual outputs during the 2026-02-23 audit.
+
+### Dataset statistics (Table: cohort\_summary)
+
+| Claim | Value | Source |
+|---|---|---|
+| Patients | 364,627 | `physionet.org/files/mimiciv/3.1/hosp/patients.csv.gz` (row count) |
+| Hospital admissions | 546,028 | `physionet.org/files/mimiciv/3.1/hosp/admissions.csv.gz` (row count) |
+| ICU stays | 94,458 | `physionet.org/files/mimiciv/3.1/icu/icustays.csv.gz` (row count) |
+| Lab events (MEDS-extracted) | 84,133,368 | SLURM 6158197: pyarrow scan of `benchmarks/mimic-meds-extraction/data/meds/shard_events/hosp/labevents/[0-158374764).parquet` with `hadm_id` AND `storetime` not-null filter (matching MEDS YAML `time: col(storetime)`) |
+| Unique laboratory codes | 895 | Same run |
+| Codes with reference ranges | 334 (37.3%) | Same run; either `ref_range_lower` or `ref_range_upper` not null |
+| Events with reference ranges | 71,326,729 (84.8%) | Same run |
+
+### Vocabulary sizes (§5.4 Computational Efficiency)
+
+| Config | Vocab size | Source |
+|---|---|---|
+| Deciles, pop, unfused | 19,363 | `outputs/log_parsing/stage0_stats.md` |
+| Deciles, pop, fused | 30,535 | `outputs/log_parsing/stage0_stats.md`; `outputs/diagnostics/sparsity_distance_results.json` → `Fused Deciles.vocab_size` |
+| Centiles, pop, fused | 83,927 | `outputs/diagnostics/sparsity_distance_results.json` → `Fused Centiles.vocab_size` |
+
+### Sequence length (§5.4)
+
+| Claim | Status | Source |
+|---|---|---|
+| Fused reduces median length ~33% (198 vs 296 tokens, 24h) | ✅ | `.cache/tokenized/*/deciles_none_fused*` vs `*unfused*` parquets, `seq_len` median |
+| RoPE saves ~11% vs time tokens (83 vs 93 tokens median, 24h) | ✅ | `.cache/tokenized/*/deciles_none_unfused_time_rope*` vs `*time_tokens*` parquets |
+
+### Mechanistic analyses (§5.3)
+
+| Claim | Value | Source |
+|---|---|---|
+| Centile probe accuracy | 93–98% across 7 analytes | `outputs/diagnostics/clinical_boundary_probe_results.json` → per-analyte `accuracy` |
+| Decile/ventile probe accuracy | 70–90% | Same file |
+| xVal norm ratio at layer 7 | 0.974–0.979 | `outputs/diagnostics/xval_zero_out_results.json` → `norm_ratio` at layer index 7 |
+| % of [NUM] positions in trench (\|z\|<0.5) | 9.1% | Same file → `pct_near_zero` |
+| CE after numeric (Discrete-RoPE) | 1.95 | `outputs/diagnostics/attention_washout_results.json` → `ce_after_numeric` for `Discrete-RoPE` |
+| CE after numeric (Soft-RoPE) | 5.98 | Same file → `Soft-RoPE` entry |
+| CE after categorical (Discrete-RoPE) | 7.54 | Same file → `ce_after_categorical` |
+| Adjacent bin cosine similarity ~0.5 | ✅ | `outputs/diagnostics/embedding_geometry_results.json` → off-diagonal values in cosine similarity matrix |
+| Fused Centiles frozen tokens | 10,866 (12.95%) | `outputs/diagnostics/sparsity_distance_results.json` → `Fused Centiles.n_frozen_tokens` / `pct_frozen` |
+
+### XGBoost baseline (§5.2)
+
+| Claim | Value | Source |
+|---|---|---|
+| Mortality AUROC | 0.742 [0.730, 0.753] | `outputs/xgboost_baseline/xgboost_baseline_results.json`; `slurm/logs/xgb_baseline_6039956.out` |
+| Long LoS AUROC | 0.731 [0.723, 0.738] | Same |
+| Feature count (37) | 37 | `outputs/xgboost_baseline/xgboost_baseline_results.json` → `n_features`; code: `scripts/xgboost_baseline.py` lines 112–119 (top-200) and 312–315 (set intersection) |
+
+### CLIF mapping (§5.3 Exp3; Appendix)
+
+| Claim | Status | Source |
+|---|---|---|
+| VITAL: 9 canonical categories, 26 mapped itemids | ✅ | `../CLIF-MIMIC/data/mappings/mimic-to-clif-mappings - vitals.csv`: 26 non-NO-MAPPING rows, 9 unique `vital_category` values |
+| VITAL event coverage ~14% | From build script | `scripts/build_exp3_meds_semantics_arms.py` mapping stats |
+| LAB: 51 CLIF target categories | ✅ | `../CLIF-MIMIC/data/mappings/mimic-to-clif-mappings - labs.csv`: 51 unique non-empty `lab_category` values loaded by `_load_lab_mapping` (all rows with non-null itemid/lab_category) |
+| LAB coverage ~59% | From build script | Same |
+
+### Exp3 test-set characteristics
+
+| Stat | Value | Source |
+|---|---|---|
+| N admissions | 3,250 | `slurm/logs/prevalence_6039779.out` |
+| Mortality prevalence (ICU cohort) | ~9.7% | Same |
+| Long LoS prevalence (ICU cohort) | ~50.7% | Same |
+| IMV prevalence (ICU cohort) | ~33.8% | Same |
+| Prolonged ICU Stay prevalence | ~52.8% | Same |
+| ICU Admission prevalence | 100% (all-positive; omitted from table) | Same |
+
+> [!NOTE]
+> To spot-check any value: `python3 -c "import json; d=json.load(open('outputs/diagnostics/<file>.json')); print(d)"`.
+> Dataset row counts: `python3 -c "import gzip; print(sum(1 for _ in gzip.open('<file.csv.gz>','rb'))-1)"`.
