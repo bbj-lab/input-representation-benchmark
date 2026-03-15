@@ -65,6 +65,7 @@ FMS_EHRS_PATH = "../fms-ehrs"
 RUN_ARTIFACTS_PATH = "artifacts/runs"
 TOKENIZED_DATASET_ID = "mimiciv-3.1_meds_70-10-20"
 EXP12_TOKENIZED_DIR = f"{RUN_ARTIFACTS_PATH}/tokenized/{TOKENIZED_DATASET_ID}"
+IRB_HOME = Path(__file__).resolve().parent
 
 # Default paths (can be overridden via CLI)
 DEFAULT_PATHS = {
@@ -334,6 +335,13 @@ def get_tokenized_data_dir(config: ExperimentConfig) -> str:
     return DEFAULT_PATHS["exp12_tokenized_dir"]
 
 
+def _resolve_repo_path(path_str: str) -> Path:
+    path = Path(path_str).expanduser()
+    if not path.is_absolute():
+        path = IRB_HOME / path
+    return path.resolve()
+
+
 def generate_exp1_stage0_job_file(
     configs: List[ExperimentConfig],
     output_path: Path,
@@ -468,24 +476,8 @@ def generate_exp1_stage1_job_file(
 
 
 def _exp1_best_model_loc(config: ExperimentConfig, seed: int) -> str:
-    # Current canonical artifact tree stores the selected Exp1 best-trial checkpoints
-    # under legacy run-N/checkpoint-9000 directories rather than the older -hp- alias.
-    run_map = {
-        "meds_deciles_none_fusedFalse_discrete_time_tokens": "run-0",
-        "meds_deciles_none_fusedTrue_discrete_time_tokens": "run-1",
-        "meds_ventiles_none_fusedFalse_discrete_time_tokens": "run-1",
-        "meds_ventiles_none_fusedTrue_discrete_time_tokens": "run-2",
-        "meds_ventiles_5-10-5_fusedFalse_discrete_time_tokens": "run-1",
-        "meds_ventiles_5-10-5_fusedTrue_discrete_time_tokens": "run-0",
-        "meds_trentiles_none_fusedFalse_discrete_time_tokens": "run-1",
-        "meds_trentiles_none_fusedTrue_discrete_time_tokens": "run-2",
-        "meds_trentiles_10-10-10_fusedFalse_discrete_time_tokens": "run-1",
-        "meds_trentiles_10-10-10_fusedTrue_discrete_time_tokens": "run-0",
-        "meds_centiles_none_fusedFalse_discrete_time_tokens": "run-0",
-        "meds_centiles_none_fusedTrue_discrete_time_tokens": "run-0",
-    }
-    run_dir = run_map[config.config_id]
-    return f"$MODEL_DIR/exp1_{config.config_id}-s{seed}/{run_dir}/checkpoint-9000"
+    dv = get_data_version(config)
+    return f"$MODEL_DIR/exp1_{config.config_id}-s{seed}-hp-{dv}"
 
 
 def _exp2_model_loc(config: ExperimentConfig, seed: int) -> str:
@@ -496,10 +488,20 @@ def _exp2_model_loc(config: ExperimentConfig, seed: int) -> str:
     )
 
 
+def _exp3_model_prefix(config: ExperimentConfig) -> str:
+    if config.data_format == "meds_icu":
+        return "meds_icu_native"
+    if config.data_format == "meds_mapped":
+        return "meds_mapped"
+    if config.data_format == "meds_randomized":
+        return "meds_randomized"
+    if config.data_format == "meds_freqmatched":
+        return "meds_freqmatched"
+    raise ValueError(f"Unsupported Exp3 data_format: {config.data_format}")
+
+
 def _exp3_model_loc(config: ExperimentConfig, seed: int) -> str:
-    # Current canonical artifact tree uses a legacy `meds_icu_native` prefix for
-    # the native Exp3 arm, while the remaining arms match their config ids.
-    model_prefix = "meds_icu_native" if config.data_format == "meds_icu" else config.config_id
+    model_prefix = _exp3_model_prefix(config)
     return (
         f"$MODEL_DIR/exp3_{model_prefix}-{config.representation}-{config.temporal}-s{seed}"
         f"/model-{config.representation}-{config.temporal}"
@@ -1204,7 +1206,7 @@ def main():
                 "exp3_meds_randomized_data_dir",
                 "exp3_meds_freqmatched_data_dir",
             ]:
-                p = Path(DEFAULT_PATHS[k])
+                p = _resolve_repo_path(DEFAULT_PATHS[k])
                 if not p.exists():
                     raise ValueError(
                         f"Exp3 requires {k} to exist: {p}. "

@@ -591,6 +591,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="tokens_timelines_extended_outcomes.parquet",
         help="Output parquet filename (default: tokens_timelines_extended_outcomes.parquet).",
     )
+    parser.add_argument(
+        "--strict",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Fail on missing requested splits instead of skipping them.",
+    )
     args = parser.parse_args(argv)
 
     splits = [s.strip() for s in args.splits.split(",") if s.strip()]
@@ -601,15 +607,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         tok_split_dir = tokenized_dir / split
         base_path = tok_split_dir / args.base_outcomes_filename
         if not base_path.exists():
-            print(f"[extract_extended_outcomes] Skip split={split}: missing {base_path}")
+            msg = f"[extract_extended_outcomes] Missing split={split}: {base_path}"
+            if args.strict:
+                raise FileNotFoundError(msg)
+            print(msg)
             continue
 
         meds_split_name, meds_split_dir = _resolve_meds_split_dir(meds_events_dir, split)
         if meds_split_dir is None:
-            print(
-                f"[extract_extended_outcomes] Skip split={split}: no MEDS split dir "
-                f"under {meds_events_dir}"
+            msg = (
+                f"[extract_extended_outcomes] Missing MEDS split for split={split} under "
+                f"{meds_events_dir}"
             )
+            if args.strict:
+                raise FileNotFoundError(msg)
+            print(msg)
             continue
 
         print(f"[extract_extended_outcomes] Processing split={split} (meds={meds_split_name})...")

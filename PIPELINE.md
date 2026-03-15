@@ -59,7 +59,7 @@ Stage 0: Tokenize        →   Stage 1: Train        →   Stage 2: Extract     
 | `run_experiments.py` | Master orchestration: generates SLURM job arrays for all 22 configurations; single source of truth for what was run |
 | `slurm/00_preamble.sh` | All hyperparameter defaults (epoch budget, LR, RoPE scaling, xVal params, etc.) |
 | `slurm/10_submit_stage2_3_after_train.sh` | Chains Stage 2+3 as SLURM dependencies after Stage 1 |
-| `slurm/12_gate_submit_exp2_discrete_after_exp1_winner.sh` | Gated submission: Exp 2 uses Exp 1 winner's configuration |
+| `slurm/12_gate_submit_exp2_discrete_after_exp1_winner.sh` | Gated submission: Exp 2 uses the benchmark-pinned Exp 1 winner unless a custom winner file is prewritten |
 
 ---
 

@@ -19,7 +19,7 @@ conda activate input-rep
 echo "=== Generating Calibration Plot ==="
 echo "Start: $(date)"
 
-PREDS_PKL="${IRB_TOKENIZED_ROOT}/mimiciv-3.1_meds_70-10-20/deciles_none_fused_time_tokens_first_24h-tokenized/test/logistic_regression-preds-checkpoint-9000.pkl"
+PREDS_PKL="${IRB_TOKENIZED_ROOT}/mimiciv-3.1_meds_70-10-20/deciles_none_fused_time_tokens_first_24h-tokenized/test/logistic_regression-preds-calibration-primary_binary-checkpoint-9000.pkl"
 
 # First, inspect pkl structure
 python -c "

@@ -29,6 +29,7 @@ source slurm/ref_qse/preamble.sh
 : "${data_dir:?Set data_dir (tokenized data root)}"
 : "${data_version:?Set data_version (should end with _first_24h)}"
 : "${model_loc:?Set model_loc (HF model directory)}"
+IRB_PREDS_TAG="${IRB_PREDS_TAG:-base-primary_binary}"
 
 echo "Generating representation-based predictions..."
 python3 "${FMS_EHRS_HOME}/fms_ehrs/scripts/transfer_rep_based_preds.py" \
@@ -37,6 +38,7 @@ python3 "${FMS_EHRS_HOME}/fms_ehrs/scripts/transfer_rep_based_preds.py" \
   --data_version "${data_version}" \
   --model_loc "${model_loc}" \
   --classifier logistic_regression \
+  --preds_tag "${IRB_PREDS_TAG}" \
   --save_preds \
   ${IRB_XFER_PRED_ARGS:-}
 

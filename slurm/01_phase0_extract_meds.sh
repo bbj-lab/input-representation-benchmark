@@ -41,17 +41,43 @@ echo "=============================================="
 
 MEDS_DATA_BASE="${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data"
 RAW_BASE="${MEDS_DATA_BASE}/raw"
-VAL_SRC="validation"
+VAL_SRC=""
 if [[ -d "${MEDS_DATA_BASE}/val" ]]; then
   VAL_SRC="val"
+elif [[ -d "${MEDS_DATA_BASE}/tuning" ]]; then
+  VAL_SRC="tuning"
+elif [[ -d "${MEDS_DATA_BASE}/validation" ]]; then
+  VAL_SRC="validation"
+else
+  echo "ERROR: Could not locate a validation split under ${MEDS_DATA_BASE}." >&2
+  echo "  Expected one of: val/, tuning/, or validation/." >&2
+  exit 1
 fi
 
 mkdir -p "${RAW_BASE}"
+ensure_raw_link() {
+  local link_name="$1"
+  local target="$2"
+  local link_path="${RAW_BASE}/${link_name}"
+  if [[ -L "${link_path}" ]]; then
+    local cur
+    cur="$(readlink "${link_path}")"
+    if [[ "${cur}" != "${target}" ]]; then
+      rm -f "${link_path}"
+      ln -s "${target}" "${link_path}"
+    fi
+  elif [[ -e "${link_path}" ]]; then
+    echo "ERROR: ${link_path} exists and is not a symlink." >&2
+    exit 1
+  else
+    ln -s "${target}" "${link_path}"
+  fi
+}
 (
   cd "${RAW_BASE}"
-  [[ -e train ]] || ln -s ../train train
-  [[ -e test ]] || ln -s ../test test
-  [[ -e val ]] || ln -s "../${VAL_SRC}" val
+  ensure_raw_link train ../train
+  ensure_raw_link test ../test
+  ensure_raw_link val "../${VAL_SRC}"
 )
 
 echo ""

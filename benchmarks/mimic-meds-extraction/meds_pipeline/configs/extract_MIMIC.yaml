@@ -5,7 +5,7 @@
 # License: MIT (Copyright (c) 2024 Paweł Renc)
 #
 # Modifications for input-representation-benchmark:
-#   - Split fractions adjusted to 70/10/20 (train/val/test) for benchmark
+#   - Split fractions adjusted to 70/10/20 (train/tuning/test) for benchmark
 #   - Uses custom event_configs_v3.1_full.yaml with storetime semantics
 # =============================================================================
 
@@ -41,7 +41,7 @@ stage_configs:
     # Modified for input-representation-benchmark: 70/10/20 split
     split_fracs:
       train: 0.7
-      tuning: 0.1  # validation set
+      tuning: 0.1  # validation set; Phase 0 links raw/val -> ../tuning
       test: 0.2
       held_out: null
 

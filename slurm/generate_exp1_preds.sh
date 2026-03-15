@@ -50,6 +50,7 @@ python3 "${FMS_EHRS_HOME}/fms_ehrs/scripts/transfer_rep_based_preds.py" \
   --data_version "${DATA_VERSION}" \
   --model_loc "${MODEL_LOC}" \
   --classifier logistic_regression \
+  --preds_tag calibration-primary_binary \
   --save_preds \
   --drop_icu_adm \
   --outcomes same_admission_death long_length_of_stay imv_event icu_admission

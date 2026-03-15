@@ -340,6 +340,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="tokens_timelines_outcomes.parquet",
         help="Output filename to write inside each tokenized split directory (default: tokens_timelines_outcomes.parquet).",
     )
+    parser.add_argument(
+        "--strict",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Fail on missing requested splits instead of skipping them.",
+    )
     args = parser.parse_args(argv)
 
     if args.splits.strip().lower() == "auto":
@@ -359,15 +365,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         tok_split_dir = tokenized_dir / split
         timeline_path = tok_split_dir / args.timeline_filename
         if not timeline_path.exists():
-            print(f"[extract_outcomes_meds] Skip split={split}: missing {timeline_path}")
+            msg = f"[extract_outcomes_meds] Missing split={split}: {timeline_path}"
+            if args.strict:
+                raise FileNotFoundError(msg)
+            print(msg)
             continue
 
         meds_split_name, meds_split_dir = _resolve_meds_split_dir(meds_events_dir, split)
         if meds_split_dir is None:
-            print(
-                f"[extract_outcomes_meds] Skip split={split}: no MEDS split dir found under {meds_events_dir} "
+            msg = (
+                f"[extract_outcomes_meds] Missing MEDS split for split={split} under {meds_events_dir} "
                 f"(looked for {split!r} and common aliases)."
             )
+            if args.strict:
+                raise FileNotFoundError(msg)
+            print(msg)
             continue
 
         meds = _scan_meds_events(meds_split_dir)

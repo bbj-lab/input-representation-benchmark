@@ -71,6 +71,24 @@ export IRB_CONDA_ENV="${IRB_CONDA_ENV:-input-rep}"
 source "${IRB_HOME}/slurm/00_preamble.sh"
 cd "${IRB_HOME}"
 
+require_dir() {
+  local path="$1"
+  local what="$2"
+  if [[ ! -d "${path}" ]]; then
+    echo "ERROR: missing ${what}: ${path}" >&2
+    exit 1
+  fi
+}
+
+require_file() {
+  local path="$1"
+  local what="$2"
+  if [[ ! -f "${path}" ]]; then
+    echo "ERROR: missing ${what}: ${path}" >&2
+    exit 1
+  fi
+}
+
 # Default tokenization truncation cap: keep deterministic and centralized.
 # This controls where we append a TRUNC token when a timeline exceeds the cap.
 if [[ -z "${MAX_PADDED_LEN}" ]]; then
@@ -82,6 +100,10 @@ fi
 # raw parquet shards). Do NOT append `/data` here.
 MEDS_DATA_DIR="${DATA_DIR}"
 TOKENIZER_CONFIG="${FMS_EHRS_HOME}/fms_ehrs/config/mimic-meds-ed.yaml"
+
+for s in train val test; do
+  require_dir "${MEDS_DATA_DIR}/raw/${s}" "raw MEDS split"
+done
 
 DATASET_ID="${IRB_TOKEN_CACHE_DATASET_ID:-mimiciv-3.1_meds_70-10-20}"
 DEFAULT_CACHE_ROOT="${IRB_TOKENIZED_ROOT}/${DATASET_ID}"
@@ -393,7 +415,12 @@ else
   python scripts/extract_outcomes_meds.py \
     --meds_events_dir "${MEDS_DATA_DIR}" \
     --tokenized_dir "${LINK_24H}" \
-    --splits train,val,test
+    --splits train,val,test \
+    --strict
 fi
+
+for s in train val test; do
+  require_file "${LINK_24H}/${s}/tokens_timelines_outcomes.parquet" "base outcomes parquet"
+done
 
 echo "[stage0] Done: ${DATA_VERSION_OUT}"

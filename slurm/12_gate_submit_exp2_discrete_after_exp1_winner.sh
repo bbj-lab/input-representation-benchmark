@@ -7,14 +7,13 @@
 #SBATCH --time=1-00:00:00
 
 # =============================================================================
-# Gate job: submit Exp2 discrete-only after Exp1 winner is written
+# Gate job: submit Exp2 discrete-only after the benchmark Exp1 winner is available
 # =============================================================================
 #
 # Usage:
 #   sbatch --dependency=afterok:<EXP1_STAGE1_ARRAY_JOBID> slurm/12_gate_submit_exp2_discrete_after_exp1_winner.sh
-#
-# Winner file:
-#   outputs/exp1_winner_config_id.txt
+#   If outputs/exp1_winner_config_id.txt is absent, this script materializes the
+#   current benchmark-pinned reference winner files before submitting Exp2.
 # =============================================================================
 
 set -euo pipefail
@@ -40,16 +39,14 @@ cd "${IRB_HOME}"
 WINNER_FILE="${IRB_HOME}/outputs/exp1_winner_config_id.txt"
 mkdir -p "${IRB_HOME}/outputs"
 
-echo "[gate] Waiting for Exp1 winner config_id at: ${WINNER_FILE}"
-for _ in $(seq 1 $((48*60))); do
-  if [[ -s "${WINNER_FILE}" ]]; then
-    break
-  fi
-  sleep 60
-done
+if [[ ! -s "${WINNER_FILE}" ]]; then
+  echo "[gate] Winner file missing; writing benchmark-pinned reference winners."
+  python "${IRB_HOME}/scripts/write_reference_winner_files.py" \
+    --output_dir "${IRB_HOME}/outputs"
+fi
 
 if [[ ! -s "${WINNER_FILE}" ]]; then
-  echo "ERROR: Exp1 winner config_id file not found/non-empty after waiting: ${WINNER_FILE}" >&2
+  echo "ERROR: Exp1 winner config_id file not found/non-empty after reference write: ${WINNER_FILE}" >&2
   exit 1
 fi
 

@@ -223,9 +223,9 @@ input-representation-benchmark/
 │   ├── 09_run_stage2_gpu2_extract.sh      # Stage 2 runner (1 GPU): extract reps
 │   ├── 10_submit_stage2_3_after_train.sh  # Helper: submit Stage 2 -> 3 with afterok deps
 │   ├── 11_run_stage3_tier2q_lr.sh         # Stage 3 runner (tier2q; 8 CPUs): LR
-│   ├── 12_gate_submit_exp2_discrete_after_exp1_winner.sh  # Gate: submit Exp2 discrete-only after Exp1 winner
+│   ├── 12_gate_submit_exp2_discrete_after_exp1_winner.sh  # Gate: submit Exp2 discrete-only using the current benchmark-pinned Exp1 winner unless overridden
 │   ├── 90_stage0_tokenize_only_debug.sh   # Manual tokenization helper (debug)
-│   ├── generated/                 # Auto-generated jobfiles (gitignored)
+│   ├── generated/                 # Auto-generated jobfiles; regenerate on demand, with only intentional tracked exceptions
 │   ├── output/                    # SLURM stdout/stderr logs
 │   └── ref_qse/                   # Vendored reference scripts (Option B evaluation)
 │

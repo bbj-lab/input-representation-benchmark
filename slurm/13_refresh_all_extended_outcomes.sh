@@ -30,6 +30,24 @@ source "${IRB_HOME}/slurm/00_preamble.sh"
 cd "${IRB_HOME}"
 mkdir -p slurm/output
 
+require_dir() {
+  local path="$1"
+  local what="$2"
+  if [[ ! -d "${path}" ]]; then
+    echo "ERROR: missing ${what}: ${path}" >&2
+    exit 1
+  fi
+}
+
+require_file() {
+  local path="$1"
+  local what="$2"
+  if [[ ! -f "${path}" ]]; then
+    echo "ERROR: missing ${what}: ${path}" >&2
+    exit 1
+  fi
+}
+
 echo "=============================================="
 echo "Refreshing extended outcomes for canonical reruns"
 echo "Host: $(hostname)"
@@ -39,6 +57,7 @@ START_TS="$(date +%s)"
 
 EXP12_EVENTS_DIR="benchmarks/mimic-meds-extraction/data/meds/data"
 EXP12_TOKEN_ROOT="artifacts/runs/tokenized/mimiciv-3.1_meds_70-10-20"
+EXP3_NATIVE_EVENTS_DIR="artifacts/runs/exp3/meds_icu"
 
 declare -a REFRESH_SPECS=(
   "${EXP12_EVENTS_DIR}|${EXP12_TOKEN_ROOT}/deciles_none_unfused_time_tokens_first_24h-tokenized"
@@ -56,28 +75,18 @@ declare -a REFRESH_SPECS=(
   "${EXP12_EVENTS_DIR}|${EXP12_TOKEN_ROOT}/deciles_none_unfused_time_rope_first_24h-tokenized"
   "${EXP12_EVENTS_DIR}|${EXP12_TOKEN_ROOT}/deciles_none_unfused_time_tokens_numencxval_first_24h-tokenized"
   "${EXP12_EVENTS_DIR}|${EXP12_TOKEN_ROOT}/deciles_none_unfused_time_rope_numencxval_first_24h-tokenized"
-  "artifacts/runs/exp3/meds_icu|artifacts/runs/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized"
-  "artifacts/runs/exp3/arms/meds_mapped|artifacts/runs/exp3/arms/meds_mapped/deciles_none_unfused_time_rope_first_24h-tokenized"
-  "artifacts/runs/exp3/arms/meds_randomized|artifacts/runs/exp3/arms/meds_randomized/deciles_none_unfused_time_rope_first_24h-tokenized"
-  "artifacts/runs/exp3/arms/meds_freqmatched|artifacts/runs/exp3/arms/meds_freqmatched/deciles_none_unfused_time_rope_first_24h-tokenized"
+  "${EXP3_NATIVE_EVENTS_DIR}|artifacts/runs/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized"
+  "${EXP3_NATIVE_EVENTS_DIR}|artifacts/runs/exp3/arms/meds_mapped/deciles_none_unfused_time_rope_first_24h-tokenized"
+  "${EXP3_NATIVE_EVENTS_DIR}|artifacts/runs/exp3/arms/meds_randomized/deciles_none_unfused_time_rope_first_24h-tokenized"
+  "${EXP3_NATIVE_EVENTS_DIR}|artifacts/runs/exp3/arms/meds_freqmatched/deciles_none_unfused_time_rope_first_24h-tokenized"
 )
 
 done_n=0
-skip_n=0
 
 for spec in "${REFRESH_SPECS[@]}"; do
   IFS="|" read -r events_dir tokdir <<< "${spec}"
-
-  if [[ ! -d "${events_dir}" ]]; then
-    echo "SKIP: events dir missing: ${events_dir}"
-    ((skip_n+=1))
-    continue
-  fi
-  if [[ ! -d "${tokdir}" ]]; then
-    echo "SKIP: tokenized dir missing: ${tokdir}"
-    ((skip_n+=1))
-    continue
-  fi
+  require_dir "${events_dir}" "MEDS events dir"
+  require_dir "${tokdir}" "tokenized dir"
 
   echo ""
   echo "--- Refreshing extended outcomes for: $(basename "${tokdir}") ---"
@@ -85,12 +94,15 @@ for spec in "${REFRESH_SPECS[@]}"; do
   python3 scripts/extract_extended_outcomes.py \
     --meds_events_dir "${events_dir}" \
     --tokenized_dir "${tokdir}" \
-    --splits train,val,test
+    --splits train,val,test \
+    --strict
+  for s in train val test; do
+    require_file "${tokdir}/${s}/tokens_timelines_extended_outcomes.parquet" "extended outcomes parquet"
+  done
   ((done_n+=1))
 done
 
 END_TS="$(date +%s)"
 echo ""
 echo "Completed roots: ${done_n}"
-echo "Skipped roots:   ${skip_n}"
 echo "Walltime (s):    $((END_TS - START_TS))"

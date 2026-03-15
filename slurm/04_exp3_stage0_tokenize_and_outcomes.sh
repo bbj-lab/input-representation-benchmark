@@ -55,6 +55,24 @@ IRB_HOME="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${IRB_HOME}/slurm/00_preamble.sh"
 FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
 
+require_dir() {
+  local path="$1"
+  local what="$2"
+  if [[ ! -d "${path}" ]]; then
+    echo "ERROR: missing ${what}: ${path}" >&2
+    exit 1
+  fi
+}
+
+require_file() {
+  local path="$1"
+  local what="$2"
+  if [[ ! -f "${path}" ]]; then
+    echo "ERROR: missing ${what}: ${path}" >&2
+    exit 1
+  fi
+}
+
 if [[ -z "${MAX_PADDED_LEN}" ]]; then
   MAX_PADDED_LEN="${IRB_MAX_PADDED_LEN}"
 fi
@@ -73,13 +91,42 @@ elif [[ -d "${DATA_DIR}/tuning" ]]; then
   # We link raw/val -> ../tuning to keep the tokenization interface consistent.
   VAL_SRC="tuning"
 fi
+if [[ ! -d "${DATA_DIR}/train" || ! -d "${DATA_DIR}/test" ]]; then
+  echo "ERROR: expected train/ and test/ splits under ${DATA_DIR}" >&2
+  exit 1
+fi
+if [[ ! -d "${DATA_DIR}/${VAL_SRC}" ]]; then
+  echo "ERROR: could not locate a validation split under ${DATA_DIR}" >&2
+  exit 1
+fi
 mkdir -p "${RAW_BASE}"
+ensure_raw_link() {
+  local link_name="$1"
+  local target="$2"
+  local link_path="${RAW_BASE}/${link_name}"
+  if [[ -L "${link_path}" ]]; then
+    local cur
+    cur="$(readlink "${link_path}")"
+    if [[ "${cur}" != "${target}" ]]; then
+      rm -f "${link_path}"
+      ln -s "${target}" "${link_path}"
+    fi
+  elif [[ -e "${link_path}" ]]; then
+    echo "ERROR: ${link_path} exists and is not a symlink." >&2
+    exit 1
+  else
+    ln -s "${target}" "${link_path}"
+  fi
+}
 (
   cd "${RAW_BASE}"
-  [[ -e train ]] || ln -s ../train train
-  [[ -e test ]] || ln -s ../test test
-  [[ -e val ]] || ln -s "../${VAL_SRC}" val
+  ensure_raw_link train ../train
+  ensure_raw_link test ../test
+  ensure_raw_link val "../${VAL_SRC}"
 )
+for s in train val test; do
+  require_dir "${RAW_BASE}/${s}" "raw MEDS split"
+done
 
 # Build tokenize args, handling BooleanOptionalAction flags properly.
 tokenize_args=(
@@ -119,6 +166,15 @@ if [[ "${DATA_FORMAT}" = "meds_icu" || "${DATA_FORMAT}" = "meds_mapped" || "${DA
   python "${IRB_HOME}/scripts/extract_outcomes_meds.py" \
     --meds_events_dir "${DATA_DIR}" \
     --tokenized_dir "${DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized" \
-    --splits train,val,test
+    --splits train,val,test \
+    --strict
 fi
+
+TOKENIZED_24H_DIR="${DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized"
+for s in train val test; do
+  require_file "${TOKENIZED_24H_DIR}/${s}/tokens_timelines.parquet" "tokenized timeline parquet"
+  require_file "${TOKENIZED_24H_DIR}/${s}/tokens_timelines_outcomes.parquet" "base outcomes parquet"
+done
+require_file "${TOKENIZED_24H_DIR}/train/vocab.gzip" "tokenizer vocabulary"
+require_file "${TOKENIZED_24H_DIR}/train/numeric_stats.json" "numeric stats"
 

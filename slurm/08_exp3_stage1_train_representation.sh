@@ -47,7 +47,18 @@ if [[ "${DATA_DIR}" != /* ]]; then
 fi
 
 MODEL_DIR="${MODEL_DIR:-${RUN_ARTIFACTS_DIR}/models}"
-JOB_NAME="exp3_${CONFIG_ID}_s${SEED}"
+MODEL_PREFIX="${CONFIG_ID}"
+if [[ "${CONFIG_ID}" == meds_icu_* ]]; then
+  MODEL_PREFIX="meds_icu_native"
+elif [[ "${CONFIG_ID}" == meds_mapped_* ]]; then
+  MODEL_PREFIX="meds_mapped"
+elif [[ "${CONFIG_ID}" == meds_randomized_* ]]; then
+  MODEL_PREFIX="meds_randomized"
+elif [[ "${CONFIG_ID}" == meds_freqmatched_* ]]; then
+  MODEL_PREFIX="meds_freqmatched"
+fi
+
+JOB_NAME="exp3_${MODEL_PREFIX}_s${SEED}"
 JID="s${SEED}"
 
 NNODES="${SLURM_JOB_NUM_NODES:-1}"
@@ -82,7 +93,7 @@ torchrun "${torchrun_args[@]}" \
   --data_dir "${DATA_DIR}" \
   --data_version "${DATA_VERSION}" \
   --model_dir "${MODEL_DIR}" \
-  --model_version "exp3_${CONFIG_ID}" \
+  --model_version "exp3_${MODEL_PREFIX}" \
   --model_name "meta-llama/Llama-3.2-1B" \
   --use_bf16 "${IRB_USE_BF16}" \
   --attn_implementation "${IRB_ATTN_IMPL}" \
