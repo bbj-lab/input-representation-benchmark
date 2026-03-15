@@ -46,18 +46,19 @@ if [[ "${DATA_DIR}" != /* ]]; then
   DATA_DIR="${IRB_HOME}/${DATA_DIR}"
 fi
 
-MODEL_DIR="${MODEL_DIR:-${IRB_HOME}/models}"
+MODEL_DIR="${MODEL_DIR:-${RUN_ARTIFACTS_DIR}/models}"
 JOB_NAME="exp3_${CONFIG_ID}_s${SEED}"
 JID="s${SEED}"
 
 NNODES="${SLURM_JOB_NUM_NODES:-1}"
 NODE_RANK="${SLURM_NODEID:-0}"
 
-# Benchmark contract: 2 GPUs per configuration (single node).
+# Benchmark contract: single-node training. We default to 1 GPU to improve queue latency,
+# but allow higher-GPU runs when available.
 # Paper: "2 × A100 for Experiments 2–3, trading longer wall-clock time for faster queue throughput."
-NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-2}"
-if [[ "${NPROC_PER_NODE}" -ne 4 && "${NPROC_PER_NODE}" -ne 2 ]]; then
-  echo "ERROR: IRB_NPROC_PER_NODE must be 2 or 4 for benchmark runs (got ${NPROC_PER_NODE})." >&2
+NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-1}"
+if [[ "${NPROC_PER_NODE}" -ne 4 && "${NPROC_PER_NODE}" -ne 2 && "${NPROC_PER_NODE}" -ne 1 ]]; then
+  echo "ERROR: IRB_NPROC_PER_NODE must be 1, 2, or 4 for benchmark runs (got ${NPROC_PER_NODE})." >&2
   exit 2
 fi
 if [[ "${NNODES}" -ne 1 ]]; then

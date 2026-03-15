@@ -18,7 +18,8 @@ cd "${IRB_HOME}"
 : "${data_version:?Set data_version (tokenization data_version)}"
 : "${seed:?Set seed (training seed; used for naming only)}"
 
-MODEL_DIR="${MODEL_DIR:-${IRB_HOME}/models}"
+TOKENIZED_DATA_DIR="${IRB_TOKENIZED_DATASET_DIR}"
+MODEL_DIR="${MODEL_DIR:-${RUN_ARTIFACTS_DIR}/models}"
 FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
 
 # Deterministic seed-based id for reproducible naming.
@@ -54,7 +55,7 @@ fi
 torchrun "${torchrun_args[@]}" \
   --n_epochs "${N_EPOCHS}" \
   --n_trials "${N_TRIALS}" \
-  --data_dir "${DATA_DIR}" \
+  --data_dir "${TOKENIZED_DATA_DIR}" \
   --data_version "${data_version}" \
   --model_dir "${MODEL_DIR}" \
   --model_version "exp1_${config_id}" \

@@ -83,6 +83,7 @@ premeds/
 
 # Model checkpoints
 models/
+artifacts/runs/
 checkpoints/
 
 # Hydra

@@ -37,9 +37,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IRB_HOME="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${IRB_HOME}/slurm/00_preamble.sh"
 
-# `DATA_DIR` is standardized (via slurm/00_preamble.sh) to point to the MEDS events directory.
-MEDS_DATA_DIR="${DATA_DIR}"
-MODEL_DIR="${MODEL_DIR:-${IRB_HOME}/models}"
+# Exp2 Stage1 consumes canonical tokenized timelines, not the raw MEDS events root.
+TOKENIZED_DATA_DIR="${IRB_TOKENIZED_DATASET_DIR}"
+MODEL_DIR="${MODEL_DIR:-${RUN_ARTIFACTS_DIR}/models}"
 FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
 
 JOB_NAME="exp2_${CONFIG_ID}_s${SEED}"
@@ -48,11 +48,12 @@ JID="s${SEED}"
 NNODES="${SLURM_JOB_NUM_NODES:-1}"
 NODE_RANK="${SLURM_NODEID:-0}"
 
-# Benchmark contract: 2 GPUs per configuration (single node).
+# Benchmark contract: single-node training. We default to 1 GPU to improve queue latency,
+# but allow higher-GPU runs when available.
 # Paper: "2 × A100 for Experiments 2–3, trading longer wall-clock time for faster queue throughput."
-NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-2}"
-if [[ "${NPROC_PER_NODE}" -ne 4 && "${NPROC_PER_NODE}" -ne 2 ]]; then
-  echo "ERROR: IRB_NPROC_PER_NODE must be 2 or 4 for benchmark runs (got ${NPROC_PER_NODE})." >&2
+NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-1}"
+if [[ "${NPROC_PER_NODE}" -ne 4 && "${NPROC_PER_NODE}" -ne 2 && "${NPROC_PER_NODE}" -ne 1 ]]; then
+  echo "ERROR: IRB_NPROC_PER_NODE must be 1, 2, or 4 for benchmark runs (got ${NPROC_PER_NODE})." >&2
   exit 2
 fi
 if [[ "${NNODES}" -ne 1 ]]; then
@@ -73,7 +74,7 @@ else
 fi
 
 torchrun "${torchrun_args[@]}" \
-  --data_dir "${MEDS_DATA_DIR}" \
+  --data_dir "${TOKENIZED_DATA_DIR}" \
   --data_version "${DATA_VERSION}" \
   --model_dir "${MODEL_DIR}" \
   --model_version "exp2_${CONFIG_ID}" \

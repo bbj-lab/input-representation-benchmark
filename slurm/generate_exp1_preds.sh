@@ -17,15 +17,16 @@ cd "$PROJECT_ROOT"
 
 # This should point to your sibling fms-ehrs repo
 export FMS_EHRS_HOME="../fms-ehrs"
+source "${PROJECT_ROOT}/slurm/00_preamble.sh"
 
 # 1. DATA: The tokenized data for Exp1 Deciles Fused (Phase 1 Winner)
-#    We use the test split from .cache
-DATA_DIR=".cache/tokenized/mimiciv-3.1_meds_70-10-20"
+#    We use the canonical tokenized run tree.
+DATA_DIR="${IRB_TOKENIZED_ROOT}/mimiciv-3.1_meds_70-10-20"
 DATA_VERSION="deciles_none_fused_time_tokens_first_24h"
 
 # 2. MODEL: The trained model checkpoint
 #    Using run-0, checkpoint-9000 (final checkpoint)
-MODEL_LOC="models/exp1_meds_deciles_none_fusedTrue_discrete_time_tokens-s42/run-0/checkpoint-9000"
+MODEL_LOC="${MODEL_DIR}/exp1_meds_deciles_none_fusedTrue_discrete_time_tokens-s42/run-0/checkpoint-9000"
 
 mkdir -p slurm/logs
 

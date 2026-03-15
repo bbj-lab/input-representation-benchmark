@@ -127,7 +127,7 @@ fi
 # 5) Optionally delete token cache (EXPENSIVE)
 if [[ "${DELETE_TOKEN_CACHE}" -eq 1 ]]; then
   echo "== Deleting token cache (risky/expensive; opt-in) =="
-  CACHE_ROOT="${IRB_HOME}/.cache/tokenized"
+  CACHE_ROOT="${IRB_HOME}/artifacts/runs/tokenized"
   if [[ -d "${CACHE_ROOT}" ]]; then
     run rm -rf "${CACHE_ROOT}"
   else
@@ -159,13 +159,13 @@ if [[ "${DELETE_STAGE2_STAGE3_ARTIFACTS}" -eq 1 ]]; then
   echo "== Deleting Stage2/Stage3 artifacts (opt-in) =="
   source "${IRB_HOME}/slurm/00_preamble.sh" >/dev/null 2>&1 || true
   DATA_DIR="${DATA_DIR:-${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data}"
-  # Stage2/Stage3 artifacts are written into the tokenized directories (features/preds)
-  # which typically live under the IRB token cache root and are symlinked into DATA_DIR.
+  # Stage2/Stage3 artifacts are written into the canonical tokenized run tree.
+  # Compatibility symlinks under DATA_DIR may still exist during transition.
   #
   # We delete in both places:
-  # - IRB token cache roots (preferred; actual storage)
-  # - DATA_DIR (symlink view; safe if symlinks exist, no-op otherwise)
-  CACHE_ROOT_LOCAL="${IRB_HOME}/.cache/tokenized"
+  # - canonical tokenized root (preferred; actual storage)
+  # - DATA_DIR (compatibility-link view; safe if symlinks exist, no-op otherwise)
+  CACHE_ROOT_LOCAL="${IRB_HOME}/artifacts/runs/tokenized"
   CACHE_ROOT_SCRATCH=""
   if [[ -n "${hm:-}" && -d "${hm}" ]]; then
     CACHE_ROOT_SCRATCH="${hm}/irb_scratch/tokenized"

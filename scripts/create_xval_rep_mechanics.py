@@ -12,12 +12,12 @@ import torch
 
 configs = [
     {
-        "path": "models/exp2_meds_deciles_none_fusedFalse_xval_time_tokens-xval-time_tokens-s42/model-xval-time_tokens/representation_mechanics.pt",
+        "path": "artifacts/runs/models/exp2_meds_deciles_none_fusedFalse_xval_time_tokens-xval-time_tokens-s42/model-xval-time_tokens/representation_mechanics.pt",
         "representation": "xval",
         "temporal": "time_tokens",
     },
     {
-        "path": "models/exp2_meds_deciles_none_fusedFalse_xval_time_rope-xval-time_rope-s42/model-xval-time_rope/representation_mechanics.pt",
+        "path": "artifacts/runs/models/exp2_meds_deciles_none_fusedFalse_xval_time_rope-xval-time_rope-s42/model-xval-time_rope/representation_mechanics.pt",
         "representation": "xval",
         "temporal": "time_rope",
     },

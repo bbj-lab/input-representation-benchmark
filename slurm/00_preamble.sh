@@ -52,6 +52,11 @@ hm="/gpfs/data/bbj-lab/users/${_user}"
 # Project paths (default: infer from this repository location)
 IRB_HOME="${IRB_HOME:-${parent_dir}}"
 FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
+RUN_ARTIFACTS_DIR="${RUN_ARTIFACTS_DIR:-${IRB_HOME}/artifacts/runs}"
+IRB_TOKENIZED_ROOT="${IRB_TOKENIZED_ROOT:-${RUN_ARTIFACTS_DIR}/tokenized}"
+IRB_EXP3_ROOT="${IRB_EXP3_ROOT:-${RUN_ARTIFACTS_DIR}/exp3}"
+IRB_TOKEN_DATASET_ID="${IRB_TOKEN_DATASET_ID:-mimiciv-3.1_meds_70-10-20}"
+IRB_TOKENIZED_DATASET_DIR="${IRB_TOKENIZED_DATASET_DIR:-${IRB_TOKENIZED_ROOT}/${IRB_TOKEN_DATASET_ID}}"
 # IMPORTANT: `DATA_DIR` is standardized to point to the MEDS *events directory*
 # that contains split subdirectories (train/val/test or train/tuning/test) and
 # the raw MEDS parquet shards (or a raw/ shim). Concretely:
@@ -62,9 +67,11 @@ FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
 #
 # This avoids ambiguous "root vs events" semantics like ${DATA_DIR}/data.
 DATA_DIR="${DATA_DIR:-${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data}"
-MODEL_DIR="${MODEL_DIR:-${IRB_HOME}/models}"
+MODEL_DIR="${MODEL_DIR:-${RUN_ARTIFACTS_DIR}/models}"
 OUTPUT_DIR="${OUTPUT_DIR:-${IRB_HOME}/outputs}"
-export IRB_HOME FMS_EHRS_HOME DATA_DIR MODEL_DIR OUTPUT_DIR hm
+export IRB_HOME FMS_EHRS_HOME RUN_ARTIFACTS_DIR IRB_TOKENIZED_ROOT IRB_EXP3_ROOT
+export IRB_TOKEN_DATASET_ID IRB_TOKENIZED_DATASET_DIR
+export DATA_DIR MODEL_DIR OUTPUT_DIR hm
 
 # -----------------------------------------------------------------------------
 # Sequence-length defaults (single source of truth for jobs)
@@ -192,11 +199,35 @@ IRB_CONDA_ENV="${IRB_CONDA_ENV:-input-rep}"
 conda activate "${IRB_CONDA_ENV}"
 
 # Cache directories (following fms-ehrs conventions)
-if [[ -d /gpfs/data/bbj-lab/cache/huggingface/ ]]; then
-    HF_HOME="/gpfs/data/bbj-lab/cache/huggingface/"
-else
-    HF_HOME="${HF_HOME:-${HOME}/.cache/huggingface}"
+#
+# IMPORTANT: Some cluster environments export HF_* cache paths pointing at shared,
+# read-only directories. That causes PermissionError during dataset/model loading.
+# We therefore prefer a user-writable cache and override non-writable settings.
+_hf_home_candidate="${HF_HOME:-}"
+if [[ -n "${_hf_home_candidate}" ]]; then
+    mkdir -p "${_hf_home_candidate}" 2>/dev/null || true
+    if [[ -d "${_hf_home_candidate}" && -w "${_hf_home_candidate}" ]]; then
+        HF_HOME="${_hf_home_candidate}"
+    else
+        unset HF_HOME
+    fi
 fi
+if [[ -z "${HF_HOME:-}" ]]; then
+    if [[ -d /gpfs/data/bbj-lab/cache/huggingface/ && -w /gpfs/data/bbj-lab/cache/huggingface/ ]]; then
+        HF_HOME="/gpfs/data/bbj-lab/cache/huggingface/"
+    elif [[ -d /scratch ]]; then
+        HF_HOME="/scratch/${_user}/huggingface"
+    else
+        HF_HOME="${HOME}/.cache/huggingface"
+    fi
+    mkdir -p "${HF_HOME}"
+fi
+
+# Keep all HF caches under HF_HOME to avoid accidental writes to shared paths.
+HF_DATASETS_CACHE="${HF_HOME}/datasets"
+HF_HUB_CACHE="${HF_HOME}/hub"
+TRANSFORMERS_CACHE="${HF_HOME}/transformers"
+mkdir -p "${HF_DATASETS_CACHE}" "${HF_HUB_CACHE}" "${TRANSFORMERS_CACHE}"
 if [[ -d /scratch ]]; then
     WANDB_CACHE_DIR="/scratch/${_user}/"
     WANDB_DIR="/scratch/${_user}/"
@@ -205,7 +236,7 @@ else
     WANDB_DIR="${WANDB_DIR:-${HOME}/.cache/wandb}"
 fi
 PYTHONPATH="${IRB_HOME}:${FMS_EHRS_HOME}:${PYTHONPATH:-}"
-export HF_HOME WANDB_CACHE_DIR WANDB_DIR PYTHONPATH
+export HF_HOME HF_DATASETS_CACHE HF_HUB_CACHE TRANSFORMERS_CACHE WANDB_CACHE_DIR WANDB_DIR PYTHONPATH
 
 # -----------------------------------------------------------------------------
 # Attention backend default (FlashAttention-2 when available)

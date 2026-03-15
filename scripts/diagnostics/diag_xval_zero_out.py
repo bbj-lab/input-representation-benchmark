@@ -444,6 +444,16 @@ def main():
             "model_dir": base / "models" / "exp2_meds_deciles_none_fusedFalse_xval_time_rope-xval-time_rope-s42" / "model-xval-time_rope",
             "data_version": "deciles_none_unfused_time_rope_numencxval_first_24h",
         },
+        {
+            "name": "xVal-Affine-TimeTokens",
+            "model_dir": base / "models" / "exp2_meds_deciles_none_fusedFalse_xval_affine_time_tokens-xval_affine-time_tokens-s42" / "model-xval_affine-time_tokens",
+            "data_version": "deciles_none_unfused_time_tokens_numencxval_first_24h",
+        },
+        {
+            "name": "xVal-Affine-RoPE",
+            "model_dir": base / "models" / "exp2_meds_deciles_none_fusedFalse_xval_affine_time_rope-xval_affine-time_rope-s42" / "model-xval_affine-time_rope",
+            "data_version": "deciles_none_unfused_time_rope_numencxval_first_24h",
+        },
     ]
 
     all_results = {}

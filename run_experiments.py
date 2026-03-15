@@ -62,18 +62,22 @@ DATA_SEED = 42
 
 # fms-ehrs repository path (relative to benchmark repo)
 FMS_EHRS_PATH = "../fms-ehrs"
+RUN_ARTIFACTS_PATH = "artifacts/runs"
+TOKENIZED_DATASET_ID = "mimiciv-3.1_meds_70-10-20"
+EXP12_TOKENIZED_DIR = f"{RUN_ARTIFACTS_PATH}/tokenized/{TOKENIZED_DATASET_ID}"
 
 # Default paths (can be overridden via CLI)
 DEFAULT_PATHS = {
     "meds_data_dir": "benchmarks/mimic-meds-extraction/data/meds/data",
-    "model_dir": "models",
+    "exp12_tokenized_dir": EXP12_TOKENIZED_DIR,
+    "model_dir": f"{RUN_ARTIFACTS_PATH}/models",
     "meds_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/mimic-meds-ed.yaml",
     # Exp3 arms (data artifacts produced by scripts/align_cohorts.py,
     # scripts/split_meds_by_hadm_splits.py, scripts/build_exp3_meds_semantics_arms.py)
-    "exp3_meds_icu_data_dir": "data/exp3/meds_icu",
-    "exp3_meds_mapped_data_dir": "data/exp3/arms/meds_mapped",
-    "exp3_meds_randomized_data_dir": "data/exp3/arms/meds_randomized",
-    "exp3_meds_freqmatched_data_dir": "data/exp3/arms/meds_freqmatched",
+    "exp3_meds_icu_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/meds_icu",
+    "exp3_meds_mapped_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/arms/meds_mapped",
+    "exp3_meds_randomized_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/arms/meds_randomized",
+    "exp3_meds_freqmatched_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/arms/meds_freqmatched",
     "exp3_meds_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/mimic-meds-exp3-icu.yaml",
 }
 
@@ -276,7 +280,7 @@ def make_exp3_configs(
     clinical_anchoring: str,
     fused: bool,
 ) -> list[ExperimentConfig]:
-    if representation in ("soft", "xval") and fused:
+    if representation in ("soft", "xval", "xval_affine") and fused:
         raise ValueError("Exp3 soft/xval requires unfused tokenization (fused=False).")
     return [
         ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds_icu"),
@@ -298,7 +302,7 @@ def get_data_version(config: ExperimentConfig) -> str:
     # and `time_rope` (no spacing tokens; temporal info comes from relative_times).
     # If we do not include `temporal` here, time_tokens/time_rope variants will write
     # to the same <data_version>-tokenized directory and race/overwrite each other.
-    numeric_encoding = "_numencxval" if config.representation == "xval" else ""
+    numeric_encoding = "_numencxval" if str(config.representation).startswith("xval") else ""
     return f"{config.quantizer}_{config.clinical_anchoring}_{fused_str}_{config.temporal}{numeric_encoding}"
 
 
@@ -321,6 +325,13 @@ def get_data_dir(config: ExperimentConfig) -> str:
     if config.data_format == "meds_freqmatched":
         return DEFAULT_PATHS["exp3_meds_freqmatched_data_dir"]
     return DEFAULT_PATHS["meds_data_dir"]
+
+
+def get_tokenized_data_dir(config: ExperimentConfig) -> str:
+    """Get canonical tokenized-data root for Stage1/2/3 consumption."""
+    if config.data_format in ("meds_icu", "meds_mapped", "meds_randomized", "meds_freqmatched"):
+        return get_data_dir(config)
+    return DEFAULT_PATHS["exp12_tokenized_dir"]
 
 
 def generate_exp1_stage0_job_file(
@@ -395,8 +406,7 @@ def generate_exp1_stage0_eval_job_file(
             fused_flag = "true" if config.fused else "false"
 
             # IMPORTANT: Use the *existing* training vocab for this condition so token ids match the pretrained model.
-            # DATA_DIR is set by slurm/00_preamble.sh and points to the MEDS events directory.
-            vocab_path = f"${{DATA_DIR}}/{dv_train}-tokenized/train/vocab.gzip"
+            vocab_path = f"{DEFAULT_PATHS['exp12_tokenized_dir']}/{dv_train}-tokenized/train/vocab.gzip"
 
             f.write(
                 "bash slurm/03_stage0_tokenize_and_outcomes_meds.sh "
@@ -444,9 +454,10 @@ def generate_exp1_stage1_job_file(
                     + f"export config_id={config.config_id} "
                     + f"data_version={data_version} "
                     + f"seed={seed} "
+                    + f"IRB_TOKENIZED_DATASET_DIR={DEFAULT_PATHS['exp12_tokenized_dir']} "
                     # Do not hard-code epochs in the jobfile; allow overrides via env.
                     + "IRB_EXP1_STAGE1_EPOCHS=${IRB_EXP1_STAGE1_EPOCHS:-1} "
-                    + "MODEL_DIR=${MODEL_DIR:-models} "
+                    + f"MODEL_DIR=${{MODEL_DIR:-{DEFAULT_PATHS['model_dir']}}} "
                     + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
                     + "&& bash slurm/04_exp1_stage1_tune_packed.sh"
                     + "\"\n"
@@ -457,8 +468,24 @@ def generate_exp1_stage1_job_file(
 
 
 def _exp1_best_model_loc(config: ExperimentConfig, seed: int) -> str:
-    dv = get_data_version(config)
-    return f"$MODEL_DIR/exp1_{config.config_id}-s{seed}-hp-{dv}"
+    # Current canonical artifact tree stores the selected Exp1 best-trial checkpoints
+    # under legacy run-N/checkpoint-9000 directories rather than the older -hp- alias.
+    run_map = {
+        "meds_deciles_none_fusedFalse_discrete_time_tokens": "run-0",
+        "meds_deciles_none_fusedTrue_discrete_time_tokens": "run-1",
+        "meds_ventiles_none_fusedFalse_discrete_time_tokens": "run-1",
+        "meds_ventiles_none_fusedTrue_discrete_time_tokens": "run-2",
+        "meds_ventiles_5-10-5_fusedFalse_discrete_time_tokens": "run-1",
+        "meds_ventiles_5-10-5_fusedTrue_discrete_time_tokens": "run-0",
+        "meds_trentiles_none_fusedFalse_discrete_time_tokens": "run-1",
+        "meds_trentiles_none_fusedTrue_discrete_time_tokens": "run-2",
+        "meds_trentiles_10-10-10_fusedFalse_discrete_time_tokens": "run-1",
+        "meds_trentiles_10-10-10_fusedTrue_discrete_time_tokens": "run-0",
+        "meds_centiles_none_fusedFalse_discrete_time_tokens": "run-0",
+        "meds_centiles_none_fusedTrue_discrete_time_tokens": "run-0",
+    }
+    run_dir = run_map[config.config_id]
+    return f"$MODEL_DIR/exp1_{config.config_id}-s{seed}/{run_dir}/checkpoint-9000"
 
 
 def _exp2_model_loc(config: ExperimentConfig, seed: int) -> str:
@@ -470,9 +497,11 @@ def _exp2_model_loc(config: ExperimentConfig, seed: int) -> str:
 
 
 def _exp3_model_loc(config: ExperimentConfig, seed: int) -> str:
-    # Matches slurm/exp3_stage1_train_representation.sh output naming
+    # Current canonical artifact tree uses a legacy `meds_icu_native` prefix for
+    # the native Exp3 arm, while the remaining arms match their config ids.
+    model_prefix = "meds_icu_native" if config.data_format == "meds_icu" else config.config_id
     return (
-        f"$MODEL_DIR/exp3_{config.config_id}-{config.representation}-{config.temporal}-s{seed}"
+        f"$MODEL_DIR/exp3_{model_prefix}-{config.representation}-{config.temporal}-s{seed}"
         f"/model-{config.representation}-{config.temporal}"
     )
 
@@ -492,7 +521,7 @@ def generate_exp1_rep_extract_job_file(
         f.write("# Generated by run_experiments.py\n")
         f.write(f"# Mode: {mode}\n\n")
         for config in configs:
-            data_dir = get_data_dir(config)
+            data_dir = get_tokenized_data_dir(config)
             dv = (
                 _exp1_eval_data_version(config, eval_max_padded_len=eval_max_padded_len)
                 if eval_max_padded_len is not None
@@ -528,7 +557,7 @@ def generate_exp1_rep_pred_job_file(
         f.write("# Generated by run_experiments.py\n")
         f.write(f"# Mode: {mode}\n\n")
         for config in configs:
-            data_dir = get_data_dir(config)
+            data_dir = get_tokenized_data_dir(config)
             dv = (
                 _exp1_eval_data_version(config, eval_max_padded_len=eval_max_padded_len)
                 if eval_max_padded_len is not None
@@ -563,7 +592,7 @@ def generate_exp2_rep_extract_job_file(
         f.write("# Generated by run_experiments.py\n")
         f.write(f"# Mode: {mode}\n\n")
         for config in configs:
-            data_dir = get_data_dir(config)
+            data_dir = get_tokenized_data_dir(config)
             dv = get_data_version(config)
             for seed in training_seeds:
                 f.write(
@@ -594,7 +623,7 @@ def generate_exp2_rep_pred_job_file(
         f.write("# Generated by run_experiments.py\n")
         f.write(f"# Mode: {mode}\n\n")
         for config in configs:
-            data_dir = get_data_dir(config)
+            data_dir = get_tokenized_data_dir(config)
             dv = get_data_version(config)
             for seed in training_seeds:
                 f.write(
@@ -710,7 +739,7 @@ def generate_exp2_stage0_job_file(
         )
 
         fused_flag = "true" if config.fused else "false"
-        numeric_encoding = "xval" if config.representation == "xval" else "quantile"
+        numeric_encoding = "xval" if str(config.representation).startswith("xval") else "quantile"
         commands.append(
             "bash slurm/03_stage0_tokenize_and_outcomes_meds.sh "
             f"--data_version_out {data_version} "
@@ -753,6 +782,7 @@ def generate_exp2_stage1_job_file(
         data_version = get_data_version(config)
         for seed in training_seeds:
             commands.append(
+                f"IRB_TOKENIZED_DATASET_DIR={DEFAULT_PATHS['exp12_tokenized_dir']} "
                 "IRB_EXP23_STAGE1_EPOCHS=${IRB_EXP23_STAGE1_EPOCHS:-1} bash slurm/07_exp2_stage1_train_representation.sh "
                 f"--config_id {config.config_id} "
                 f"--data_version {data_version} "
@@ -767,7 +797,7 @@ def generate_exp2_stage1_job_file(
         f.write("# Generated by run_experiments.py\n")
         f.write("# Submit with:\n")
         f.write(
-            f"#   sbatch --array=0-{len(commands) - 1} slurm/05_run_stage1_gpu2_train.sh {output_path}\n"
+            f"#   sbatch --array=0-{len(commands) - 1} slurm/06_run_stage1_gpu1_train.sh {output_path}\n"
         )
         f.write("\n")
         for cmd in commands:
@@ -797,7 +827,7 @@ def generate_exp3_stage0_job_file(
             "true" if config.temporal == "time_tokens" else "false"
         )
         fused_flag = "true" if config.fused else "false"
-        numeric_encoding = "xval" if config.representation == "xval" else "quantile"
+        numeric_encoding = "xval" if str(config.representation).startswith("xval") else "quantile"
 
         cmd = (
             "bash slurm/04_exp3_stage0_tokenize_and_outcomes.sh "
@@ -862,7 +892,7 @@ def generate_exp3_stage1_job_file(
         f.write("# Generated by run_experiments.py\n")
         f.write("# Submit with:\n")
         f.write(
-            f"#   sbatch --array=0-{len(commands) - 1} slurm/06_run_stage1_gpu2_train.sh {output_path}\n"
+            f"#   sbatch --array=0-{len(commands) - 1} slurm/06_run_stage1_gpu1_train.sh {output_path}\n"
         )
         f.write("\n")
         for cmd in commands:
@@ -1366,13 +1396,13 @@ def main():
     if exp2_n0 is not None:
         print("  3. Exp2 (4-stage):")
         print(f"     - Stage 0 (tier2q CPU): sbatch --array=0-{exp2_n0 - 1} slurm/02_run_stage0_tier2q_tokenize.sh {generated_dir}/08_exp2_stage0_tokenize.jobfile")
-        print(f"     - Stage 1 (2 GPUs/job): TRAIN2_JID=$(sbatch --parsable --array=0-{exp2_n1 - 1} slurm/06_run_stage1_gpu2_train.sh {generated_dir}/10a_exp2_stage1_train.jobfile)")
+        print(f"     - Stage 1 (1 GPU/job): TRAIN2_JID=$(sbatch --parsable --array=0-{exp2_n1 - 1} slurm/06_run_stage1_gpu1_train.sh {generated_dir}/10a_exp2_stage1_train.jobfile)")
         print(f"     - Stage 2 (1 GPU/job): EXTRACT2_JID=$(sbatch --parsable --dependency=afterok:\"${{TRAIN2_JID}}\" --array=0-{exp2_n1 - 1} slurm/09_run_stage2_gpu2_extract.sh {generated_dir}/10b_exp2_stage2_extract_reps.jobfile)")
         print(f"     - Stage 3 (tier2q LR): sbatch --dependency=afterok:\"${{EXTRACT2_JID}}\" --array=0-{exp2_n1 - 1} slurm/11_run_stage3_tier2q_lr.sh {generated_dir}/10c_exp2_stage3_lr.jobfile")
     if exp3_n0 is not None:
         print("  4. Exp3 (4-stage):")
         print(f"     - Stage 0 (tier2q CPU): sbatch --array=0-{exp3_n0 - 1} slurm/02_run_stage0_tier2q_tokenize.sh {generated_dir}/12_exp3_stage0_tokenize.jobfile")
-        print(f"     - Stage 1 (2 GPUs/job): TRAIN3_JID=$(sbatch --parsable --array=0-{exp3_n1 - 1} slurm/06_run_stage1_gpu2_train.sh {generated_dir}/14a_exp3_stage1_train.jobfile)")
+        print(f"     - Stage 1 (1 GPU/job): TRAIN3_JID=$(sbatch --parsable --array=0-{exp3_n1 - 1} slurm/06_run_stage1_gpu1_train.sh {generated_dir}/14a_exp3_stage1_train.jobfile)")
         print(f"     - Stage 2 (1 GPU/job): EXTRACT3_JID=$(sbatch --parsable --dependency=afterok:\"${{TRAIN3_JID}}\" --array=0-{exp3_n1 - 1} slurm/09_run_stage2_gpu2_extract.sh {generated_dir}/14b_exp3_stage2_extract_reps.jobfile)")
         print(f"     - Stage 3 (tier2q LR): sbatch --dependency=afterok:\"${{EXTRACT3_JID}}\" --array=0-{exp3_n1 - 1} slurm/11_run_stage3_tier2q_lr.sh {generated_dir}/14c_exp3_stage3_lr.jobfile")
 

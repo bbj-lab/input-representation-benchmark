@@ -1,30 +1,47 @@
 #!/usr/bin/env python3
 """
-Extended outcome extraction (Tier 2 & 3) for regression and expanded classification.
+Extended outcome extraction for regression and additional binary evaluation.
 
 Companion to `extract_outcomes_meds.py`.  That script produces the canonical
 binary outcomes (mortality, LOS, ICU admission, IMV).  This script adds
-continuous/ordinal targets suitable for regression-based probing and
-threshold-based binary expansions.
+continuous/ordinal outcomes suitable for regression-based probing and
+threshold-based additional binary outcomes.
 
 Outputs (per hospitalization, joined onto existing outcomes parquet)
 -------------------------------------------------------------------
-Continuous regression targets (Tier 2):
-    - peak_creatinine        : max creatinine during admission (mg/dL)
-    - peak_troponin          : max troponin T or I during admission (ng/mL)
-    - min_hemoglobin         : min hemoglobin during admission (g/dL)
-    - peak_potassium         : max potassium during admission (mEq/L)
-    - min_glucose            : min glucose during admission (mg/dL)
-    - peak_bnp               : max BNP or NT-proBNP during admission (pg/mL)
-    - time_to_icu_hours      : hours from hospital admission to first ICU admission
-                               (null if no ICU admission)
+Continuous regression outcomes:
+    - peak_creatinine        : max creatinine after 24h (mg/dL)
+    - peak_troponin          : max troponin T or I after 24h (ng/mL)
+    - min_hemoglobin         : min hemoglobin after 24h (g/dL)
+    - peak_potassium         : max potassium after 24h (mEq/L)
+    - min_potassium          : min potassium after 24h (mEq/L)
+    - min_glucose            : min glucose after 24h (mg/dL)
+    - min_sodium             : min sodium after 24h (mEq/L)
+    - max_sodium             : max sodium after 24h (mEq/L)
+    - peak_bnp               : max BNP or NT-proBNP after 24h (pg/mL)
+    - max_heart_rate         : max heart rate after 24h (bpm)
+    - max_sbp               : max systolic blood pressure after 24h (mmHg)
+    - max_dbp               : max diastolic blood pressure after 24h (mmHg)
 
-Binary outcomes (Tier 3):
-    - hyperkalemia           : peak potassium > 6.0 mEq/L
-    - severe_anemia          : min hemoglobin < 7.0 g/dL
-    - hypoglycemia           : min glucose < 50 mg/dL
-    - vasopressor_initiation : any vasopressor infusion during admission
-    - hypotension            : any MAP < 65 mmHg or SBP < 90 mmHg during admission
+Additional binary outcomes:
+    - hyperkalemia           : peak potassium after 24h >= 6.5 mEq/L
+    - severe_hypokalemia     : min potassium after 24h < 2.5 mEq/L
+    - severe_anemia          : min hemoglobin after 24h < 7.0 g/dL
+    - hypoglycemia           : min glucose after 24h < 54 mg/dL
+    - profound_hyponatremia  : min sodium after 24h < 125 mEq/L
+    - severe_hypernatremia   : max sodium after 24h >= 160 mEq/L
+    - tachycardia_hr130      : max heart rate after 24h >= 130 bpm
+    - severe_hypertension    : max SBP >= 180 mmHg or max DBP >= 120 mmHg after 24h
+    - vasopressor_initiation : any vasopressor infusion after 24h
+    - hypotension            : any MAP < 65 mmHg or SBP < 90 mmHg after 24h
+    - crrt_initiation        : any CRRT event after 24h
+    - hemodialysis_initiation: any hemodialysis event after 24h
+
+For measurement-based binary outcomes, admissions with no qualifying post-24h
+measurement are left null (unobserved), not forced negative. For binary
+outcomes, parallel `*_24h` columns record whether the admission already
+satisfied the endpoint within the first 24h so downstream evaluation can
+exclude those admissions to prevent temporal leakage.
 
 MIMIC-IV itemid reference
 -------------------------
@@ -87,13 +104,22 @@ HEMOGLOBIN_ITEMIDS = (51222, 50811)
 POTASSIUM_ITEMIDS = (50971, 50822)
 GLUCOSE_ITEMIDS = (50931, 50809)
 BNP_ITEMIDS = (50963, 50964)
+SODIUM_ITEMIDS = (50983, 50824, 52623)
 
 VASOPRESSOR_ITEMIDS = (221906, 221289, 222315, 221749, 229617, 221662, 221653)
+CRRT_CHARTEVENT_ITEMIDS = (227290,)
+CRRT_PROCEDURE_ITEMIDS = (225802,)
+HEMODIALYSIS_CHARTEVENT_ITEMIDS = (226499,)
+HEMODIALYSIS_PROCEDURE_ITEMIDS = (225441,)
 
 # MAP
 MAP_ITEMIDS = (220052, 220181)
 # SBP
 SBP_ITEMIDS = (220050, 220179, 225309)
+# DBP
+DBP_ITEMIDS = (220180, 220051, 225310, 224643, 227242)
+# HR
+HEART_RATE_ITEMIDS = (220045,)
 
 # ---------------------------------------------------------------------------
 # Helpers (duplicated from extract_outcomes_meds.py to keep this standalone)
@@ -125,6 +151,35 @@ def _scan_meds_events(split_dir: Path) -> pl.LazyFrame:
 def _extract_itemid(code_col: str = "code") -> pl.Expr:
     """Extract the integer itemid from a MEDS code like 'LAB//50912//mg/dL'."""
     return pl.col(code_col).str.split("//").list.get(1).cast(pl.Int64, strict=False)
+
+
+def _admission_times(meds: pl.LazyFrame) -> pl.LazyFrame:
+    return (
+        meds.filter(pl.col("hadm_id").is_not_null())
+        .filter(pl.col("code").str.starts_with("HOSPITAL_ADMISSION"))
+        .group_by("hadm_id")
+        .agg(admission_time=pl.col("time").min())
+    )
+
+
+def _with_observation_window(
+    meds: pl.LazyFrame,
+    admissions: pl.LazyFrame,
+    *,
+    observation_hours: float,
+    within_window: bool,
+) -> pl.LazyFrame:
+    obs = pl.duration(hours=float(observation_hours))
+    cmp = (
+        pl.col("time") <= (pl.col("admission_time") + obs)
+        if within_window
+        else pl.col("time") > (pl.col("admission_time") + obs)
+    )
+    return (
+        meds.filter(pl.col("hadm_id").is_not_null())
+        .join(admissions, on="hadm_id", how="inner", maintain_order="left")
+        .filter(cmp)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -184,12 +239,58 @@ def _vital_extremes(
     )
 
 
+def _binary_event_presence(
+    meds: pl.LazyFrame,
+    *,
+    prefix: str,
+    itemids: tuple[int, ...],
+    col_name: str,
+) -> pl.LazyFrame:
+    return (
+        meds.filter(pl.col("hadm_id").is_not_null())
+        .filter(pl.col("code").str.starts_with(prefix))
+        .with_columns(_extract_itemid().alias("itemid"))
+        .filter(pl.col("itemid").is_in(list(itemids)))
+        .group_by("hadm_id")
+        .agg(pl.lit(True).alias(col_name))
+    )
+
+
+def _binary_event_presence_multi(
+    meds: pl.LazyFrame,
+    *,
+    specs: list[tuple[str, tuple[int, ...]]],
+    col_name: str,
+) -> pl.LazyFrame:
+    parts: list[pl.LazyFrame] = []
+    for prefix, itemids in specs:
+        parts.append(
+            meds.filter(pl.col("hadm_id").is_not_null())
+            .filter(pl.col("code").str.starts_with(prefix))
+            .with_columns(_extract_itemid().alias("itemid"))
+            .filter(pl.col("itemid").is_in(list(itemids)))
+            .select("hadm_id")
+        )
+    if not parts:
+        return pl.LazyFrame({"hadm_id": [], col_name: []}, schema={"hadm_id": pl.Int64, col_name: pl.Boolean})
+    return (
+        pl.concat(parts, how="vertical")
+        .unique()
+        .group_by("hadm_id")
+        .agg(pl.lit(True).alias(col_name))
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main outcome computation
 # ---------------------------------------------------------------------------
 
 
-def _compute_extended_outcomes(meds: pl.LazyFrame) -> pl.LazyFrame:
+def _compute_extended_outcomes(
+    meds: pl.LazyFrame,
+    *,
+    observation_hours: float = 24.0,
+) -> pl.LazyFrame:
     """
     Compute extended outcomes keyed by `hospitalization_id` (string hadm_id).
 
@@ -197,56 +298,128 @@ def _compute_extended_outcomes(meds: pl.LazyFrame) -> pl.LazyFrame:
     """
     # Keep only columns we need (avoid scanning wide frames)
     meds = meds.select("subject_id", "hadm_id", "time", "code", "numeric_value")
-
-    # ---- Tier 2: Continuous regression targets ----
-
-    peak_creatinine = _lab_extremes(meds, CREATININE_ITEMIDS, "max", "peak_creatinine")
-    peak_troponin = _lab_extremes(meds, TROPONIN_ITEMIDS, "max", "peak_troponin")
-    min_hemoglobin = _lab_extremes(meds, HEMOGLOBIN_ITEMIDS, "min", "min_hemoglobin")
-    peak_potassium = _lab_extremes(meds, POTASSIUM_ITEMIDS, "max", "peak_potassium")
-    min_glucose = _lab_extremes(meds, GLUCOSE_ITEMIDS, "min", "min_glucose")
-    peak_bnp = _lab_extremes(meds, BNP_ITEMIDS, "max", "peak_bnp")
-
-    # Time-to-ICU (hours from hospital admission to first ICU admission)
-    admissions = (
-        meds.filter(pl.col("hadm_id").is_not_null())
-        .filter(pl.col("code").str.starts_with("HOSPITAL_ADMISSION"))
-        .group_by("hadm_id")
-        .agg(admission_time=pl.col("time").min())
+    admissions = _admission_times(meds)
+    meds_pre24h = _with_observation_window(
+        meds, admissions, observation_hours=observation_hours, within_window=True
     )
-    icu_adm = (
-        meds.filter(pl.col("hadm_id").is_not_null())
-        .filter(pl.col("code").str.starts_with("ICU_ADMISSION"))
-        .group_by("hadm_id")
-        .agg(icu_admission_time=pl.col("time").min())
-    )
-    time_to_icu = (
-        admissions.join(icu_adm, on="hadm_id", how="left", maintain_order="left")
-        .with_columns(
-            time_to_icu_hours=(
-                (pl.col("icu_admission_time") - pl.col("admission_time"))
-                .dt.total_seconds()
-                / 3600.0
-            )
-        )
-        .select("hadm_id", "time_to_icu_hours")
+    meds_post24h = _with_observation_window(
+        meds, admissions, observation_hours=observation_hours, within_window=False
     )
 
-    # ---- Tier 3: Binary expansions ----
+    # ---- Regression outcomes ----
 
-    # Vasopressor initiation (any vasopressor infusion)
-    vasopressor = (
-        meds.filter(pl.col("hadm_id").is_not_null())
-        .filter(pl.col("code").str.starts_with("INFUSION_START//"))
-        .with_columns(_extract_itemid().alias("itemid"))
-        .filter(pl.col("itemid").is_in(list(VASOPRESSOR_ITEMIDS)))
-        .group_by("hadm_id")
-        .agg(vasopressor_initiation=pl.lit(True))
+    peak_creatinine = _lab_extremes(
+        meds_post24h, CREATININE_ITEMIDS, "max", "peak_creatinine"
+    )
+    peak_troponin = _lab_extremes(
+        meds_post24h, TROPONIN_ITEMIDS, "max", "peak_troponin"
+    )
+    min_hemoglobin = _lab_extremes(
+        meds_post24h, HEMOGLOBIN_ITEMIDS, "min", "min_hemoglobin"
+    )
+    peak_potassium = _lab_extremes(
+        meds_post24h, POTASSIUM_ITEMIDS, "max", "peak_potassium"
+    )
+    min_potassium = _lab_extremes(
+        meds_post24h, POTASSIUM_ITEMIDS, "min", "min_potassium"
+    )
+    min_glucose = _lab_extremes(
+        meds_post24h, GLUCOSE_ITEMIDS, "min", "min_glucose"
+    )
+    min_sodium = _lab_extremes(
+        meds_post24h, SODIUM_ITEMIDS, "min", "min_sodium"
+    )
+    max_sodium = _lab_extremes(
+        meds_post24h, SODIUM_ITEMIDS, "max", "max_sodium"
+    )
+    peak_bnp = _lab_extremes(meds_post24h, BNP_ITEMIDS, "max", "peak_bnp")
+    max_heart_rate = _vital_extremes(
+        meds_post24h, HEART_RATE_ITEMIDS, "max", "max_heart_rate"
+    )
+    max_sbp = _vital_extremes(meds_post24h, SBP_ITEMIDS, "max", "max_sbp")
+    max_dbp = _vital_extremes(meds_post24h, DBP_ITEMIDS, "max", "max_dbp")
+
+    # First-24h extrema for leakage-safe exclusion flags
+    peak_potassium_24h = _lab_extremes(
+        meds_pre24h, POTASSIUM_ITEMIDS, "max", "peak_potassium_24h"
+    )
+    min_potassium_24h = _lab_extremes(
+        meds_pre24h, POTASSIUM_ITEMIDS, "min", "min_potassium_24h"
+    )
+    min_hemoglobin_24h = _lab_extremes(
+        meds_pre24h, HEMOGLOBIN_ITEMIDS, "min", "min_hemoglobin_24h"
+    )
+    min_glucose_24h = _lab_extremes(
+        meds_pre24h, GLUCOSE_ITEMIDS, "min", "min_glucose_24h"
+    )
+    min_sodium_24h = _lab_extremes(
+        meds_pre24h, SODIUM_ITEMIDS, "min", "min_sodium_24h"
+    )
+    max_sodium_24h = _lab_extremes(
+        meds_pre24h, SODIUM_ITEMIDS, "max", "max_sodium_24h"
+    )
+    max_heart_rate_24h = _vital_extremes(
+        meds_pre24h, HEART_RATE_ITEMIDS, "max", "max_heart_rate_24h"
+    )
+    max_sbp_24h = _vital_extremes(
+        meds_pre24h, SBP_ITEMIDS, "max", "max_sbp_24h"
+    )
+    max_dbp_24h = _vital_extremes(
+        meds_pre24h, DBP_ITEMIDS, "max", "max_dbp_24h"
     )
 
-    # Hypotension: any MAP < 65 or SBP < 90
-    min_map = _vital_extremes(meds, MAP_ITEMIDS, "min", "min_map")
-    min_sbp = _vital_extremes(meds, SBP_ITEMIDS, "min", "min_sbp")
+    # ---- Additional binary outcomes ----
+
+    vasopressor = _binary_event_presence(
+        meds_post24h,
+        prefix="INFUSION_START//",
+        itemids=VASOPRESSOR_ITEMIDS,
+        col_name="vasopressor_initiation",
+    )
+    vasopressor_24h = _binary_event_presence(
+        meds_pre24h,
+        prefix="INFUSION_START//",
+        itemids=VASOPRESSOR_ITEMIDS,
+        col_name="vasopressor_initiation_24h",
+    )
+    crrt = _binary_event_presence_multi(
+        meds_post24h,
+        specs=[
+            ("VITAL//", CRRT_CHARTEVENT_ITEMIDS),
+            ("PROCEDURE//", CRRT_PROCEDURE_ITEMIDS),
+        ],
+        col_name="crrt_initiation",
+    )
+    crrt_24h = _binary_event_presence_multi(
+        meds_pre24h,
+        specs=[
+            ("VITAL//", CRRT_CHARTEVENT_ITEMIDS),
+            ("PROCEDURE//", CRRT_PROCEDURE_ITEMIDS),
+        ],
+        col_name="crrt_initiation_24h",
+    )
+    hemodialysis = _binary_event_presence_multi(
+        meds_post24h,
+        specs=[
+            ("VITAL//", HEMODIALYSIS_CHARTEVENT_ITEMIDS),
+            ("PROCEDURE//", HEMODIALYSIS_PROCEDURE_ITEMIDS),
+        ],
+        col_name="hemodialysis_initiation",
+    )
+    hemodialysis_24h = _binary_event_presence_multi(
+        meds_pre24h,
+        specs=[
+            ("VITAL//", HEMODIALYSIS_CHARTEVENT_ITEMIDS),
+            ("PROCEDURE//", HEMODIALYSIS_PROCEDURE_ITEMIDS),
+        ],
+        col_name="hemodialysis_initiation_24h",
+    )
+
+    # Hypotension: any MAP < 65 or SBP < 90 after 24h, with first-24h exclusion flag
+    min_map = _vital_extremes(meds_post24h, MAP_ITEMIDS, "min", "min_map")
+    min_sbp = _vital_extremes(meds_post24h, SBP_ITEMIDS, "min", "min_sbp")
+    min_map_24h = _vital_extremes(meds_pre24h, MAP_ITEMIDS, "min", "min_map_24h")
+    min_sbp_24h = _vital_extremes(meds_pre24h, SBP_ITEMIDS, "min", "min_sbp_24h")
 
     # ---- Assemble ----
 
@@ -263,32 +436,110 @@ def _compute_extended_outcomes(meds: pl.LazyFrame) -> pl.LazyFrame:
         peak_troponin,
         min_hemoglobin,
         peak_potassium,
+        min_potassium,
         min_glucose,
+        min_sodium,
+        max_sodium,
         peak_bnp,
-        time_to_icu,
+        max_heart_rate,
+        max_sbp,
+        max_dbp,
+        peak_potassium_24h,
+        min_potassium_24h,
+        min_hemoglobin_24h,
+        min_glucose_24h,
+        min_sodium_24h,
+        max_sodium_24h,
+        max_heart_rate_24h,
+        max_sbp_24h,
+        max_dbp_24h,
         vasopressor,
+        vasopressor_24h,
+        crrt,
+        crrt_24h,
+        hemodialysis,
+        hemodialysis_24h,
         min_map,
         min_sbp,
+        min_map_24h,
+        min_sbp_24h,
     ]:
         result = result.join(df, on="hadm_id", how="left", maintain_order="left")
 
     # Compute derived binary columns
     result = result.with_columns(
-        # Tier 3: threshold-based binary outcomes
-        hyperkalemia=(pl.col("peak_potassium") > 6.0).fill_null(False),
-        severe_anemia=(pl.col("min_hemoglobin") < 7.0).fill_null(False),
-        hypoglycemia=(pl.col("min_glucose") < 50.0).fill_null(False),
-        vasopressor_initiation=pl.col("vasopressor_initiation").fill_null(False),
-        hypotension=(
-            (pl.col("min_map") < 65.0) | (pl.col("min_sbp") < 90.0)
+        hyperkalemia=pl.when(pl.col("peak_potassium").is_not_null())
+        .then((pl.col("peak_potassium") >= 6.5).cast(pl.Float64))
+        .otherwise(None),
+        hyperkalemia_24h=(pl.col("peak_potassium_24h") >= 6.5).fill_null(False),
+        severe_hypokalemia=pl.when(pl.col("min_potassium").is_not_null())
+        .then((pl.col("min_potassium") < 2.5).cast(pl.Float64))
+        .otherwise(None),
+        severe_hypokalemia_24h=(pl.col("min_potassium_24h") < 2.5).fill_null(False),
+        severe_anemia=pl.when(pl.col("min_hemoglobin").is_not_null())
+        .then((pl.col("min_hemoglobin") < 7.0).cast(pl.Float64))
+        .otherwise(None),
+        severe_anemia_24h=(pl.col("min_hemoglobin_24h") < 7.0).fill_null(False),
+        hypoglycemia=pl.when(pl.col("min_glucose").is_not_null())
+        .then((pl.col("min_glucose") < 54.0).cast(pl.Float64))
+        .otherwise(None),
+        hypoglycemia_24h=(pl.col("min_glucose_24h") < 54.0).fill_null(False),
+        profound_hyponatremia=pl.when(pl.col("min_sodium").is_not_null())
+        .then((pl.col("min_sodium") < 125.0).cast(pl.Float64))
+        .otherwise(None),
+        profound_hyponatremia_24h=(pl.col("min_sodium_24h") < 125.0).fill_null(False),
+        severe_hypernatremia=pl.when(pl.col("max_sodium").is_not_null())
+        .then((pl.col("max_sodium") >= 160.0).cast(pl.Float64))
+        .otherwise(None),
+        severe_hypernatremia_24h=(pl.col("max_sodium_24h") >= 160.0).fill_null(False),
+        tachycardia_hr130=pl.when(pl.col("max_heart_rate").is_not_null())
+        .then((pl.col("max_heart_rate") >= 130.0).cast(pl.Float64))
+        .otherwise(None),
+        tachycardia_hr130_24h=(pl.col("max_heart_rate_24h") >= 130.0).fill_null(False),
+        severe_hypertension=pl.when(
+            pl.col("max_sbp").is_not_null() | pl.col("max_dbp").is_not_null()
+        )
+        .then(((pl.col("max_sbp") >= 180.0) | (pl.col("max_dbp") >= 120.0)).cast(pl.Float64))
+        .otherwise(None),
+        severe_hypertension_24h=((pl.col("max_sbp_24h") >= 180.0) | (pl.col("max_dbp_24h") >= 120.0)).fill_null(False),
+        vasopressor_initiation=pl.col("vasopressor_initiation")
+        .cast(pl.Float64)
+        .fill_null(0.0),
+        vasopressor_initiation_24h=pl.col("vasopressor_initiation_24h").fill_null(False),
+        hypotension=pl.when(
+            pl.col("min_map").is_not_null() | pl.col("min_sbp").is_not_null()
+        )
+        .then(((pl.col("min_map") < 65.0) | (pl.col("min_sbp") < 90.0)).cast(pl.Float64))
+        .otherwise(None),
+        hypotension_24h=(
+            (pl.col("min_map_24h") < 65.0) | (pl.col("min_sbp_24h") < 90.0)
         ).fill_null(False),
+        crrt_initiation=pl.col("crrt_initiation").cast(pl.Float64).fill_null(0.0),
+        crrt_initiation_24h=pl.col("crrt_initiation_24h").fill_null(False),
+        hemodialysis_initiation=pl.col("hemodialysis_initiation").cast(pl.Float64).fill_null(0.0),
+        hemodialysis_initiation_24h=pl.col("hemodialysis_initiation_24h").fill_null(False),
     )
 
     # Standardize key column and drop intermediate vitals
     result = (
         result
         .with_columns(pl.col("hadm_id").cast(pl.String).alias("hospitalization_id"))
-        .drop("hadm_id", "min_map", "min_sbp")
+        .drop(
+            "hadm_id",
+            "peak_potassium_24h",
+            "min_potassium_24h",
+            "min_hemoglobin_24h",
+            "min_glucose_24h",
+            "min_sodium_24h",
+            "max_sodium_24h",
+            "max_heart_rate_24h",
+            "max_sbp_24h",
+            "max_dbp_24h",
+            "min_map",
+            "min_sbp",
+            "min_map_24h",
+            "min_sbp_24h",
+        )
         .sort("hospitalization_id")
     )
 
@@ -302,7 +553,7 @@ def _compute_extended_outcomes(meds: pl.LazyFrame) -> pl.LazyFrame:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Extract extended outcomes (Tier 2 regression + Tier 3 binary) from MEDS events."
+        description="Extract extended outcomes (regression + additional binary) from MEDS events."
     )
     parser.add_argument(
         "--meds_events_dir",
@@ -321,6 +572,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=str,
         default="train,val,test",
         help="Comma-separated split names (default: train,val,test).",
+    )
+    parser.add_argument(
+        "--observation_hours",
+        type=float,
+        default=24.0,
+        help="Observation window in hours used to define post-24h outcomes (default: 24).",
     )
     parser.add_argument(
         "--base_outcomes_filename",
@@ -358,7 +615,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[extract_extended_outcomes] Processing split={split} (meds={meds_split_name})...")
 
         meds = _scan_meds_events(meds_split_dir)
-        extended = _compute_extended_outcomes(meds)
+        extended = _compute_extended_outcomes(meds, observation_hours=args.observation_hours)
 
         # Load base outcomes and join
         base = pl.scan_parquet(base_path).with_columns(
@@ -381,11 +638,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         stat_cols = [
             "peak_creatinine", "peak_troponin", "min_hemoglobin",
-            "peak_potassium", "min_glucose", "peak_bnp", "time_to_icu_hours",
+            "peak_potassium", "min_potassium", "min_glucose", "min_sodium",
+            "max_sodium", "peak_bnp", "max_heart_rate", "max_sbp", "max_dbp",
         ]
         binary_cols = [
-            "hyperkalemia", "severe_anemia", "hypoglycemia",
-            "vasopressor_initiation", "hypotension",
+            "hyperkalemia", "severe_hypokalemia", "severe_anemia",
+            "hypoglycemia", "profound_hyponatremia", "severe_hypernatremia",
+            "tachycardia_hr130", "severe_hypertension", "vasopressor_initiation",
+            "hypotension", "crrt_initiation", "hemodialysis_initiation",
         ]
 
         print(f"  Wrote {output_path} ({n_total} rows)")

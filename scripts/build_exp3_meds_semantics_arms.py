@@ -454,7 +454,12 @@ def main(argv: list[str] | None = None) -> int:
             "{train,val,test}/meds.parquet."
         ),
     )
-    p.add_argument("--out_root", type=Path, default=Path("data/exp3/arms"), help="Output root (default: data/exp3/arms).")
+    p.add_argument(
+        "--out_root",
+        type=Path,
+        default=Path("artifacts/runs/exp3/arms"),
+        help="Output root (default: artifacts/runs/exp3/arms).",
+    )
     p.add_argument("--seed", type=int, default=42, help="Seed for randomized mapping control.")
     p.add_argument(
         "--clif_mimic_repo",

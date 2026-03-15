@@ -14,8 +14,8 @@ CPU-only. No forward pass needed — works directly from saved weights.
 
 Usage:
     python scripts/diagnostics/diag_embedding_geometry.py \
-        --model_discrete models/exp2_.../model-discrete-time_rope \
-        --model_soft models/exp2_.../model-soft-time_rope \
+        --model_discrete artifacts/runs/models/exp2_.../model-discrete-time_rope \
+        --model_soft artifacts/runs/models/exp2_.../model-soft-time_rope \
         [--analytes LAB_lab//50971//meq/l LAB_lab//51222//g/dl] \
         [--output_dir outputs/diagnostics] \
         [--dry_run]
@@ -183,11 +183,25 @@ def cosine_similarity_matrix(embeddings: np.ndarray) -> np.ndarray:
     return normalized @ normalized.T
 
 
-def pca_2d(embeddings: np.ndarray) -> np.ndarray:
-    """Project embeddings to 2D via PCA (mean-centered)."""
+def pca_2d(embeddings: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Project embeddings to 2D via PCA (mean-centered).
+
+    Returns
+    -------
+    coords : np.ndarray
+        Two-dimensional PCA coordinates.
+    explained_variance_ratio : np.ndarray
+        Fraction of variance explained by PC1 and PC2.
+    """
     centered = embeddings - embeddings.mean(axis=0)
     U, S, Vt = np.linalg.svd(centered, full_matrices=False)
-    return centered @ Vt[:2].T  # (n, 2)
+    coords = centered @ Vt[:2].T  # (n, 2)
+    denom = np.sum(S**2)
+    if denom <= 0:
+        evr = np.zeros(2, dtype=float)
+    else:
+        evr = (S[:2] ** 2) / denom
+    return coords, evr
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +241,7 @@ def plot_cosine_heatmap(
 
 
 def plot_pca_scatter(
-    coords_dict: dict[str, np.ndarray],
+    coords_dict: dict[str, tuple[np.ndarray, np.ndarray]],
     title: str,
     output_path: pathlib.Path,
     num_bins: int = 10,
@@ -242,7 +256,7 @@ def plot_pca_scatter(
     cmap = plt.cm.RdYlGn_r  # Red for extreme bins, green for middle
     colors = [cmap(i / (num_bins - 1)) for i in range(num_bins)]
 
-    for ax, (label, coords) in zip(axes, coords_dict.items()):
+    for ax, (label, (coords, evr)) in zip(axes, coords_dict.items()):
         for i in range(num_bins):
             ax.scatter(coords[i, 0], coords[i, 1], color=colors[i], s=120,
                        zorder=5, edgecolors="black", linewidths=0.5)
@@ -252,8 +266,8 @@ def plot_pca_scatter(
         # Connect bins in order to visualize the manifold shape
         ax.plot(coords[:, 0], coords[:, 1], "k--", alpha=0.3, linewidth=1)
 
-        ax.set_xlabel("PC1", fontsize=12)
-        ax.set_ylabel("PC2", fontsize=12)
+        ax.set_xlabel(f"PC1 ({100 * evr[0]:.1f}% var)", fontsize=12)
+        ax.set_ylabel(f"PC2 ({100 * evr[1]:.1f}% var)", fontsize=12)
         ax.set_title(label, fontsize=13, fontweight="bold")
         ax.grid(alpha=0.3)
 

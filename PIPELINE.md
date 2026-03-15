@@ -30,13 +30,13 @@ Stage 0: Tokenize        →   Stage 1: Train        →   Stage 2: Extract     
 ### Stage 0 — Tokenize (`slurm/03_stage0_tokenize_and_outcomes_meds.sh`)
 - Input: raw MEDS parquet shards (`benchmarks/mimic-meds-extraction/`)
 - Runs: `fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py`
-- Output: tokenized timelines + outcomes in `outputs/<data_version>/`
+- Output: tokenized timelines + outcomes under `artifacts/runs/tokenized/<dataset_id>/`
 - Exp 3 variant: `slurm/04_exp3_stage0_tokenize_and_outcomes.sh`
 
 ### Stage 1 — Train (`slurm/04_exp1_stage1_tune_packed.sh`, `07_exp2_stage1_train_representation.sh`, `08_exp3_stage1_train_representation.sh`)
 - Runs: `fms-ehrs/fms_ehrs/scripts/train_representation.py` (via `torchrun`)
 - All hyperparameters are centralized in `slurm/00_preamble.sh`
-- Models saved to: `models/<model_version>/`
+- Models saved to: `artifacts/runs/models/<model_version>/`
 - Exp 2/3 use xVal/soft/discrete variants via `--representation` flag
 
 ### Stage 2 — Extract (`slurm/09_run_stage2_gpu2_extract.sh`)
@@ -89,7 +89,8 @@ input-representation-benchmark/
 ├── scripts/                  ← data prep, Exp3 arm construction, QC utilities
 │   └── diagnostics/          ← mechanistic probe scripts
 ├── benchmarks/               ← MIMIC-IV MEDS extraction config
-├── models/                   ← trained model checkpoints
+├── artifacts/
+│   └── runs/                 ← canonical run artifacts (models, tokenized data, Exp3 arms)
 ├── outputs/                  ← hidden states, predictions, metrics
 ├── methods/MLHC2025-*/       ← paper LaTeX source
 └── tests/                    ← unit tests

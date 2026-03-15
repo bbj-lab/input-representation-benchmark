@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=irb-diag-1gpu
 #SBATCH --output=./slurm/output/%A_%a-%x.stdout
-#SBATCH --partition=gpuq
+#SBATCH --partition=gpudev
 #SBATCH --gres=gpu:1
 #SBATCH --mem=64GB
 #SBATCH --cpus-per-task=4

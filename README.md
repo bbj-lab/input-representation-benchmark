@@ -1,6 +1,6 @@
 # Input Representation Benchmark
 
-**EHR Input Representation Benchmarking Framework**. Works with [fms-ehrs](https://github.com/your-org/fms-ehrs) as a sister repository.
+**EHR Input Representation Benchmarking Framework**. Works with [fms-ehrs](https://github.com/bbj-lab/fms-ehrs) as a sister repository.
 
 ## Overview
 
@@ -9,9 +9,9 @@ This repository evaluates input representation methods for EHR foundation models
 | Experiment | Focus | Configurations | Training Runs (single-seed dev) |
 |------------|-------|----------------|---------------|
 | **Exp 1** | Granularity & Semantic Anchoring | Decile, Ventile, Trentile, Centile × Fused tokens | 12 (12 × 1 seed) |
-| **Exp 2** | Representation Mechanics | Discrete, Soft, xVal × Time tokens/Time-Aware RoPE (**requires Exp1 winner binning**) | 6 (6 × 1 seed) |
+| **Exp 2** | Representation Mechanics | Discrete, Soft, xVal, xVal-affine × Time tokens/Time-Aware RoPE (**requires Exp1 winner binning**) | 8 (8 × 1 seed) |
 | **Exp 3** | Vocabulary Semantics | **4-arm design**: MEDS-native, MEDS→CLIF mapped, randomized-mapping control, frequency-matched mapping control (Exp3 ICU-hospitalization cohort; see below) | 4 (4 × 1 seed) |
-| **Total (when Exp3 controls enabled)** | | 22 configurations | **22 training runs** |
+| **Total (when Exp3 controls enabled)** | | 24 configurations | **24 training runs** |
 
 Notes:
 - Exp3 requires additional **data preparation**: constructing the 3 derived arms (`meds_mapped`, `meds_randomized`, `meds_freqmatched`) from a fixed MEDS events directory. The transformation uses CLIF-MIMIC mapping CSVs, but does **not** require building CLIF parquet tables.
@@ -20,12 +20,12 @@ Notes:
 
 ### Current run status (live)
 
-Snapshot time: **2026-02-19**
+Snapshot time: **2026-02-26**
 
 | Experiment | Stage 0 (tier2q: tokenize+outcomes) | Stage 1 (gpuq: train) | Stage 2 (gpuq: extract reps) | Stage 3 (tier2q: LR) |
 |---|---|---|---|---|
 | **Exp1 (granularity)** | **Complete** (12 configs) | **Complete** (12 configs; ctx=4096) | **Complete** (12 tasks) | **Complete** (12 tasks) |
-| **Exp2 (rep mechanics)** | **Complete** (6 configs) | **Complete** (6 configs) | **Complete** (6 tasks) | **Complete** (6 tasks) |
+| **Exp2 (rep mechanics)** | **Complete** (8 configs) | **Complete** (8 configs) | **Complete** (8 tasks) | **Complete** (8 tasks) |
 | **Exp3 (vocab semantics; 4 MEDS-derived arms)** | **Complete** (4 arms) | **Complete** (4 arms) | **Complete** (4 tasks) | **Complete** (4 tasks) |
 
 #### Exp1 results summary (context length 4096)
@@ -33,9 +33,9 @@ Snapshot time: **2026-02-19**
 **Overall Exp1 winner**: deciles, population, fused (mortality AUROC 0.893, IMV AUROC 0.897).
 **Best unfused**: deciles, population, unfused (mortality AUROC 0.861, IMV AUROC 0.885).
 
-Exp2 settings derived from Exp1 winner:
-- **Discrete baselines**: use Exp1 overall winner (deciles, population, fused)
-- **Soft discretization and xVal**: use Exp1 best unfused (deciles, population, unfused; soft/xVal require unfused tokenization)
+Exp2 settings derived from Exp1:
+- **Binning**: deciles, population quantiles.
+- **Tokenization (Exp2)**: all Exp2 value encoders use **unfused** tokenization (Discrete/Soft/xVal/xVal-affine) so the value-encoding comparison is architecture-matched; xVal/xVal-affine implement continuous scaling via a code+`[NUM]` slot.
 
 #### Exp2 results summary
 
@@ -49,15 +49,18 @@ Exp2 settings derived from Exp1 winner:
 | **Soft + Time-Aware RoPE** | **0.869** | **0.749** | **0.780** | **0.898** |
 | xVal + time tokens | 0.818 | 0.698 | 0.722 | 0.839 |
 | xVal + Time-Aware RoPE | 0.828 | 0.698 | 0.726 | 0.837 |
+| xVal-affine + time tokens | 0.841 | 0.717 | 0.740 | 0.849 |
+| xVal-affine + Time-Aware RoPE | 0.837 | 0.710 | 0.738 | 0.842 |
 
 Key findings:
 - Soft discretization matches or exceeds discrete baselines on all outcomes (ΔAUROC ≤ 0.01)
-- xVal substantially underperforms discrete/soft encodings (ΔAUROC 0.04–0.06 across outcomes)
+- Canonical xVal substantially underperforms discrete/soft encodings (ΔAUROC 0.04–0.06 across outcomes)
+- xVal-affine partially closes the xVal gap but remains below discrete/soft
 - Time-Aware RoPE produces marginal, non-significant shifts vs. time tokens
 
-#### Tokenization artifact status (why Stage 0 is re-running)
+#### Tokenization artifacts (`numeric_stats.json`; required for xVal)
 
-We already have tokenized timelines + outcomes for the demo `data_version`s, but **`numeric_stats.json` is missing** for all of them. Since **xVal (Exp2/Exp3)** uses `numeric_stats.json` for quantizer/anchoring-independent scaling, Stage 0 is designed to re-run until it is present.
+Stage 0 writes per-code numeric summary statistics to `numeric_stats.json` inside each tokenized dataset (e.g., `.../<data_version>-tokenized/train/numeric_stats.json`). xVal (Exp2/Exp3) uses these statistics for quantizer/anchoring-independent scaling; if the file is missing for a given `data_version`, re-run Stage 0 for that configuration.
 
 ### Data directory conventions
 
@@ -143,12 +146,17 @@ sbatch --dependency=afterok:"${EXTRACT_JID}" --array=0-11 slurm/11_run_stage3_ti
 # Exp2
 # Stage 0 (tier2q CPU): tokenize + outcomes (deduplicated by data_version; 2 tasks)
 sbatch --array=0-1 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/08_exp2_stage0_tokenize.jobfile
-# Stage 1 (GPU): train (6 configs × 1 seed = 6 tasks)
+# Stage 1 (GPU): train (6 primary configs × 1 seed = 6 tasks)
 TRAIN2_JID=$(sbatch --parsable --export=ALL,IRB_EXP23_STAGE1_EPOCHS=1 --array=0-5 slurm/05_run_stage1_gpu4_train.sh slurm/generated/demo/10a_exp2_stage1_train.jobfile)
 # Stage 2 (1 GPU/job): extract reps
 EXTRACT2_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN2_JID}" --array=0-5 slurm/09_run_stage2_gpu2_extract.sh slurm/generated/demo/10b_exp2_stage2_extract_reps.jobfile)
 # Stage 3 (tier2q; 8 CPUs/job): logistic regression
 sbatch --dependency=afterok:"${EXTRACT2_JID}" --array=0-5 slurm/11_run_stage3_tier2q_lr.sh slurm/generated/demo/10c_exp2_stage3_lr.jobfile
+
+# (Optional) Exp2 xVal-affine variants (2 tasks: time tokens, Time-Aware RoPE)
+TRAIN2A_JID=$(sbatch --parsable --export=ALL,IRB_EXP23_STAGE1_EPOCHS=1 --array=0-1 slurm/05_run_stage1_gpu4_train.sh slurm/generated/demo/10a_exp2_stage1_train_xval_affine.jobfile)
+EXTRACT2A_JID=$(sbatch --parsable --dependency=afterok:"${TRAIN2A_JID}" --array=0-1 slurm/09_run_stage2_gpu2_extract.sh slurm/generated/demo/10b_exp2_stage2_extract_reps_xval_affine.jobfile)
+sbatch --dependency=afterok:"${EXTRACT2A_JID}" --array=0-1 slurm/11_run_stage3_tier2q_lr.sh slurm/generated/demo/10c_exp2_stage3_lr_xval_affine.jobfile
 
 # Exp3 (vocabulary semantics; 4 MEDS-derived arms)
 # Prereq: construct Exp3 cohort + arms (see below), then generate jobs.
@@ -311,7 +319,7 @@ Empirical check (centiles, 24h; train split):
 All outcomes are extracted from MEDS events and defined relative to the first 24h observation window.
 Patients who experience the target event within 24h are excluded from that task to prevent temporal leakage.
 
-#### Canonical binary outcomes (Tier 1; `extract_outcomes_meds.py`)
+#### Primary binary outcomes (`extract_outcomes_meds.py`)
 
 | Outcome | Definition |
 |---------|-----------|
@@ -321,40 +329,52 @@ Patients who experience the target event within 24h are excluded from that task 
 | `imv_event` | Invasive mechanical ventilation (itemids 224385, 225792) |
 | `prolonged_icu_stay` | ICU LOS > 48h (used instead of icu_admission in Exp 3) |
 
-#### Extended binary outcomes (Tier 3; `extract_extended_outcomes.py`)
+#### Additional binary outcomes (`extract_extended_outcomes.py`)
 
 | Outcome | Definition |
 |---------|-----------|
-| `hyperkalemia` | Peak potassium > 6.0 mEq/L |
-| `severe_anemia` | Minimum hemoglobin < 7.0 g/dL |
-| `hypoglycemia` | Minimum glucose < 50 mg/dL |
-| `vasopressor_initiation` | Any vasopressor infusion (norepinephrine, epinephrine, vasopressin, phenylephrine, dopamine, dobutamine) |
-| `hypotension` | Any MAP < 65 mmHg or SBP < 90 mmHg |
+| `hyperkalemia` | Peak potassium after 24h >= 6.5 mEq/L |
+| `severe_hypokalemia` | Minimum potassium after 24h < 2.5 mEq/L |
+| `severe_anemia` | Minimum hemoglobin after 24h < 7.0 g/dL |
+| `hypoglycemia` | Minimum glucose after 24h < 54 mg/dL |
+| `profound_hyponatremia` | Minimum sodium after 24h < 125 mEq/L |
+| `severe_hypernatremia` | Maximum sodium after 24h >= 160 mEq/L |
+| `tachycardia_hr130` | Maximum heart rate after 24h >= 130 bpm |
+| `severe_hypertension` | Maximum SBP >= 180 mmHg or maximum DBP >= 120 mmHg after 24h |
+| `vasopressor_initiation` | Any vasopressor infusion after 24h (norepinephrine, epinephrine, vasopressin, phenylephrine, dopamine, dobutamine) |
+| `hypotension` | Any MAP < 65 mmHg or SBP < 90 mmHg after 24h |
+| `crrt_initiation` | Any CRRT event after 24h |
+| `hemodialysis_initiation` | Any hemodialysis event after 24h |
 
-#### Continuous regression targets (Tier 2; `extract_extended_outcomes.py`)
+#### Regression outcomes (`extract_extended_outcomes.py`)
 
 | Outcome | Definition |
 |---------|-----------|
-| `peak_creatinine` | Max creatinine during admission (mg/dL) |
-| `peak_troponin` | Max troponin T or I (ng/mL) |
-| `min_hemoglobin` | Min hemoglobin (g/dL) |
-| `peak_potassium` | Max potassium (mEq/L) |
-| `min_glucose` | Min glucose (mg/dL) |
-| `peak_bnp` | Max BNP or NT-proBNP (pg/mL) |
-| `time_to_icu_hours` | Hours from hospital admission to first ICU admission (null if no ICU) |
+| `peak_creatinine` | Max creatinine after 24h (mg/dL) |
+| `peak_troponin` | Max troponin T or I after 24h (ng/mL) |
+| `min_hemoglobin` | Min hemoglobin after 24h (g/dL) |
+| `peak_potassium` | Max potassium after 24h (mEq/L) |
+| `min_potassium` | Min potassium after 24h (mEq/L) |
+| `min_glucose` | Min glucose after 24h (mg/dL) |
+| `min_sodium` | Min sodium after 24h (mEq/L) |
+| `max_sodium` | Max sodium after 24h (mEq/L) |
+| `peak_bnp` | Max BNP or NT-proBNP after 24h (pg/mL) |
+| `max_heart_rate` | Max heart rate after 24h (bpm) |
+| `max_sbp` | Max systolic blood pressure after 24h (mmHg) |
+| `max_dbp` | Max diastolic blood pressure after 24h (mmHg) |
 
-Continuous targets are evaluated with Ridge regression (Spearman ρ).
-The evaluation sample size varies per target due to measurement missingness (post-24h only).
+Regression outcomes are evaluated with Ridge regression (Spearman ρ).
+The evaluation sample size varies per target due to post-24h measurement missingness.
 
 ### Experiment 1: Granularity
 - **Tokenization**: Varies quantizer (deciles/ventiles/trentiles/centiles) and clinical anchoring
 - **Training**: `tune_model.py` with packed collation
-- **Evaluation**: Tier 1 outcomes (mortality, LOS, ICU admission, IMV); Tier 2/3 extended outcomes via `13_extract_extended_outcomes.sh`
+- **Evaluation**: primary binary outcomes (mortality, LOS, ICU admission, IMV), plus additional binary and regression outcomes via `13_extract_extended_outcomes.sh`
 
 ### Experiment 2: Representation Mechanics
 - **Tokenization**: Uses Exp 1 winner's quantizer settings; for xVal, numeric events are tokenized as `(code_token, [NUM])` via `--numeric_encoding xval`
 - **Training**: `train_representation.py` with padded collation (required for soft discretization, xVal, and Time-Aware RoPE). Soft discretization uses a two-point soft target at quantile-token positions; xVal adds an auxiliary numeric regression loss at `[NUM]` positions.
-- **Configurations**: 3 representations × 2 temporal encodings = 6 configs
+- **Configurations**: 3 representations × 2 temporal encodings = 6 primary configs (+ 2 xVal-affine variants)
 
 ### Experiment 3: Vocabulary Semantics
 - **Comparison**: alternative identifier schemes applied to the *same MEDS event rows* (native vs. mapped vs. two null controls)
@@ -691,8 +711,8 @@ actual outputs during the 2026-02-23 audit.
 
 | Claim | Status | Source |
 |---|---|---|
-| Fused reduces median length ~33% (198 vs 296 tokens, 24h) | ✅ | `.cache/tokenized/*/deciles_none_fused*` vs `*unfused*` parquets, `seq_len` median |
-| RoPE saves ~11% vs time tokens (83 vs 93 tokens median, 24h) | ✅ | `.cache/tokenized/*/deciles_none_unfused_time_rope*` vs `*time_tokens*` parquets |
+| Fused reduces median length ~33% (198 vs 296 tokens, 24h) | ✅ | `artifacts/runs/tokenized/*/deciles_none_fused*` vs `*unfused*` parquets, `seq_len` median |
+| RoPE saves ~11% vs time tokens (83 vs 93 tokens median, 24h) | ✅ | `artifacts/runs/tokenized/*/deciles_none_unfused_time_rope*` vs `*time_tokens*` parquets |
 
 ### Mechanistic analyses (§5.3)
 

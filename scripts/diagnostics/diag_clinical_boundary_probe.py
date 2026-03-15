@@ -5,7 +5,7 @@ Tests whether the static bin embeddings of population-quantile models endogenous
 clinical abnormality (normal vs abnormal) through contextual co-occurrence during
 pretraining, even though explicit reference range boundaries were never provided.
 
-Method: Extract the static quantile-token embeddings for target analytes, label each bin
+Method: Extract the static quantile-token embeddings for selected lab tests, label each bin
 as "normal" or "abnormal" based on whether the bin midpoint falls within the known MIMIC-IV
 reference interval, then train a logistic regression probe on those embeddings.
 
@@ -236,7 +236,7 @@ def plot_probe_results(
     results: dict,
     output_path: pathlib.Path,
 ):
-    """Bar chart of probe accuracy per analyte per granularity."""
+    """Bar chart of probe accuracy per lab test per granularity."""
     import matplotlib.pyplot as plt
 
     granularities = list(results.keys())
@@ -246,7 +246,7 @@ def plot_probe_results(
     analytes = sorted(analytes)
 
     if not analytes:
-        print("  No analytes to plot.")
+        print("  No lab tests to plot.")
         return
 
     n_groups = len(analytes)
@@ -274,7 +274,7 @@ def plot_probe_results(
                 ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
                         f"{acc:.0%}", ha="center", va="bottom", fontsize=7)
 
-    ax.set_xlabel("Analyte", fontsize=12)
+    ax.set_xlabel("Lab test", fontsize=12)
     ax.set_ylabel("LOO-CV Accuracy", fontsize=12)
     ax.set_title("Clinical Boundary Probe: Embedding Abnormality Classification",
                  fontsize=14, fontweight="bold")

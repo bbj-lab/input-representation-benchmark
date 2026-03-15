@@ -84,21 +84,18 @@ MEDS_DATA_DIR="${DATA_DIR}"
 TOKENIZER_CONFIG="${FMS_EHRS_HOME}/fms_ehrs/config/mimic-meds-ed.yaml"
 
 DATASET_ID="${IRB_TOKEN_CACHE_DATASET_ID:-mimiciv-3.1_meds_70-10-20}"
-DEFAULT_CACHE_ROOT=""
-if [[ -d "${hm}" ]]; then
-  DEFAULT_CACHE_ROOT="${hm}/irb_scratch/tokenized/${DATASET_ID}"
-else
-  DEFAULT_CACHE_ROOT="${IRB_HOME}/.cache/tokenized/${DATASET_ID}"
-fi
+DEFAULT_CACHE_ROOT="${IRB_TOKENIZED_ROOT}/${DATASET_ID}"
 IRB_TOKEN_CACHE_ROOT="${IRB_TOKEN_CACHE_ROOT:-${DEFAULT_CACHE_ROOT}}"
+IRB_STAGE0_CREATE_TOKENIZED_LINKS="${IRB_STAGE0_CREATE_TOKENIZED_LINKS:-false}"
 
 mkdir -p "${IRB_TOKEN_CACHE_ROOT}"
 
 TARGET_MAIN="${IRB_TOKEN_CACHE_ROOT}/${DATA_VERSION_OUT}-tokenized"
 TARGET_24H="${IRB_TOKEN_CACHE_ROOT}/${DATA_VERSION_OUT}_first_24h-tokenized"
-
-LINK_MAIN="${MEDS_DATA_DIR}/${DATA_VERSION_OUT}-tokenized"
-LINK_24H="${MEDS_DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized"
+LEGACY_LINK_MAIN="${MEDS_DATA_DIR}/${DATA_VERSION_OUT}-tokenized"
+LEGACY_LINK_24H="${MEDS_DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized"
+LINK_MAIN="${TARGET_MAIN}"
+LINK_24H="${TARGET_24H}"
 
 mkdir -p "${TARGET_24H}"
 if [[ "${ONLY_24H_CUT}" != "true" ]]; then
@@ -126,13 +123,19 @@ ensure_symlink() {
   ln -s "${target}" "${link}"
 }
 
-ensure_symlink "${TARGET_24H}" "${LINK_24H}"
+if [[ "${IRB_STAGE0_CREATE_TOKENIZED_LINKS}" == "true" ]]; then
+  ensure_symlink "${TARGET_24H}" "${LEGACY_LINK_24H}"
+  LINK_24H="${LEGACY_LINK_24H}"
+fi
 
 MAIN_OK=1
 if [[ "${ONLY_24H_CUT}" == "true" ]]; then
   MAIN_OK=1
 else
-  ensure_symlink "${TARGET_MAIN}" "${LINK_MAIN}"
+  if [[ "${IRB_STAGE0_CREATE_TOKENIZED_LINKS}" == "true" ]]; then
+    ensure_symlink "${TARGET_MAIN}" "${LEGACY_LINK_MAIN}"
+    LINK_MAIN="${LEGACY_LINK_MAIN}"
+  fi
   for s in train val test; do
     if [[ ! -f "${LINK_MAIN}/${s}/tokens_timelines.parquet" ]]; then
       MAIN_OK=0
@@ -186,7 +189,7 @@ if [[ "${ONLY_24H_CUT}" == "true" && -n "${VOCAB_PATH}" && -n "${MAX_PADDED_LEN}
   TOKENIZED_DIR="$(dirname "${VOCAB_DIR}")"             # .../<dv>-tokenized
   DV_TRAIN="$(basename "${TOKENIZED_DIR}")"
   DV_TRAIN="${DV_TRAIN%-tokenized}"
-  SRC_24H="${MEDS_DATA_DIR}/${DV_TRAIN}_first_24h-tokenized"
+  SRC_24H="$(dirname "${TOKENIZED_DIR}")/${DV_TRAIN}_first_24h-tokenized"
 
   # Only proceed if the source 24h-cut dataset exists and looks complete.
   SRC_OK=1

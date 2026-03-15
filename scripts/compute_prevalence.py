@@ -8,7 +8,7 @@ and directly computes outcomes from MEDS event parquets (Exp1-2 all-admission co
 Usage (from project root, in input-rep conda env):
     python scripts/compute_prevalence.py \
         --meds_events_dir data/clif/raw \
-        --exp3_tokenized_dir data/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized
+        --exp3_tokenized_dir artifacts/runs/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized
 
 Outputs: prevalence percentages for each outcome in each cohort.
 """
@@ -114,7 +114,7 @@ def main():
 
     # ---------- Exp 3: ICU cohort ----------
     exp3_dir = args.exp3_tokenized_dir or (
-        PROJECT_ROOT / "data" / "exp3" / "meds_icu" 
+        PROJECT_ROOT / "artifacts" / "runs" / "exp3" / "meds_icu"
         / "deciles_none_unfused_time_rope_first_24h-tokenized"
     )
     exp3_test = exp3_dir / "test" / "tokens_timelines_outcomes.parquet"

@@ -10,7 +10,7 @@ This directory contains small, single-purpose command-line utilities used by the
 ## MEDS-specific
 
 - `extract_outcomes_meds.py`: compute outcomes directly from MEDS timestamps (storetime semantics) and join onto tokenized timelines
-- `extract_extended_outcomes.py`: extract Tier 2 regression targets (peak/min lab values, time-to-ICU) and Tier 3 binary outcomes (hyperkalemia, anemia, hypoglycemia, vasopressor, hypotension) from MEDS events; joins onto existing outcomes parquet
+- `extract_extended_outcomes.py`: extract leakage-safe regression outcomes (post-24h lab/vital extrema) and expanded additional binary outcomes (electrolyte extremes, tachycardia, severe hypertension, vasopressor, hypotension, CRRT, hemodialysis) from MEDS events; joins onto existing outcomes parquet
 - `normalize_meds_tokenized_layout.py`: normalize tokenized MEDS layout for interoperability
 
 ## Exp3 cohort + arms (MEDS-only)
