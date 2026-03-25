@@ -37,7 +37,7 @@ if isinstance(data, dict):
 "
 
 # Generate the plot
-python scripts/generate_calibration_plot.py \
+python utilities/scripts/generate_calibration_plot.py \
     --preds_pkl "${PREDS_PKL}" \
     --output figures/calibration_curves.pdf
 

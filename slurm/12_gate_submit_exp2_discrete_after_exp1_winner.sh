@@ -41,7 +41,7 @@ mkdir -p "${IRB_HOME}/outputs"
 
 if [[ ! -s "${WINNER_FILE}" ]]; then
   echo "[gate] Winner file missing; writing benchmark-pinned reference winners."
-  python "${IRB_HOME}/scripts/write_reference_winner_files.py" \
+  python "${IRB_HOME}/pipeline/scripts/write_reference_winner_files.py" \
     --output_dir "${IRB_HOME}/outputs"
 fi
 

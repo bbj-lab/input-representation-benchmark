@@ -1,14 +1,8 @@
-import pickle
-import numpy as np
+#!/usr/bin/env python3
+from pathlib import Path
+import runpy
 
-path = "data/exp2/deciles_none_unfused_time_rope_first_24h-tokenized/test/mlp-preds-model-discrete-time_rope.pkl"
-try:
-    with open(path, "rb") as f:
-        d = pickle.load(f)
-    if "icu_admission" in d["predictions"]:
-        probs = d["predictions"]["icu_admission"]
-        labels = d["labels"]["icu_admission"]
-        print("Probs min:", np.min(probs), "max:", np.max(probs), "var:", np.var(probs))
-        print("First 10 probs:", probs[:10])
-except Exception as e:
-    print(e)
+_ROOT = Path(__file__).resolve().parent
+_TARGET = _ROOT / "deprecated" / "scripts" / "legacy_misc" / "check_icu.py"
+if __name__ == "__main__":
+    runpy.run_path(str(_TARGET), run_name="__main__")

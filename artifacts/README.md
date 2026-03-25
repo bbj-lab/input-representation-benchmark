@@ -1,6 +1,6 @@
 # Run Artifact Tree
 
-This directory is reserved for the canonical run-artifact tree used by the
+This directory is reserved for the main run-artifact tree used by the
 benchmark workflow.
 
 The intended live layout is:
@@ -15,7 +15,7 @@ artifacts/
 
 Policy:
 
-- the canonical tree holds the real non-deprecated run artifacts
+- this tree holds the real non-deprecated run artifacts
 - active benchmark workflows should point here directly
 - legacy paths in the repo are preserved as symlinks for compatibility
 - deprecated or stale artifacts do **not** belong here; they belong under
@@ -23,7 +23,7 @@ Policy:
 
 The migration is driven by:
 
-- `scripts/build_canonical_artifact_tree.py`
+- `pipeline/scripts/build_run_artifact_tree.py`
 
 Use that script in dry-run mode first, then run it without `--dry-run` only
 after the final go/no-go review.

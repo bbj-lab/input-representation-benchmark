@@ -163,7 +163,7 @@ fi
 python "${FMS_EHRS_HOME}/fms_ehrs/scripts/tokenize_w_config.py" "${tokenize_args[@]}"
 
 if [[ "${DATA_FORMAT}" = "meds_icu" || "${DATA_FORMAT}" = "meds_mapped" || "${DATA_FORMAT}" = "meds_randomized" || "${DATA_FORMAT}" = "meds_freqmatched" ]]; then
-  python "${IRB_HOME}/scripts/extract_outcomes_meds.py" \
+  python "${IRB_HOME}/pipeline/scripts/extract_outcomes_meds.py" \
     --meds_events_dir "${DATA_DIR}" \
     --tokenized_dir "${DATA_DIR}/${DATA_VERSION_OUT}_first_24h-tokenized" \
     --splits train,val,test \

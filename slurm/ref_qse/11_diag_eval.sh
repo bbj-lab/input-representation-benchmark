@@ -18,6 +18,10 @@
 #   DIAG_TASK_TYPE       - classification or regression (default: classification)
 #   DIAG_OUTCOMES        - space-separated outcome list (default: script default)
 #   DIAG_OUTCOMES_PARQUET - custom parquet filename (default: tokens_timelines_outcomes.parquet)
+#   DIAG_PREDS_TAG       - optional tag inserted before the model stem in the
+#                          saved pickle filename; leave unset to preserve the
+#                          historical `<classifier>-preds-<model_stem>.pkl`
+#                          naming used by the paper-audit inventories
 #   DIAG_MLP_HIDDEN      - MLP hidden sizes (default: 256)
 #   DIAG_EXTRA_ARGS      - any extra arguments
 #
@@ -52,13 +56,7 @@ DIAG_CLASSIFIER="${DIAG_CLASSIFIER:-logistic_regression}"
 DIAG_TASK_TYPE="${DIAG_TASK_TYPE:-classification}"
 DIAG_OUTCOMES_PARQUET="${DIAG_OUTCOMES_PARQUET:-tokens_timelines_outcomes.parquet}"
 DIAG_MLP_HIDDEN="${DIAG_MLP_HIDDEN:-256}"
-PARQUET_STEM="$(basename "${DIAG_OUTCOMES_PARQUET}" .parquet)"
-if [[ -n "${DIAG_OUTCOMES:-}" ]]; then
-  OUTCOME_SIG="$(printf '%s' "${DIAG_OUTCOMES}" | sha1sum | cut -c1-12)"
-else
-  OUTCOME_SIG="default"
-fi
-DIAG_PREDS_TAG="${DIAG_PREDS_TAG:-diag-${DIAG_TASK_TYPE}-${DIAG_CLASSIFIER}-${PARQUET_STEM}-${OUTCOME_SIG}}"
+DIAG_PREDS_TAG="${DIAG_PREDS_TAG:-}"
 
 # Build the command
 CMD=(
@@ -70,9 +68,12 @@ CMD=(
   --classifier "${DIAG_CLASSIFIER}"
   --task_type "${DIAG_TASK_TYPE}"
   --outcomes_parquet "${DIAG_OUTCOMES_PARQUET}"
-  --preds_tag "${DIAG_PREDS_TAG}"
   --save_preds
 )
+
+if [[ -n "${DIAG_PREDS_TAG}" ]]; then
+  CMD+=(--preds_tag "${DIAG_PREDS_TAG}")
+fi
 
 if [[ -n "${DIAG_OUTCOMES:-}" ]]; then
   # shellcheck disable=SC2206  # intentional word-splitting
@@ -94,7 +95,7 @@ echo "  classifier:  ${DIAG_CLASSIFIER}"
 echo "  task_type:   ${DIAG_TASK_TYPE}"
 echo "  outcomes:    ${DIAG_OUTCOMES:-<default>}"
 echo "  parquet:     ${DIAG_OUTCOMES_PARQUET}"
-echo "  preds_tag:   ${DIAG_PREDS_TAG}"
+echo "  preds_tag:   ${DIAG_PREDS_TAG:-<none>}"
 echo "  model:       ${model_loc}"
 echo ""
 echo "  ${CMD[*]}"

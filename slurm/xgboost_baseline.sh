@@ -27,7 +27,7 @@ python -c "import xgboost; print(f'xgboost {xgboost.__version__}')" 2>/dev/null 
 echo "=== XGBoost/LightGBM Baseline ==="
 echo "Start: $(date)"
 
-python scripts/xgboost_baseline.py \
+python utilities/scripts/xgboost_baseline.py \
     --meds_events_dir data/clif/raw \
     --output_dir outputs/xgboost_baseline \
     --model auto \

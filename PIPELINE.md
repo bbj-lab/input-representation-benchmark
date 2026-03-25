@@ -1,121 +1,142 @@
-# Benchmark Pipeline: What Was Trained and How
+# Benchmark Pipeline
 
-This document explains the complete experimental pipeline so any reader can
-understand exactly which configurations were trained and which downstream
-evaluations were run.
+This file maps the live benchmark path from raw MEDS data to manuscript assets. It only covers the active path.
 
----
+## 1. Data preparation
 
-## Experimental Design
+### Raw MIMIC -> MEDS
 
-Three experiments, 22 total configurations, all trained on **MIMIC-IV v3.1** (MEDS format).
+Use the extraction wrapper under `benchmarks/mimic-meds-extraction/` to populate:
 
-| Experiment | Question | Configurations |
-|---|---|---|
-| **Exp 1** | What quantization granularity and clinical anchoring works best? | 12 (4 granularities × {unfused, fused} × {time-token, no-time-token}) |
-| **Exp 2** | How should numeric values and time be encoded? | 6 ({discrete, soft, xval} × {time-tokens, Time-Aware RoPE}) |
-| **Exp 3** | Do vocabulary semantics matter, or is it just co-occurrence? | 4 (native MEDS, CLIF-mapped, randomized, frequency-matched) |
+- `benchmarks/mimic-meds-extraction/data/meds/data/raw/train`
+- `benchmarks/mimic-meds-extraction/data/meds/data/raw/val`
+- `benchmarks/mimic-meds-extraction/data/meds/data/raw/test`
 
-All configurations: single training seed (42), single epoch, 87M-parameter decoder-only transformer (Llama 3.2 architecture, 8 layers, 8 heads, 1024 hidden dim).
+### Exp3 cohort and arms
 
----
+Exp3 needs a fixed ICU-hospitalization cohort plus three derived semantic-control arms.
 
-## Four-Stage Pipeline
+Live scripts:
 
-```
-Stage 0: Tokenize        →   Stage 1: Train        →   Stage 2: Extract       →   Stage 3: Probe
-(MEDS → token seqs)          (causal LM, 1 epoch)       (last hidden state)         (LR + MLP probes)
-```
+- `pipeline/scripts/align_cohorts.py`
+- `pipeline/scripts/split_meds_by_hadm_splits.py`
+- `pipeline/scripts/build_exp3_meds_semantics_arms.py`
 
-### Stage 0 — Tokenize (`slurm/03_stage0_tokenize_and_outcomes_meds.sh`)
-- Input: raw MEDS parquet shards (`benchmarks/mimic-meds-extraction/`)
-- Runs: `fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py`
-- Output: tokenized timelines + outcomes under `artifacts/runs/tokenized/<dataset_id>/`
-- Exp 3 variant: `slurm/04_exp3_stage0_tokenize_and_outcomes.sh`
+Outputs land under `artifacts/runs/exp3/`.
 
-### Stage 1 — Train (`slurm/04_exp1_stage1_tune_packed.sh`, `07_exp2_stage1_train_representation.sh`, `08_exp3_stage1_train_representation.sh`)
-- Runs: `fms-ehrs/fms_ehrs/scripts/train_representation.py` (via `torchrun`)
-- All hyperparameters are centralized in `slurm/00_preamble.sh`
-- Models saved to: `artifacts/runs/models/<model_version>/`
-- Exp 2/3 use xVal/soft/discrete variants via `--representation` flag
+## 2. Stage 0: tokenization + base outcomes
 
-### Stage 2 — Extract (`slurm/09_run_stage2_gpu2_extract.sh`)
-- Runs: `fms-ehrs/fms_ehrs/scripts/extract_hidden_states.py`
-- Extracts last hidden state at the 24h observation cutoff per admission
-- Output: `<model_dir>/hidden_states_{split}.npy` (d=1024 per admission)
+Entry points:
 
-### Stage 3 — Probe (`slurm/11_run_stage3_tier2q_lr.sh`)
-- Runs: `fms-ehrs/fms_ehrs/scripts/transfer_rep_based_preds.py`
-- Primary probe: logistic regression (C-grid {0.01,0.1,1,10,100}, val-tuned on AUROC)
-- Diagnostic probe: MLP (256 hidden units, ReLU, early stopping)
-- Outputs: `outputs/<model_version>/preds_{split}.parquet` + metrics JSON
+- `slurm/03_stage0_tokenize_and_outcomes_meds.sh`
+- `slurm/04_exp3_stage0_tokenize_and_outcomes.sh`
+- `fms_ehrs/scripts/tokenize_w_config.py`
+- `pipeline/scripts/extract_outcomes_meds.py`
 
----
+Main outputs:
 
-## Key Orchestration Scripts
+- `<data_version>-tokenized/train/vocab.gzip`
+- `<data_version>-tokenized/train/numeric_stats.json`
+- `<data_version>-tokenized/<split>/tokens_timelines.parquet`
+- `<data_version>_first_24h-tokenized/<split>/tokens_timelines.parquet`
+- `<data_version>_first_24h-tokenized/<split>/tokens_timelines_outcomes.parquet`
 
-| Script | Purpose |
-|---|---|
-| `run_experiments.py` | Master orchestration: generates SLURM job arrays for all 22 configurations; single source of truth for what was run |
-| `slurm/00_preamble.sh` | All hyperparameter defaults (epoch budget, LR, RoPE scaling, xVal params, etc.) |
-| `slurm/10_submit_stage2_3_after_train.sh` | Chains Stage 2+3 as SLURM dependencies after Stage 1 |
-| `slurm/12_gate_submit_exp2_discrete_after_exp1_winner.sh` | Gated submission: Exp 2 uses the benchmark-pinned Exp 1 winner unless a custom winner file is prewritten |
+## 3. Extended outcome refresh
 
----
+Entry points:
 
-## Mechanistic Diagnostics (Exp 2 only)
+- `pipeline/scripts/extract_extended_outcomes.py`
+- `slurm/13_refresh_all_extended_outcomes.sh`
+- `slurm/13_refresh_exp3_extended_outcomes.sh`
 
-Run after Stage 2. Scripts in `scripts/diagnostics/`:
+Main output:
 
-| Script | What it measures |
-|---|---|
-| `diag_embedding_geometry.py` | KNN boundary separation between discrete vs. soft embeddings |
-| `diag_clinical_boundary_probe.py` | Can a linear probe decode which bin a value falls in? |
-| `diag_xval_zero_out.py` | Hidden-state norm vs. \|z\| for xVal (detects representational collapse) |
-| `diag_attention_washout.py` | Cross-entropy on tokens following numeric positions |
-| `diag_sparsity_distance.py` | L2 distance analysis for sparse probe features |
+- `<data_version>_first_24h-tokenized/<split>/tokens_timelines_extended_outcomes.parquet`
 
-Corresponding SLURM launchers: `slurm/12_run_diag_gpu1.sh`, `slurm/14_run_token_ce_gpuq.sh`
+## 4. Stage 1: training
 
----
+Entry points:
 
-## Directory Layout
+- Exp1: `slurm/04_exp1_stage1_tune_packed.sh`
+- Exp2: `slurm/07_exp2_stage1_train_representation.sh`
+- Exp3: `slurm/08_exp3_stage1_train_representation.sh`
+- Model repo scripts: `fms_ehrs/scripts/tune_model.py`, `fms_ehrs/scripts/train_representation.py`
 
-```
-input-representation-benchmark/
-├── run_experiments.py        ← master: generates all slurm jobs
-├── slurm/                    ← pipeline scripts (numbered 00→14)
-│   └── 00_preamble.sh        ← single source of truth for all hyperparameters
-├── scripts/                  ← data prep, Exp3 arm construction, QC utilities
-│   └── diagnostics/          ← mechanistic probe scripts
-├── benchmarks/               ← MIMIC-IV MEDS extraction config
-├── artifacts/
-│   └── runs/                 ← canonical run artifacts (models, tokenized data, Exp3 arms)
-├── outputs/                  ← hidden states, predictions, metrics
-├── methods/MLHC2025-*/       ← paper LaTeX source
-└── tests/                    ← unit tests
-```
+Main outputs:
 
-The `fms-ehrs` sibling repo provides all core Python: tokenizers, training loop,
-extraction, probes. IRB adds its PYTHONPATH via `slurm/00_preamble.sh`.
+- checkpoints under `artifacts/runs/models/`
+- `representation_mechanics.pt` for wrapper models
 
----
+## 5. Stage 2: hidden-state extraction
 
-## Reproducing from Scratch
+Entry points:
 
-```bash
-# 1. Set up environment
-bash scripts/setup_conda_env_input_rep.sh
+- `slurm/ref_qse/09_extract_reps.sh`
+- `slurm/09_run_stage2_gpu2_extract.sh`
+- `fms_ehrs/scripts/extract_hidden_states.py`
 
-# 2. Obtain MIMIC-IV v3.1 MEDS data (see benchmarks/mimic-meds-extraction/)
+Main output:
 
-# 3. Generate all SLURM job scripts for all 22 configurations:
-python run_experiments.py --generate-only
+- `<data_version>_first_24h-tokenized/<split>/features-<model>.npy`
 
-# 4. Submit the pipeline (stages 0-3) for all configs:
-python run_experiments.py --submit
-```
+## 6. Stage 3: downstream probes
 
-All hyperparameters are fixed in `slurm/00_preamble.sh`. No HPO search is needed
-for Exp 2/3 (single training run per configuration). Exp 1 uses a small LR sweep
-per granularity (centralized in `run_experiments.py`).
+Entry points:
+
+- `slurm/ref_qse/10_xfer_rep_based_preds.sh`
+- `slurm/ref_qse/11_diag_eval.sh`
+- `slurm/11_run_stage3_tier2q_lr.sh`
+- `fms_ehrs/scripts/transfer_rep_based_preds.py`
+
+Main output:
+
+- `<data_version>_first_24h-tokenized/test/*-preds-*.pkl`
+
+## 7. Aligned family statistics
+
+Entry points:
+
+- `pipeline/scripts/regenerate_aligned_family_stats.py`
+- `slurm/15_run_stats_cpu_jobfile.sh`
+- `slurm/15_submit_aligned_family_stats.sh`
+- `slurm/generated/statistics/aligned_family_stats.jobfile`
+- `slurm/generated/statistics/aligned_family_stats_combine.jobfile`
+
+Primary stats root:
+
+- `artifacts/runs/statistics/paper_audit_20260316_idaligned_fullstats/`
+
+## 8. Paper refresh
+
+Entry points:
+
+- `paper/scripts/generate_mlhc_appendix_tables.py`
+- `paper/scripts/generate_mlhc_paper_figures.py`
+- external manuscript file `../697b81f1f269207e5416f18d/MLHC/paper.tex`
+
+Outputs:
+
+- `../697b81f1f269207e5416f18d/MLHC/generated/`
+- `../697b81f1f269207e5416f18d/MLHC/figures/`
+- `../697b81f1f269207e5416f18d/MLHC/figures/sources/`
+
+## 9. Order of operations
+
+1. Build or verify MEDS extraction outputs.
+2. Build the Exp3 ICU cohort and control arms if needed.
+3. Run Exp1.
+4. Materialize winner files.
+5. Run Exp2.
+6. Run Exp3.
+7. Refresh extended outcomes if needed.
+8. Regenerate aligned family stats.
+9. Rebuild tables, figures, and manuscript assets.
+
+## 10. Audit checks
+
+- `pipeline/tests/unit/`: unit and contract checks for pipeline scripts.
+- `pipeline/tests/dryrun/`: one dry-run wrapper per pipeline script.
+
+If this file drifts from the stage scripts or `run_experiments.py`, update the docs and leave the code path unchanged.
+
+Compatibility note: legacy paths under `scripts/` and root `run_experiments.py` are wrappers kept for queued jobs and old commands.

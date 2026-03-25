@@ -16,9 +16,11 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 --data_version_out <name> --quantizer <deciles|ventiles|trentiles|centiles> --clinical_anchoring <none|5-10-5|10-10-10> --include_ref_ranges <true|false> --fused_category_values <true|false> [--numeric_encoding <quantile|xval>] [--vocab_path <path>] [--max_padded_len <int>] [--only_24h_cut <true|false>]"
+  echo "Usage: $0 --data_version_out <name> --quantizer <deciles|ventiles|trentiles|centiles> --clinical_anchoring <none|5-10-5|10-10-10> --include_ref_ranges <true|false> --fused_category_values <true|false> [--data_dir <path>] [--tokenizer_config <path>] [--numeric_encoding <quantile|xval>] [--vocab_path <path>] [--max_padded_len <int>] [--only_24h_cut <true|false>]"
 }
 
+DATA_DIR_IN=""
+TOKENIZER_CONFIG_IN=""
 DATA_VERSION_OUT=""
 QUANTIZER=""
 CLINICAL_ANCHORING=""
@@ -32,6 +34,8 @@ ONLY_24H_CUT="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --data_dir) DATA_DIR_IN="$2"; shift 2 ;;
+    --tokenizer_config) TOKENIZER_CONFIG_IN="$2"; shift 2 ;;
     --data_version_out) DATA_VERSION_OUT="$2"; shift 2 ;;
     --quantizer) QUANTIZER="$2"; shift 2 ;;
     --clinical_anchoring) CLINICAL_ANCHORING="$2"; shift 2 ;;
@@ -98,12 +102,19 @@ fi
 # `DATA_DIR` is standardized (via slurm/00_preamble.sh) to point to the MEDS
 # events directory (the one containing train/val/test or train/tuning/test and
 # raw parquet shards). Do NOT append `/data` here.
-MEDS_DATA_DIR="${DATA_DIR}"
-TOKENIZER_CONFIG="${FMS_EHRS_HOME}/fms_ehrs/config/mimic-meds-ed.yaml"
+MEDS_DATA_DIR="${DATA_DIR_IN:-${DATA_DIR}}"
+if [[ "${MEDS_DATA_DIR}" != /* ]]; then
+  MEDS_DATA_DIR="${IRB_HOME}/${MEDS_DATA_DIR}"
+fi
+TOKENIZER_CONFIG="${TOKENIZER_CONFIG_IN:-${FMS_EHRS_HOME}/fms_ehrs/config/mimic-meds-ed.yaml}"
+if [[ "${TOKENIZER_CONFIG}" != /* ]]; then
+  TOKENIZER_CONFIG="${IRB_HOME}/${TOKENIZER_CONFIG}"
+fi
 
 for s in train val test; do
   require_dir "${MEDS_DATA_DIR}/raw/${s}" "raw MEDS split"
 done
+require_file "${TOKENIZER_CONFIG}" "tokenizer config"
 
 DATASET_ID="${IRB_TOKEN_CACHE_DATASET_ID:-mimiciv-3.1_meds_70-10-20}"
 DEFAULT_CACHE_ROOT="${IRB_TOKENIZED_ROOT}/${DATASET_ID}"
@@ -412,7 +423,7 @@ fi
 if [[ "${OUT_OK}" -eq 1 ]]; then
   echo "[stage0] Outcomes already exist for ${DATA_VERSION_OUT}; skipping outcome extraction."
 else
-  python scripts/extract_outcomes_meds.py \
+  python pipeline/scripts/extract_outcomes_meds.py \
     --meds_events_dir "${MEDS_DATA_DIR}" \
     --tokenized_dir "${LINK_24H}" \
     --splits train,val,test \

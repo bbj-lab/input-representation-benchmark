@@ -20,7 +20,7 @@ export FMS_EHRS_HOME="../fms-ehrs"
 source "${PROJECT_ROOT}/slurm/00_preamble.sh"
 
 # 1. DATA: The tokenized data for Exp1 Deciles Fused (Phase 1 Winner)
-#    We use the canonical tokenized run tree.
+#    We use the main tokenized run tree.
 DATA_DIR="${IRB_TOKENIZED_ROOT}/mimiciv-3.1_meds_70-10-20"
 DATA_VERSION="deciles_none_fused_time_tokens_first_24h"
 

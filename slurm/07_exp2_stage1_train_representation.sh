@@ -37,7 +37,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IRB_HOME="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${IRB_HOME}/slurm/00_preamble.sh"
 
-# Exp2 Stage1 consumes canonical tokenized timelines, not the raw MEDS events root.
+# Exp2 Stage1 consumes the main tokenized timelines, not the raw MEDS events root.
 TOKENIZED_DATA_DIR="${IRB_TOKENIZED_DATASET_DIR}"
 MODEL_DIR="${MODEL_DIR:-${RUN_ARTIFACTS_DIR}/models}"
 FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"

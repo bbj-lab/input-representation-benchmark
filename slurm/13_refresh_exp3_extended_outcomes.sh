@@ -69,7 +69,7 @@ for tokdir in "${TOKENIZED_DIRS[@]}"; do
   require_dir "${tokdir}" "Exp3 tokenized dir"
   echo ""
   echo "--- Repairing $(basename "${tokdir}") with native ICU events ---"
-  python3 scripts/extract_extended_outcomes.py \
+  python3 pipeline/scripts/extract_extended_outcomes.py \
     --meds_events_dir "${EXP3_NATIVE_EVENTS_DIR}" \
     --tokenized_dir "${tokdir}" \
     --splits train,val,test \

@@ -1,36 +1,53 @@
-# `scripts/` (Utility CLI tools)
+# Script Compatibility Index
 
-This directory contains small, single-purpose command-line utilities used by the benchmark.
+`scripts/` is a compatibility layer kept for old commands and queued jobs.
 
-## Environment setup
+Main code locations are:
 
-- `setup_conda_env_meds_extract.sh`: create the `meds-extract` conda env (MEDS_transforms stack)
-- `setup_conda_env_input_rep.sh`: create the `input-rep` conda env (fms-ehrs + benchmark deps; optional training deps)
+- `pipeline/scripts/` for run-path logic and diagnostics
+- `paper/scripts/` for manuscript refresh scripts
+- `utilities/scripts/` for active helper scripts
 
-## MEDS-specific
+## Main pipeline scripts
 
-- `extract_outcomes_meds.py`: compute outcomes directly from MEDS timestamps (storetime semantics) and join onto tokenized timelines
-- `extract_extended_outcomes.py`: extract leakage-safe regression outcomes (post-24h lab/vital extrema) and expanded additional binary outcomes (electrolyte extremes, tachycardia, severe hypertension, vasopressor, hypotension, CRRT, hemodialysis) from MEDS events; joins onto existing outcomes parquet
-- `normalize_meds_tokenized_layout.py`: normalize tokenized MEDS layout for interoperability
+- `pipeline/scripts/align_cohorts.py`
+- `pipeline/scripts/build_run_artifact_tree.py`
+- `pipeline/scripts/build_exp3_meds_semantics_arms.py`
+- `pipeline/scripts/create_exp1_best_model_aliases.py`
+- `pipeline/scripts/create_xval_rep_mechanics.py`
+- `pipeline/scripts/extract_outcomes_meds.py`
+- `pipeline/scripts/extract_extended_outcomes.py`
+- `pipeline/scripts/minimal_e2e_dryrun.py`
+- `pipeline/scripts/normalize_meds_tokenized_layout.py`
+- `pipeline/scripts/regenerate_aligned_family_stats.py`
+- `pipeline/scripts/split_meds_by_hadm_splits.py`
+- `pipeline/scripts/write_reference_winner_files.py`
+- `pipeline/scripts/diagnostics/*`
 
-## Exp3 cohort + arms (MEDS-only)
+## Main paper scripts
 
-- `align_cohorts.py`: derive ICU-hospitalization cohort \(H_{\mathrm{ICU}}\) split lists (patient-level split projected to admissions)
-- `split_meds_by_hadm_splits.py`: filter MEDS events to \(H_{\mathrm{ICU}}\) and emit `{train,val,test}/meds.parquet`
-- `build_exp3_meds_semantics_arms.py`: build the 3 derived arms (`meds_mapped`, `meds_randomized`, `meds_freqmatched`) by rewriting only identifiers (`code`) while holding rows/timestamps/values fixed
+- `paper/scripts/generate_mlhc_appendix_tables.py`
+- `paper/scripts/generate_mlhc_paper_figures.py`
 
-## Validation / QC
+## Main utility scripts
 
-- `validate_imv_detection.py`: cross-validate IMV label detection (MEDS timestamp vs CLIF token)
-- `smoke_test_exp2.py`: quick sanity checks for Exp2 representation mechanics
-- `minimal_e2e_dryrun.py`: minimal end-to-end dry run (useful when porting to a new cluster)
+- `utilities/scripts/analyze_meds_notation_ambiguity.py`
+- `utilities/scripts/cleanup_artifacts.sh`
+- `utilities/scripts/compute_prevalence.py`
+- `utilities/scripts/download_literature.py`
+- `utilities/scripts/generate_calibration_plot.py`
+- `utilities/scripts/preflight_perf_knobs.py`
+- `utilities/scripts/setup_conda_env_input_rep.sh`
+- `utilities/scripts/setup_conda_env_meds_extract.sh`
+- `utilities/scripts/verify_refrange_meds.py`
+- `utilities/scripts/verify_refrange_meds_charttime.py`
+- `utilities/scripts/verify_refrange_stats.py`
+- `utilities/scripts/xgboost_baseline.py`
 
-## Optional CLIF-based validation (not required for the primary benchmark pipeline)
+## Legacy archives
 
-These scripts are kept for orthogonal QC when you have CLIF parquet tables available (e.g., from an external CLIF build):
+- deprecated CLIF/UCMC helpers: `deprecated/scripts/clif/`
+- older ad-hoc scripts: `deprecated/scripts/legacy_misc/`
+- archived paper-audit note: `deprecated/docs/paper_audit_trail.md`
 
-- `extract_outcomes_clif.py`: compute outcomes from CLIF tables and join onto tokenized timelines
-- `split_clif_by_patient_splits.py`: apply patient split lists to CLIF parquet tables to create `raw/{train,val,test}`
-- `augment_clif_labs_with_ref_ranges.py`: add `ref_range_lower`/`ref_range_upper` to CLIF lab tables (enables anchored binning)
-- `validate_cohort_parity.py`: check MEDS vs CLIF cohort parity (counts, intersections)
-
+If a script is not listed under `pipeline/`, `paper/`, or `utilities/`, treat it as legacy and check `deprecated/`.

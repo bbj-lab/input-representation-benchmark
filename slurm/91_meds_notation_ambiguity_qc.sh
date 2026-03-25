@@ -20,7 +20,7 @@ cd "${IRB_HOME}"
 
 mkdir -p outputs/meds_ambiguity slurm/output
 
-/gpfs/data/bbj-lab/.envs/input-rep/bin/python scripts/analyze_meds_notation_ambiguity.py \
+/gpfs/data/bbj-lab/.envs/input-rep/bin/python utilities/scripts/analyze_meds_notation_ambiguity.py \
   --meds_data_dir benchmarks/mimic-meds-extraction/data/meds/data \
   --split train \
   --out_dir outputs/meds_ambiguity \

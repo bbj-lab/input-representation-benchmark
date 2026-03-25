@@ -1,26 +1,25 @@
-# Deprecated Benchmark Artifacts
+# Deprecated Benchmark Material
 
-This directory holds scripts, logs, and result files that are no longer part of
-the active benchmark workflow.
+This tree holds benchmark files that are no longer part of the active path.
 
-## What belongs here
+## Contents
 
-- stale SLURM wrappers with placeholder checkpoint paths
-- one-off helper scripts used for earlier exploratory analyses
-- duplicate metrics dumps and verification text files
-- logs from deprecated evaluation runs
+- older stats trees and scratch outputs
+- retired figure helpers
+- archived rerun sheets and log bundles
+- archived CLIF-side validation helpers
+- legacy model snapshots moved from `models_archive/`
+- legacy writing workspace material moved from `methods/`
+- legacy ad-hoc scripts moved from repo root into `scripts/legacy_misc/`
 
-## What does not belong here
+## Active paths
 
-- current stage scripts in `slurm/`
-- active utility scripts in `scripts/`
-- result files still referenced by the manuscript or current rerun workflow
+Do not use files in this tree for new runs if an active path exists in:
 
-## Current policy
+- `slurm/`
+- `pipeline/`
+- `paper/`
+- `utilities/`
+- `artifacts/`
 
-- keep deprecated material here instead of deleting it outright
-- do not use files in this directory as source of truth for the manuscript or
-  for new reruns unless they are explicitly revalidated
-- when replacing active workflow pieces, move clearly stale artifacts here under
-  the existing `deprecated/` tree rather than creating new `legacy/` or similar
-  directories
+Keep archived files here when they still matter for audit or backtracking. Delete only pure cache or disposable scratch output.

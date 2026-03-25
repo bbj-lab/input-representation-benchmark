@@ -107,5 +107,5 @@ echo "=== verify import ==="
 python -c "import flash_attn; print('flash_attn ok:', flash_attn.__version__)"
 
 echo "=== preflight (explicitly testing flash_attention_2) ==="
-IRB_ATTN_IMPL="flash_attention_2" python scripts/preflight_perf_knobs.py
+IRB_ATTN_IMPL="flash_attention_2" python utilities/scripts/preflight_perf_knobs.py
 

@@ -23,7 +23,7 @@ conda activate input-rep
 echo "=== Computing test-set prevalence for Table 8 ==="
 echo "Start: $(date)"
 
-python scripts/compute_prevalence.py \
+python utilities/scripts/compute_prevalence.py \
     --meds_events_dir data/clif/raw \
     --exp3_tokenized_dir artifacts/runs/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized
 

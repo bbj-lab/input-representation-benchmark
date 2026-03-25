@@ -1,171 +1,30 @@
-# =============================================================================
-# Input Representation Benchmark - Experiment Configuration Reference
-# =============================================================================
-# This file documents the experiment parameters and default configurations.
-# 
-# NOTE: This project uses fms-ehrs job management (not Hydra).
-# Job orchestration is handled by:
-#   - run_experiments.py: Generates bash job files with valid parameter combos
-#   - slurm/run_from_jobfile_*: Executes jobs via SLURM arrays (CPU tier2q; GPU 1/2/8)
-#   - slurm/00_preamble.sh: Environment setup
+# Reference note only.
 #
-# Usage:
-#   # Generate job files
-#   python run_experiments.py --mode demo   # 22 single-seed runs (22 configs × 1 seed)
-#   
-#   # Submit via SLURM
-#   # Exp1–Exp3 are 4-stage:
-#   #   Stage 0 (CPU): tokenize + outcomes
-#   #   Stage 1 (GPU): train/tune
-#   #   Stage 2 (2-GPU): extract reps
-#   #   Stage 3 (CPU tier2q): logistic regression
-#   #
-#   # Generated jobfiles are written under slurm/generated/<mode>/.
-#   sbatch --array=0-11%2 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/04_exp1_stage0_tokenize.jobfile
-# =============================================================================
+# The live control path is:
+# - pipeline/run_experiments.py
+# - slurm/00_preamble.sh
+# - the MEDS tokenizer configs in ../fms-ehrs/fms_ehrs/config/
 
-# =============================================================================
-# Experiment Parameters
-# =============================================================================
+reference_only: true
 
-# Experiment 1: Granularity and Semantic Anchoring
-# Options: deciles | ventiles | trentiles | centiles
-quantizer: deciles
-
-# Clinical anchoring (only valid with ventiles or trentiles)
-# Options: none | 5-10-5 (ventiles only) | 10-10-10 (trentiles only)
-clinical_anchoring: none
-
-# Fused tokens (code + value as single token)
-# Options: true | false
-fused_category_values: false
-
-# Experiment 2: Representation Mechanics
-# Value representation: discrete | soft | continuous
-representation: discrete
-
-# Temporal encoding: time_tokens | time_rope
-temporal_encoding: time_tokens
-
-# Experiment 3: Data Format / Vocabulary Semantics
-# Options: meds (native MIMIC) | clif (standardized)
-data_format: meds
-
-# NOTE (critical scheduling / correctness):
-# Experiment 3 must wait until Experiments 1 & 2 winners are known because Exp3 is *not*
-# "extra work for CLIF only". Exp3 compares alternative identifier schemes using a fixed
-# ICU-hospitalization cohort \(H_{\mathrm{ICU}}\):
-#   - admissions (`hadm_id`) with hospital LOS>=24h in `hosp/admissions.csv.gz`, AND
-#   - >=1 linked ICU stay record in `icu/icustays.csv.gz` for the same `hadm_id`
-# (see `scripts/align_cohorts.py` outputs `*_hadm_ids.csv`).
-#
-# Therefore, the MEDS-native arm must be (re)trained under the *same* \(H_{\mathrm{ICU}}\) cohort
-# and under the selected Exp1+Exp2 winner configuration. Reusing an Exp2 checkpoint trained on
-# the all-hospitalizations cohort would confound vocabulary semantics with cohort shift.
-
-# =============================================================================
-# Data Configuration
-# =============================================================================
-
-# Seed separation:
-#   - data_seed: FIXED at 42 across all experiments (ensures same data partition)
-#   - training_seed: VARIED to quantify training stochasticity
-data_seed: 42                       # FIXED - do not change
-training_seed: 42                   # Standardized to one seed; uncertainty via bootstrap CIs downstream
-
-# Train/val/test split ratios (patient-level)
-split_ratios:
-  train: 0.7
-  val: 0.1
-  test: 0.2
-
-# =============================================================================
-# Model Configuration
-# =============================================================================
-
-model:
-  # Architecture: Scaled-down LLaMA 3.2 (≈87M parameters in our runs; exact depends on vocab size)
-  # Configuration source: Burkhart et al. (2025), arXiv:2507.22798
-  # Base architecture: Grattafiori et al. (2024), arXiv:2407.21783
-  base_model: meta-llama/Llama-3.2-1B
-  hidden_size: 1024
-  intermediate_size: 2048
-  num_hidden_layers: 8
-  num_attention_heads: 8
-  max_position_embeddings: 131072   # 128K tokens
-  vocab_size: null                  # Set from tokenizer
-  
-  # Special token IDs (set from tokenizer)
-  bos_token_id: null
-  eos_token_id: null
-  pad_token_id: null
-
-# =============================================================================
-# Training Configuration
-# =============================================================================
-
-training:
-  # Optimizer
-  # NOTE: Exp2/Exp3 use Muon (+ aux AdamW); Exp1 uses the packed-tuning script.
-  optimizer: muon
-  learning_rate: 1.0e-4
-  weight_decay: 0.01
-  adam_beta1: 0.9
-  adam_beta2: 0.999
-  adam_epsilon: 1.0e-8
-  
-  # Schedule
-  warmup_ratio: 0.1                 # Linear warmup for 10% of steps
-  lr_scheduler_type: linear
-  
-  # Batching
-  batch_size: 32
-  gradient_accumulation_steps: 1
-  
-  # Training duration
-  max_epochs: 100
-  early_stopping_patience: 5        # Stop if val perplexity doesn't improve
-  
-  # Regularization
-  dropout: 0.1
-  
-  # Mixed precision
-  fp16: true
-  bf16: false
-
-# =============================================================================
-# Paths (Reference - actual paths set in slurm/00_preamble.sh)
-# =============================================================================
+counts:
+  exp1_primary: 12
+  exp2_primary: 6
+  exp2_auxiliary_xval_affine: 2
+  exp3_primary: 4
+  total_primary: 22
+  total_reported: 24
 
 paths:
-  # Base path structure on Randi cluster
-  base_dir: /gpfs/data/bbj-lab/users/${USER}
-  
-  # Raw MIMIC-IV data (from PhysioNet)
-  mimic_raw_dir: ${base_dir}/input-representation-benchmark/physionet.org/files/mimiciv/3.1
-  
-  # MEDS format data (after extraction)
-  meds_data_dir: ${base_dir}/input-representation-benchmark/benchmarks/mimic-meds-extraction/data/meds
-  
-  # CLIF format data (for Experiment 3)
-  clif_data_dir: ${base_dir}/fms-ehrs/data/clif
-  
-  # Model and output directories
-  model_dir: ${base_dir}/input-representation-benchmark/models
-  output_dir: ${base_dir}/input-representation-benchmark/outputs
-  
-  # fms-ehrs tokenization framework
-  fms_ehrs_dir: ${base_dir}/fms-ehrs
-  tokenizer_config: ${fms_ehrs_dir}/fms_ehrs/config/mimic-meds-ed.yaml
-  
-  # Cache directories
-  hf_cache: /gpfs/data/bbj-lab/cache/huggingface/
-  wandb_cache: /scratch/${USER}/
-  
-# =============================================================================
-# Logging
-# =============================================================================
+  tokenized_root: artifacts/runs/tokenized/
+  model_root: artifacts/runs/models/
+  exp3_root: artifacts/runs/exp3/
+  stats_root: artifacts/runs/statistics/paper_audit_20260316_idaligned_fullstats/
 
-logging:
-  wandb_project: input-representation-benchmark
-  log_every_n_steps: 100
+active_configs:
+  meds_default: ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml
+  meds_exp3_icu: ../fms-ehrs/fms_ehrs/config/mimic-meds-exp3-icu.yaml
+
+notes:
+  - Use pipeline/run_experiments.py to generate jobfiles (root run_experiments.py is a compatibility wrapper).
+  - Use pipeline/scripts/regenerate_aligned_family_stats.py to refresh the paper stats root.

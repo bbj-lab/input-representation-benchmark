@@ -49,7 +49,7 @@ require_file() {
 }
 
 echo "=============================================="
-echo "Refreshing extended outcomes for canonical reruns"
+echo "Refreshing extended outcomes for parity reruns"
 echo "Host: $(hostname)"
 echo "=============================================="
 
@@ -91,7 +91,7 @@ for spec in "${REFRESH_SPECS[@]}"; do
   echo ""
   echo "--- Refreshing extended outcomes for: $(basename "${tokdir}") ---"
   echo "    events: ${events_dir}"
-  python3 scripts/extract_extended_outcomes.py \
+  python3 pipeline/scripts/extract_extended_outcomes.py \
     --meds_events_dir "${events_dir}" \
     --tokenized_dir "${tokdir}" \
     --splits train,val,test \
