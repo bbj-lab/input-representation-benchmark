@@ -17,7 +17,7 @@ Policy:
 
 - this tree holds the real non-deprecated run artifacts
 - active benchmark workflows should point here directly
-- legacy paths in the repo are preserved as symlinks for compatibility
+- temporary migration symlinks may exist in local run storage, but active workflows should point here directly
 - deprecated or stale artifacts do **not** belong here; they belong under
   `deprecated/`
 

@@ -36,6 +36,7 @@ These paths are part of the Stage0 -> Stage3 -> stats -> paper refresh chain.
 - `pipeline/scripts/regenerate_aligned_family_stats.py`
 - `pipeline/scripts/write_reference_winner_files.py`
 - `paper/scripts/generate_mlhc_appendix_tables.py`
+- `paper/scripts/generate_mlhc_appendix_outcome_descriptives.py`
 - `paper/scripts/generate_mlhc_paper_figures.py`
 - `pipeline/tests/unit/`
 - `pipeline/tests/dryrun/`
@@ -80,6 +81,7 @@ These paths are active but not on the mandatory run chain.
 
 These paths are outside the active benchmark path and are treated as deprecated.
 
+- `deprecated/slurm/strict_parity_exp23/generated/demo/`
 - `deprecated/scripts/legacy_misc/check_icu.py`
 - `deprecated/scripts/legacy_misc/extract_metrics.py`
 - `deprecated/scripts/legacy_misc/inspect_data.py`
@@ -88,8 +90,7 @@ These paths are outside the active benchmark path and are treated as deprecated.
 - `deprecated/models_archive/`
 - `deprecated/figures/`
 
-## Compatibility Risk Notes
+## Freeze Notes
 
-- Do not break old entry paths under `run_experiments.py`, `scripts/`, or `slurm/` during active jobs.
-- Keep `slurm/generated/` and `slurm/strict_parity_exp23/` stable while queued arrays are active.
-- Keep compatibility wrappers until the next full rerun cycle is complete.
+- Local submit-time jobfiles under `slurm/generated/` are disposable and should not be treated as versioned surfaces.
+- Archived rerun-specific jobfiles that still matter for audit belong under `deprecated/`, not under the live `slurm/` tree.

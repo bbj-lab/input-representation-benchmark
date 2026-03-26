@@ -2,8 +2,7 @@
 
 This directory holds the live benchmark runners.
 
-SLURM scripts still call compatibility paths under `scripts/` and `run_experiments.py`.
-Main Python implementations now live under `../pipeline/`, `../paper/`, and `../utilities/`.
+Use `../pipeline/`, `../paper/`, and `../utilities/` directly for the Python entrypoints behind these launchers.
 
 ## Numbered stage runners
 
@@ -20,10 +19,10 @@ Main Python implementations now live under `../pipeline/`, `../paper/`, and `../
 
 ## Generated jobfiles
 
-- `generated/statistics/`: pinned stats rerun sheets
-- `generated/outcome_reruns/`: pinned outcome rerun sheets
+- `generated/statistics/`: local stats rerun sheets emitted by the submit helpers
+- `generated/outcome_reruns/`: local outcome rerun sheets emitted during one-off refreshes
 
-Mode-specific or one-off jobfile trees may also appear under other subdirectories when generating isolated reruns.
+Completed rerun-specific sheets that still matter for audit should be moved under `../deprecated/slurm/`.
 
 ## Vendored Stage 2/3 wrappers
 

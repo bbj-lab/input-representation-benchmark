@@ -21,7 +21,7 @@ set -euo pipefail
 find_repo_root() {
   local d="$1"
   while [[ "$d" != "/" ]]; do
-    if [[ -f "$d/run_experiments.py" && -d "$d/slurm" ]]; then
+    if [[ -f "$d/pipeline/run_experiments.py" && -d "$d/slurm" ]]; then
       echo "$d"
       return 0
     fi
@@ -59,7 +59,7 @@ fi
 echo "[gate] Using Exp1 winner config_id: ${EXP1_WINNER_CONFIG_ID}"
 echo "[gate] Generating Exp2 discrete-only jobfiles..."
 
-python run_experiments.py \
+python pipeline/run_experiments.py \
   --mode demo \
   --exp 2 \
   --exp2_include_discrete \

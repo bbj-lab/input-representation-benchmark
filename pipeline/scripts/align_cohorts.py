@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 Cohort alignment script for Experiment 3.
 
 This script extracts a shared cohort for Experiment 3 based on an explicit, reproducible
@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_admissions(mimic_dir: Path) -> tuple[set[int], set[int], dict[int, set[int]]]:
-    """
+    r"""
     Stream admissions.csv.gz and return:
       - long_stay_patients (subject_id) where any admission LOS>=24h
       - long_stay_hadm_ids (hadm_id) where admission LOS>=24h
@@ -126,7 +126,7 @@ def extract_icu_cohort(
     icu_hadm: set[int],
     min_los_hours: float = 24.0
 ) -> Tuple[Set[int], Set[int]]:
-    """
+    r"""
     Extract Exp3 cohort objects based on the hospitalization-level ICU-admission cohort \(H_{\mathrm{ICU}}\):
       - patient cohort: `subject_id` with ≥1 ICU stay AND ≥24h hospital LOS
       - hospitalization cohort (H_ICU): `hadm_id` with ≥1 ICU stay AND ≥24h hospital LOS

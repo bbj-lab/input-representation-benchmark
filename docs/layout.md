@@ -15,19 +15,15 @@ This is the primary navigation layout for the benchmark repo.
 - `utilities/`: active non-pipeline helpers.
   - `utilities/scripts/`
   - `utilities/qc/`
-- `tests/`: compatibility wrappers that forward to `pipeline/tests/unit/`.
 - `deprecated/`: retired scripts, notes, launchers, and data snapshots.
 - `docs/`: structural docs, inventories, and migration notes.
 
-## Compatibility policy
+## Entry policy
 
-- Keep old entry paths during migration:
-  - `run_experiments.py` (root)
-  - `scripts/*`
-  - `scripts/diagnostics/*`
-- Old entry paths are wrappers that execute the main files in `pipeline/`, `paper/`, or `utilities/`.
+- Use `pipeline/run_experiments.py` for job generation.
+- Use `pipeline/scripts/`, `paper/scripts/`, and `utilities/scripts/` directly.
 
 ## Stability guarantees
 
-- `slurm/` remains stable during the current rerun chain.
-- Existing queued jobs should resolve old script paths unchanged.
+- `slurm/` remains the stable launcher surface.
+- Generated jobfiles under `slurm/generated/` are disposable local byproducts, not long-lived code surfaces.

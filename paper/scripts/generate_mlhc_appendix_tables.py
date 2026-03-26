@@ -290,7 +290,7 @@ def main() -> int:
             "The full CI and pairwise-testing audit covers the complete logistic-regression "
             "binary sweep and Ridge-regression sweep for every experiment, i.e., all 30 "
             "benchmark outcomes at the benchmark level (17 binary outcomes and 13 regression "
-            "outcomes, with each experiment instantiating 16 binary outcomes because the ICU "
+            "outcomes, with each experiment using 16 binary outcomes because the ICU "
             "endpoint differs between Experiments~1--2 and 3). The final column refers to those "
             "full LR/Ridge sweeps only. The MLP probe remains a narrower binary-only sensitivity analysis."
         ),

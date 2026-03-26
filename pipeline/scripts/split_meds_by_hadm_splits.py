@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 Create an Exp3 MEDS events directory by filtering MEDS parquet splits by a split-specific `hadm_id` list.
 
 Why this exists

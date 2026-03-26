@@ -43,6 +43,7 @@ Model-side execution is handled by the sibling `../fms-ehrs` repository.
    - model repo backend: `../fms-ehrs/fms_ehrs/scripts/aggregate_version_preds.py`
 8. **Paper refresh**  
    - `paper/scripts/generate_mlhc_appendix_tables.py`  
+   - `paper/scripts/generate_mlhc_appendix_outcome_descriptives.py`  
    - `paper/scripts/generate_mlhc_paper_figures.py`
 
 For the full file-by-file stage walkthrough, use `PIPELINE.md`.
@@ -55,7 +56,8 @@ For Exp2/Exp3 stats regeneration:
 - paired permutation tests: enabled with `permutation_n=2000` when requested
 - baseline-only pairwise mode: pass `--baseline_handle` (`discrete_tt` for Exp2, `meds` for Exp3)
 
-The jobfiles under `slurm/generated/statistics/` and `slurm/strict_parity_exp23/generated/demo/` are wired for this workflow.
+Use `slurm/15_submit_aligned_family_stats.sh` to generate the local stats rerun jobfiles under `slurm/generated/statistics/`.
+The completed strict-parity rerun sheets are archived under `deprecated/slurm/strict_parity_exp23/generated/demo/`.
 
 ## Experiment orchestration tests and dry-runs
 
@@ -106,15 +108,13 @@ IRB_DRYRUN_EXECUTE_MODE=1 bash pipeline/tests/dryrun/run_all.sh
 | `pipeline/tests/dryrun/` | dry-run wrappers for each pipeline script |
 | `paper/` | manuscript table/figure builders |
 | `utilities/` | non-stage helper scripts and QC |
-| `slurm/` | stage launchers and generated jobfiles |
+| `slurm/` | stage launchers and local generated jobfiles |
 | `artifacts/` | run outputs |
 | `deprecated/` | archived CLIF/UCMC/legacy material |
-| `scripts/`, `tests/`, `run_experiments.py` | compatibility entry paths kept during migration |
 
 ## Docs
 
 - `PIPELINE.md`: stage-by-stage run notes
-- `scripts/INDEX.md`: script inventory and compatibility map
 - `pipeline/tests/README.md`: orchestration test and dry-run details
 - `slurm/README.md`: launcher layout
 - `docs/layout.md`: repository layout notes

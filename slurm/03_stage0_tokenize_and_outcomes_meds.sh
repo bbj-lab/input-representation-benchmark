@@ -4,7 +4,7 @@
 # =============================================================================
 #
 # Usage (recommended: via SLURM array on tier2q):
-#   python run_experiments.py --mode demo --exp 1
+#   python pipeline/run_experiments.py --mode demo --exp 1
 #   sbatch --array=0-11 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/04_exp1_stage0_tokenize.jobfile
 #
 # Validity note:
@@ -60,7 +60,7 @@ fi
 find_repo_root() {
   local d="$1"
   while [[ "$d" != "/" ]]; do
-    if [[ -f "$d/run_experiments.py" && -d "$d/slurm" ]]; then
+    if [[ -f "$d/pipeline/run_experiments.py" && -d "$d/slurm" ]]; then
       echo "$d"
       return 0
     fi

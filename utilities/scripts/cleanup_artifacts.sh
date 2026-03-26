@@ -13,8 +13,8 @@
 #   deleted unless explicitly requested with an opt-in flag.
 #
 # Usage:
-#   bash scripts/cleanup_artifacts.sh --dry-run
-#   bash scripts/cleanup_artifacts.sh --apply
+#   bash utilities/scripts/cleanup_artifacts.sh --dry-run
+#   bash utilities/scripts/cleanup_artifacts.sh --apply
 #
 # Optional (risky) flags:
 #   --delete-token-cache   # deletes IRB token cache root (expensive to rebuild)
@@ -54,7 +54,7 @@ done
 find_repo_root() {
   local d="$1"
   while [[ "$d" != "/" ]]; do
-    if [[ -f "$d/run_experiments.py" && -d "$d/slurm" && -d "$d/scripts" ]]; then
+    if [[ -f "$d/pipeline/run_experiments.py" && -d "$d/slurm" ]]; then
       echo "$d"
       return 0
     fi

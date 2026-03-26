@@ -15,7 +15,7 @@ set -euo pipefail
 find_repo_root() {
   local d="$1"
   while [[ "$d" != "/" ]]; do
-    if [[ -f "$d/run_experiments.py" && -d "$d/slurm" ]]; then
+    if [[ -f "$d/pipeline/run_experiments.py" && -d "$d/slurm" ]]; then
       echo "$d"
       return 0
     fi
@@ -87,7 +87,7 @@ echo "=============================================="
 echo "Output: ${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds"
 echo ""
 echo "Next steps:"
-echo "  1. Generate job files: python run_experiments.py --mode demo"
+echo "  1. Generate job files: python pipeline/run_experiments.py --mode demo"
 echo "  2. Exp1 Stage 0 (tier2q CPU): sbatch --array=0-11 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/04_exp1_stage0_tokenize.jobfile"
 echo "  3. Exp1 Stage 1 (4 GPUs/job): TRAIN_JID=\$(sbatch --parsable --array=0-11 slurm/05_run_stage1_gpu4_train.sh slurm/generated/demo/07a_exp1_stage1_train.jobfile)"
 echo "  4. Exp1 Stage 2 (1 GPU/job): EXTRACT_JID=\$(sbatch --parsable --dependency=afterok:\"\${TRAIN_JID}\" --array=0-11 slurm/09_run_stage2_gpu2_extract.sh slurm/generated/demo/07b_exp1_stage2_extract_reps.jobfile)"

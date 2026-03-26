@@ -8,9 +8,10 @@ This tree holds benchmark files that are no longer part of the active path.
 - retired figure helpers
 - archived rerun sheets and log bundles
 - archived CLIF-side validation helpers
+- archived strict-parity Exp2/Exp3 rerun jobfiles
 - legacy model snapshots moved from `models_archive/`
 - legacy writing workspace material moved from `methods/`
-- legacy ad-hoc scripts moved from repo root into `scripts/legacy_misc/`
+- legacy ad-hoc scripts moved from repo root into `deprecated/scripts/legacy_misc/`
 
 ## Active paths
 

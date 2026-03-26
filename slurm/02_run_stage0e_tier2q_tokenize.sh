@@ -32,7 +32,7 @@ fi
 find_repo_root() {
   local d="$1"
   while [[ "$d" != "/" ]]; do
-    if [[ -f "$d/run_experiments.py" && -d "$d/slurm" ]]; then
+    if [[ -f "$d/pipeline/run_experiments.py" && -d "$d/slurm" ]]; then
       echo "$d"
       return 0
     fi
@@ -47,7 +47,7 @@ if [[ -z "${IRB_HOME}" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   IRB_HOME="$(cd "${SCRIPT_DIR}/.." && pwd)"
 fi
-if [[ ! -f "${IRB_HOME}/run_experiments.py" || ! -d "${IRB_HOME}/slurm" ]]; then
+if [[ ! -f "${IRB_HOME}/pipeline/run_experiments.py" || ! -d "${IRB_HOME}/slurm" ]]; then
   echo "ERROR: Could not locate IRB repo root." >&2
   echo "  SLURM_SUBMIT_DIR=${SLURM_SUBMIT_DIR:-<unset>}" >&2
   echo "  pwd=$(pwd)" >&2

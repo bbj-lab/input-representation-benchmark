@@ -26,5 +26,5 @@ active_configs:
   meds_exp3_icu: ../fms-ehrs/fms_ehrs/config/mimic-meds-exp3-icu.yaml
 
 notes:
-  - Use pipeline/run_experiments.py to generate jobfiles (root run_experiments.py is a compatibility wrapper).
+  - Use pipeline/run_experiments.py to generate jobfiles.
   - Use pipeline/scripts/regenerate_aligned_family_stats.py to refresh the paper stats root.

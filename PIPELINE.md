@@ -99,8 +99,7 @@ Entry points:
 - `pipeline/scripts/regenerate_aligned_family_stats.py`
 - `slurm/15_run_stats_cpu_jobfile.sh`
 - `slurm/15_submit_aligned_family_stats.sh`
-- `slurm/generated/statistics/aligned_family_stats.jobfile`
-- `slurm/generated/statistics/aligned_family_stats_combine.jobfile`
+- local jobfiles emitted under `slurm/generated/statistics/`
 
 Primary stats root:
 
@@ -111,6 +110,7 @@ Primary stats root:
 Entry points:
 
 - `paper/scripts/generate_mlhc_appendix_tables.py`
+- `paper/scripts/generate_mlhc_appendix_outcome_descriptives.py`
 - `paper/scripts/generate_mlhc_paper_figures.py`
 - external manuscript file `../697b81f1f269207e5416f18d/MLHC/paper.tex`
 
@@ -137,6 +137,4 @@ Outputs:
 - `pipeline/tests/unit/`: unit and contract checks for pipeline scripts.
 - `pipeline/tests/dryrun/`: one dry-run wrapper per pipeline script.
 
-If this file drifts from the stage scripts or `run_experiments.py`, update the docs and leave the code path unchanged.
-
-Compatibility note: legacy paths under `scripts/` and root `run_experiments.py` are wrappers kept for queued jobs and old commands.
+If this file drifts from the stage scripts or `pipeline/run_experiments.py`, update the docs and leave the code path unchanged.
