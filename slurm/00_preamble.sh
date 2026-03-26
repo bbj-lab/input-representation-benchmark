@@ -37,14 +37,16 @@ export name jname parent_dir
 
 # Base paths (bbj-lab cluster structure)
 #
-# NOTE: On some cluster nodes, name service lookup can fail (e.g., numeric UID has
-# no passwd entry), which makes `whoami` fail and can abort jobs when `set -e` is active.
-# Prefer $USER, then `id -un`, and only then fall back to a literal UID string.
+# NOTE: On some nodes, name service lookup can fail and USER may be unset or numeric.
+# Prefer non-numeric user identifiers to avoid invalid /scratch/<uid> paths.
 _user="${USER:-}"
-if [[ -z "${_user}" ]]; then
+if [[ -z "${_user}" || "${_user}" =~ ^[0-9]+$ ]]; then
+  _user="${SLURM_JOB_USER:-${LOGNAME:-}}"
+fi
+if [[ -z "${_user}" || "${_user}" =~ ^[0-9]+$ ]]; then
   _user="$(id -un 2>/dev/null || true)"
 fi
-if [[ -z "${_user}" ]]; then
+if [[ -z "${_user}" || "${_user}" =~ ^[0-9]+$ ]]; then
   _user="uid_$(id -u 2>/dev/null || echo unknown)"
 fi
 hm="/gpfs/data/bbj-lab/users/${_user}"
@@ -215,26 +217,30 @@ fi
 if [[ -z "${HF_HOME:-}" ]]; then
     if [[ -d /gpfs/data/bbj-lab/cache/huggingface/ && -w /gpfs/data/bbj-lab/cache/huggingface/ ]]; then
         HF_HOME="/gpfs/data/bbj-lab/cache/huggingface/"
-    elif [[ -d /scratch ]]; then
+    elif [[ -d /scratch && ! "${_user}" =~ ^[0-9]+$ && "${_user}" != uid_* ]]; then
         HF_HOME="/scratch/${_user}/huggingface"
     else
         HF_HOME="${HOME}/.cache/huggingface"
     fi
-    mkdir -p "${HF_HOME}"
+    if ! mkdir -p "${HF_HOME}" 2>/dev/null; then
+        HF_HOME="${HOME}/.cache/huggingface"
+        mkdir -p "${HF_HOME}"
+    fi
 fi
 
 # Keep all HF caches under HF_HOME to avoid accidental writes to shared paths.
 HF_DATASETS_CACHE="${HF_HOME}/datasets"
 HF_HUB_CACHE="${HF_HOME}/hub"
 TRANSFORMERS_CACHE="${HF_HOME}/transformers"
-mkdir -p "${HF_DATASETS_CACHE}" "${HF_HUB_CACHE}" "${TRANSFORMERS_CACHE}"
-if [[ -d /scratch ]]; then
+mkdir -p "${HF_DATASETS_CACHE}" "${HF_HUB_CACHE}" "${TRANSFORMERS_CACHE}" 2>/dev/null || true
+if [[ -d /scratch && ! "${_user}" =~ ^[0-9]+$ && "${_user}" != uid_* ]]; then
     WANDB_CACHE_DIR="/scratch/${_user}/"
     WANDB_DIR="/scratch/${_user}/"
 else
     WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-${HOME}/.cache/wandb}"
     WANDB_DIR="${WANDB_DIR:-${HOME}/.cache/wandb}"
 fi
+mkdir -p "${WANDB_CACHE_DIR}" "${WANDB_DIR}" 2>/dev/null || true
 PYTHONPATH="${IRB_HOME}:${FMS_EHRS_HOME}:${PYTHONPATH:-}"
 export HF_HOME HF_DATASETS_CACHE HF_HUB_CACHE TRANSFORMERS_CACHE WANDB_CACHE_DIR WANDB_DIR PYTHONPATH
 

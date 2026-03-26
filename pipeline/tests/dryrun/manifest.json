@@ -1,0 +1,163 @@
+{
+  "scripts": [
+    {
+      "script": "pipeline/run_experiments.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__run_experiments.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/align_cohorts.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__align_cohorts.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/build_run_artifact_tree.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__build_run_artifact_tree.sh",
+      "mode": "execute",
+      "args": [
+        "--dry-run"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/build_exp3_meds_semantics_arms.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__build_exp3_meds_semantics_arms.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/create_exp1_best_model_aliases.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__create_exp1_best_model_aliases.sh",
+      "mode": "compile",
+      "args": []
+    },
+    {
+      "script": "pipeline/scripts/create_xval_rep_mechanics.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__create_xval_rep_mechanics.sh",
+      "mode": "execute",
+      "args": [
+        "--dry-run",
+        "--repo_root",
+        "$REPO_ROOT"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/diagnostics/diag_attention_washout.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__diagnostics__diag_attention_washout.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/diagnostics/diag_clinical_boundary_probe.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__diagnostics__diag_clinical_boundary_probe.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/diagnostics/diag_cv_pooling.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__diagnostics__diag_cv_pooling.sh",
+      "mode": "compile",
+      "args": []
+    },
+    {
+      "script": "pipeline/scripts/diagnostics/diag_embedding_geometry.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__diagnostics__diag_embedding_geometry.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/diagnostics/diag_potassium_geometry_grid.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__diagnostics__diag_potassium_geometry_grid.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/diagnostics/diag_sparsity_distance.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__diagnostics__diag_sparsity_distance.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/diagnostics/diag_xval_zero_out.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__diagnostics__diag_xval_zero_out.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/extract_extended_outcomes.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__extract_extended_outcomes.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/extract_outcomes_meds.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__extract_outcomes_meds.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/minimal_e2e_dryrun.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__minimal_e2e_dryrun.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/normalize_meds_tokenized_layout.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__normalize_meds_tokenized_layout.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/regenerate_aligned_family_stats.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__regenerate_aligned_family_stats.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/split_meds_by_hadm_splits.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__split_meds_by_hadm_splits.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/write_reference_winner_files.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__write_reference_winner_files.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    }
+  ],
+  "notes": "Dry-run wrappers default to compile-only mode. Set IRB_DRYRUN_EXECUTE_MODE=1 to run script-level execute mode where configured."
+}

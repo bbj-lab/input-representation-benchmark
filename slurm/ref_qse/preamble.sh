@@ -27,15 +27,20 @@ source "${IRB_HOME}/slurm/00_preamble.sh"
 # Match reference cache behavior
 export HF_HOME="${HF_HOME:-/gpfs/data/bbj-lab/cache/huggingface/}"
 _irb_username() {
-  # Some compute nodes do not have a working uid->username mapping (so `whoami`/`id -un` can fail).
-  # Fall back to a deterministic uid-based directory in that case.
-  if [[ -n "${USER:-}" ]]; then
-    echo "${USER}"
+  # Some compute nodes do not have stable uid->username mapping.
+  # Prefer non-numeric identifiers to avoid invalid /scratch/<uid> paths.
+  local u="${USER:-}"
+  if [[ -n "${u}" && ! "${u}" =~ ^[0-9]+$ ]]; then
+    echo "${u}"
     return 0
   fi
-  local u=""
+  u="${SLURM_JOB_USER:-${LOGNAME:-}}"
+  if [[ -n "${u}" && ! "${u}" =~ ^[0-9]+$ ]]; then
+    echo "${u}"
+    return 0
+  fi
   u="$(id -un 2>/dev/null || true)"
-  if [[ -n "${u}" ]]; then
+  if [[ -n "${u}" && ! "${u}" =~ ^[0-9]+$ ]]; then
     echo "${u}"
     return 0
   fi
@@ -43,6 +48,12 @@ _irb_username() {
 }
 
 _IRB_USER="$(_irb_username)"
-export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-/scratch/${_IRB_USER}/}"
-export WANDB_DIR="${WANDB_DIR:-/scratch/${_IRB_USER}/}"
+if [[ -d /scratch && "${_IRB_USER}" != uid_* && ! "${_IRB_USER}" =~ ^[0-9]+$ ]]; then
+  export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-/scratch/${_IRB_USER}/}"
+  export WANDB_DIR="${WANDB_DIR:-/scratch/${_IRB_USER}/}"
+else
+  export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-${HOME}/.cache/wandb}"
+  export WANDB_DIR="${WANDB_DIR:-${HOME}/.cache/wandb}"
+fi
+mkdir -p "${WANDB_CACHE_DIR}" "${WANDB_DIR}" 2>/dev/null || true
 
