@@ -84,7 +84,6 @@ Main output:
 Entry points:
 
 - `slurm/ref_qse/10_xfer_rep_based_preds.sh`
-- `slurm/ref_qse/11_diag_eval.sh`
 - `slurm/11_run_stage3_tier2q_lr.sh`
 - `fms_ehrs/scripts/transfer_rep_based_preds.py`
 

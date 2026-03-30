@@ -59,6 +59,9 @@ env/
 
 # Outputs
 outputs/
+!deprecated/outputs/
+!deprecated/outputs/xgboost_baseline/
+!deprecated/outputs/xgboost_baseline/xgboost_baseline_results.json
 results/
 logs/
 *.log

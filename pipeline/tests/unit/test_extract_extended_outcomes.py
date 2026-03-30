@@ -77,7 +77,7 @@ class TestExtractExtendedOutcomes(unittest.TestCase):
         self.assertEqual(float(row100["hypoglycemia"]), 1.0)
         self.assertFalse(row100["hypoglycemia_24h"])
         self.assertAlmostEqual(float(row100["min_sodium"]), 122.0, places=6)
-        self.assertEqual(float(row100["profound_hyponatremia"]), 1.0)
+        self.assertEqual(float(row100["profound_hyponatremia"]), 0.0)
         self.assertTrue(row100["profound_hyponatremia_24h"])
         self.assertEqual(float(row100["severe_hypernatremia"]), 0.0)
         self.assertFalse(row100["severe_hypernatremia_24h"])

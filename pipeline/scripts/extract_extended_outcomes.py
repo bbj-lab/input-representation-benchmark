@@ -29,7 +29,7 @@ Post-24h binary outcomes:
     - severe_hypokalemia     : min potassium after 24h < 2.5 mEq/L
     - severe_anemia          : min hemoglobin after 24h < 7.0 g/dL
     - hypoglycemia           : min glucose after 24h < 54 mg/dL
-    - profound_hyponatremia  : min sodium after 24h < 125 mEq/L
+    - profound_hyponatremia  : min sodium after 24h < 120 mEq/L
     - severe_hypernatremia   : max sodium after 24h >= 160 mEq/L
     - tachycardia_hr130      : max heart rate after 24h >= 130 bpm
     - severe_hypertension    : max SBP >= 180 mmHg or max DBP >= 120 mmHg after 24h
@@ -563,9 +563,9 @@ def _compute_extended_outcomes(
         .otherwise(None),
         hypoglycemia_24h=(pl.col("min_glucose_24h") < 54.0).fill_null(False),
         profound_hyponatremia=pl.when(pl.col("min_sodium").is_not_null())
-        .then((pl.col("min_sodium") < 125.0).cast(pl.Float64))
+        .then((pl.col("min_sodium") < 120.0).cast(pl.Float64))
         .otherwise(None),
-        profound_hyponatremia_24h=(pl.col("min_sodium_24h") < 125.0).fill_null(False),
+        profound_hyponatremia_24h=(pl.col("min_sodium_24h") < 120.0).fill_null(False),
         severe_hypernatremia=pl.when(pl.col("max_sodium").is_not_null())
         .then((pl.col("max_sodium") >= 160.0).cast(pl.Float64))
         .otherwise(None),

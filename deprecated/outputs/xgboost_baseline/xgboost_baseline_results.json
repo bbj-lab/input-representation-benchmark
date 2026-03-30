@@ -1,0 +1,24 @@
+{
+  "model": "xgboost",
+  "features": 37,
+  "results": {
+    "Mortality": {
+      "AUROC": "0.742 [0.730, 0.753]",
+      "AUPRC": "0.251 [0.231, 0.272]",
+      "auroc_point": 0.7418652202674492,
+      "auprc_point": 0.25072693591076206,
+      "test_prevalence": 0.098698153194066,
+      "train_n": 57688,
+      "test_n": 16515
+    },
+    "Long LoS": {
+      "AUROC": "0.731 [0.723, 0.738]",
+      "AUPRC": "0.709 [0.699, 0.720]",
+      "auroc_point": 0.7306528683578369,
+      "auprc_point": 0.7089849558166347,
+      "test_prevalence": 0.498698153194066,
+      "train_n": 57688,
+      "test_n": 16515
+    }
+  }
+}

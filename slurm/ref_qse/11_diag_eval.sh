@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # =============================================================================
-# Diagnostic evaluation wrapper: MLP probe / Ridge regression on extracted reps
+# Diagnostic evaluation wrapper for auxiliary probe runs on extracted reps
 # =============================================================================
 #
 # This is the diagnostic counterpart of ref_qse/10_xfer_rep_based_preds.sh.
-# It supports additional classifiers (mlp, ridge_regression) and task types
-# (classification, regression) for the Exp2 diagnostic analyses.
+# It supports extra classifiers and task types for auxiliary analyses that are
+# outside the main benchmark refresh chain.
 #
 # Required env vars (set by the jobfile):
 #   data_dir       - tokenized data root (e.g., benchmarks/.../data/meds/data)

@@ -14,9 +14,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.colors import Normalize
+import matplotlib.patheffects as pe
+from matplotlib.colors import Normalize, TwoSlopeNorm
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
+from matplotlib.patches import Patch, Rectangle
 
 from pipeline.scripts.diagnostics.diag_embedding_geometry import (
     extract_discrete_bin_embeddings,
@@ -28,7 +29,7 @@ from pipeline.scripts.diagnostics.diag_embedding_geometry import (
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_METRICS = ROOT / "artifacts" / "runs" / "statistics" / "paper_audit_20260316_idaligned_fullstats" / "all_family_metrics.csv"
-DEFAULT_PAIRWISE = ROOT / "artifacts" / "runs" / "statistics" / "paper_audit_20260316_idaligned_fullstats" / "all_family_pairwise.csv"
+DEFAULT_PAIRWISE = ROOT / "artifacts" / "runs" / "statistics" / "paper_audit_20260316_idaligned_fullstats" / "all_family_pairwise_baseline.csv"
 DEFAULT_FIG_DIR = (
     ROOT.parent
     / "697b81f1f269207e5416f18d"
@@ -218,12 +219,12 @@ EXP2_HANDLE_ORDER = [
 EXP2_HANDLE_SHORT_LABELS = {
     "discrete_tt": "Disc tt",
     "soft_tt": "Soft tt",
-    "xval_tt": "xVal tt",
-    "xval_affine_tt": "xAff tt",
+    "xval_tt": "xVal-CN tt",
+    "xval_affine_tt": "xVal-Aff tt",
     "discrete_rope": "Disc RoPE",
     "soft_rope": "Soft RoPE",
-    "xval_rope": "xVal RoPE",
-    "xval_affine_rope": "xAff RoPE",
+    "xval_rope": "xVal-CN RoPE",
+    "xval_affine_rope": "xVal-Aff RoPE",
 }
 
 EXP2_HANDLE_COLORS = {
@@ -273,8 +274,8 @@ EXP1_ANCHOR_SUMMARY_COLORS = {
 EXP2_VALUE_SUMMARY_COLORS = {
     "Discrete": "#4E79A7",
     "Soft": "#76B7B2",
-    "xVal": "#F28E2B",
-    "xVal-affine": "#B07AA1",
+    "xVal (code-normalized)": "#F28E2B",
+    "xVal-affine (code-normalized + affine shift)": "#B07AA1",
 }
 
 EXP2_TEMPORAL_SUMMARY_COLORS = {
@@ -285,10 +286,10 @@ EXP2_TEMPORAL_SUMMARY_COLORS = {
 EXP2_EFFECT_COMPARISONS = [
     ("Soft - Disc (tt)", "discrete_tt", "soft_tt", "#2A9D8F", "o"),
     ("Soft - Disc (RoPE)", "discrete_rope", "soft_rope", "#2A9D8F", "s"),
-    ("xVal - Disc (tt)", "discrete_tt", "xval_tt", "#6C4E9B", "o"),
-    ("xVal - Disc (RoPE)", "discrete_rope", "xval_rope", "#6C4E9B", "s"),
-    ("xAff - xVal (tt)", "xval_tt", "xval_affine_tt", "#E76F51", "o"),
-    ("xAff - xVal (RoPE)", "xval_rope", "xval_affine_rope", "#E76F51", "s"),
+    ("xVal-CN - Disc (tt)", "discrete_tt", "xval_tt", "#6C4E9B", "o"),
+    ("xVal-CN - Disc (RoPE)", "discrete_rope", "xval_rope", "#6C4E9B", "s"),
+    ("xVal-Aff - xVal-CN (tt)", "xval_tt", "xval_affine_tt", "#E76F51", "o"),
+    ("xVal-Aff - xVal-CN (RoPE)", "xval_rope", "xval_affine_rope", "#E76F51", "s"),
 ]
 
 EXP3_EFFECT_COMPARISONS = [
@@ -604,6 +605,181 @@ def _collect_exp3_source(metrics: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([binary, regression], ignore_index=True)
 
 
+def _baseline_delta_source(
+    metrics: pd.DataFrame,
+    pairwise: pd.DataFrame,
+    *,
+    families: list[str],
+    metric: str,
+    outcome_order: list[str],
+    handle_order: list[str],
+    baseline_handle: str,
+    panel: str,
+) -> pd.DataFrame:
+    source = metrics[
+        metrics["family_name"].isin(families)
+        & (metrics["metric"] == metric)
+        & metrics["outcome"].isin(outcome_order)
+        & metrics["handle"].isin(handle_order)
+    ][["family_name", "outcome", "handle", "point", "ci_lo", "ci_hi"]].copy()
+    baseline = (
+        source[source["handle"] == baseline_handle][["outcome", "point"]]
+        .rename(columns={"point": "baseline_point"})
+        .drop_duplicates(subset=["outcome"])
+    )
+    source = source.merge(baseline, on="outcome", how="left", validate="many_to_one")
+    source["delta"] = source["point"] - source["baseline_point"]
+
+    pw = pairwise[
+        pairwise["family_name"].isin(families)
+        & (pairwise["metric"] == metric)
+        & pairwise["outcome"].isin(outcome_order)
+        & ((pairwise["handle0"] == baseline_handle) | (pairwise["handle1"] == baseline_handle))
+    ][["outcome", "handle0", "handle1", "p_adj"]].copy()
+    if not pw.empty:
+        pw["handle"] = np.where(pw["handle0"] == baseline_handle, pw["handle1"], pw["handle0"])
+        pw = pw[["outcome", "handle", "p_adj"]].drop_duplicates(subset=["outcome", "handle"])
+    else:
+        pw = pd.DataFrame(columns=["outcome", "handle", "p_adj"])
+
+    source = source.merge(pw, on=["outcome", "handle"], how="left")
+    source["significant"] = source["p_adj"].fillna(np.inf) < 0.05
+    source.loc[source["handle"] == baseline_handle, "significant"] = False
+    source["panel"] = panel
+    source["baseline_handle"] = baseline_handle
+    return source
+
+
+def _compute_shared_heatmap_vmax(metrics: pd.DataFrame, pairwise: pd.DataFrame) -> dict[str, float]:
+    del metrics, pairwise
+    return {"binary": 0.15, "regression": 0.20}
+
+
+def _plot_delta_heatmap_panel(
+    ax,
+    source: pd.DataFrame,
+    *,
+    outcome_order: list[str],
+    handle_order: list[str],
+    handle_labels: dict[str, str],
+    panel_title: str,
+    colorbar_label: str,
+    group_breaks: list[int] | None = None,
+    fixed_vmax: float | None = None,
+    cbar_ticks: list[float] | None = None,
+) -> None:
+    matrix_full = np.full((len(outcome_order), len(handle_order)), np.nan, dtype=float)
+    significant_full = np.zeros((len(outcome_order), len(handle_order)), dtype=bool)
+
+    for row_idx, outcome in enumerate(outcome_order):
+        sub = source[source["outcome"] == outcome]
+        for col_idx, handle in enumerate(handle_order):
+            row = sub[sub["handle"] == handle]
+            if row.empty:
+                continue
+            rec = row.iloc[0]
+            matrix_full[row_idx, col_idx] = float(rec["delta"])
+            significant_full[row_idx, col_idx] = bool(rec["significant"])
+
+    keep_rows = np.isfinite(matrix_full).any(axis=1)
+    if not np.any(keep_rows):
+        keep_rows = np.ones(len(outcome_order), dtype=bool)
+
+    matrix = matrix_full[keep_rows, :]
+    significant = significant_full[keep_rows, :]
+    outcome_labels = [APPENDIX_OUTCOME_LABELS[outcome_order[i]] for i, keep in enumerate(keep_rows) if keep]
+
+    finite = matrix[np.isfinite(matrix)]
+    if fixed_vmax is None:
+        vmax = max(float(np.nanmax(np.abs(finite))) if finite.size else 0.0, 0.02)
+    else:
+        vmax = max(float(fixed_vmax), 0.02)
+    norm = TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
+    cmap = plt.get_cmap("coolwarm").copy()
+    cmap.set_bad("#F5F7FA")
+    im = ax.imshow(
+        matrix,
+        aspect="auto",
+        cmap=cmap,
+        norm=norm,
+        interpolation="nearest",
+        zorder=2,
+    )
+
+    ax.set_yticks(np.arange(len(outcome_labels)))
+    ax.set_yticklabels(outcome_labels, fontsize=8)
+    ax.set_xticks(np.arange(len(handle_order)))
+    labels = [_wrap_bar_tick_label(handle_labels[h]) for h in handle_order]
+    ax.set_xticklabels(labels, fontsize=8)
+    ax.set_title(panel_title, pad=8)
+    ax.tick_params(
+        axis="x",
+        bottom=True,
+        top=False,
+        labelbottom=True,
+        labeltop=False,
+        length=0,
+    )
+    ax.tick_params(axis="y", length=0)
+    ax.set_facecolor("#F7F8FA")
+
+    ax.set_xticks(np.arange(-0.5, len(handle_order), 1.0), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(outcome_labels), 1.0), minor=True)
+    ax.grid(which="minor", color="#FFFFFF", linewidth=1.0)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
+    for break_idx in group_breaks or []:
+        ax.axvline(break_idx + 0.5, color="#1F2937", linewidth=1.15, alpha=0.95, zorder=6)
+
+    baseline_handle = source["baseline_handle"].iloc[0] if "baseline_handle" in source.columns and not source.empty else None
+    if baseline_handle in handle_order:
+        baseline_idx = handle_order.index(baseline_handle)
+        ax.add_patch(
+            Rectangle(
+                (baseline_idx - 0.5, -0.5),
+                1.0,
+                len(outcome_labels),
+                facecolor="none",
+                edgecolor="#111827",
+                linewidth=1.05,
+                linestyle=(0, (2.2, 2.2)),
+                zorder=7,
+            )
+        )
+
+    sig_rows, sig_cols = np.where(significant & np.isfinite(matrix))
+    if sig_rows.size:
+        for row_idx, col_idx in zip(sig_rows.tolist(), sig_cols.tolist()):
+            ax.text(
+                col_idx,
+                row_idx,
+                r"$\ast$",
+                ha="center",
+                va="center",
+                fontsize=8.1,
+                color="#111827",
+                zorder=8,
+                path_effects=[pe.withStroke(linewidth=1.15, foreground="white", alpha=0.95)],
+            )
+    ax.set_xlim(-0.5, len(handle_order) - 0.5)
+    ax.set_ylim(len(outcome_labels) - 0.5, -0.5)
+    for side in ["top", "right", "bottom", "left"]:
+        ax.spines[side].set_visible(False)
+
+    cbar = plt.colorbar(
+        im,
+        ax=ax,
+        orientation="horizontal",
+        fraction=0.048,
+        pad=0.08,
+    )
+    if cbar_ticks is not None:
+        cbar.set_ticks(cbar_ticks)
+    cbar.set_label(colorbar_label, fontsize=8.8, labelpad=3)
+    cbar.ax.tick_params(labelsize=7.8, length=2)
+    cbar.outline.set_linewidth(0.55)
+
+
 def _mean_interval(source: pd.DataFrame, *, group_cols: list[str]) -> pd.DataFrame:
     return (
         source.groupby(group_cols, as_index=False)
@@ -659,12 +835,12 @@ def _exp2_knob_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
     value_family = {
         "discrete_tt": "Discrete",
         "soft_tt": "Soft",
-        "xval_tt": "xVal",
-        "xval_affine_tt": "xVal-affine",
+        "xval_tt": "xVal (code-normalized)",
+        "xval_affine_tt": "xVal-affine (code-normalized + affine shift)",
         "discrete_rope": "Discrete",
         "soft_rope": "Soft",
-        "xval_rope": "xVal",
-        "xval_affine_rope": "xVal-affine",
+        "xval_rope": "xVal (code-normalized)",
+        "xval_affine_rope": "xVal-affine (code-normalized + affine shift)",
     }
     temporal_family = {
         "discrete_tt": "Time tokens",
@@ -787,10 +963,10 @@ def _plot_summary_bar_panel(
     ax.bar(
         x,
         points,
-        width=0.72,
+        width=0.64,
         color=[color_map[str(level)] for level in sub["level"]],
-        edgecolor="#333333",
-        linewidth=0.9,
+        edgecolor="#2A2A2A",
+        linewidth=0.7,
         zorder=3,
     )
     ax.errorbar(
@@ -799,8 +975,8 @@ def _plot_summary_bar_panel(
         yerr=err,
         fmt="none",
         ecolor="#222222",
-        elinewidth=1.2,
-        capsize=3,
+        elinewidth=1.0,
+        capsize=2.5,
         zorder=4,
     )
     lower = float(np.nanmin(ci_lo)) - 0.02
@@ -818,15 +994,8 @@ def _plot_summary_bar_panel(
     ax.set_title(title)
     ax.set_ylabel(ylabel)
     ax.grid(axis="y", alpha=0.25, zorder=0)
-    for xpos, val in zip(x, points):
-        ax.text(
-            xpos,
-            val + pad * 0.18,
-            f"{val:.3f}",
-            ha="center",
-            va="bottom",
-            fontsize=8,
-        )
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
 
 def _exp2_marker(handle: str) -> str:
@@ -843,6 +1012,26 @@ EXP3_HANDLE_MARKERS = {
 
 def _exp3_marker(handle: str) -> str:
     return EXP3_HANDLE_MARKERS[handle]
+
+
+def _wrap_bar_tick_label(label: str) -> str:
+    replacements = {
+        "Disc RoPE": "Disc\nRoPE",
+        "Soft RoPE": "Soft\nRoPE",
+        "xVal-CN RoPE": "xVal-CN\nRoPE",
+        "xVal-Aff RoPE": "xVal-Aff\nRoPE",
+        "Disc tt": "Disc\ntt",
+        "Soft tt": "Soft\ntt",
+        "xVal-CN tt": "xVal-CN\ntt",
+        "xVal-Aff tt": "xVal-Aff\ntt",
+        "VentC U": "VentC\nU",
+        "VentC F": "VentC\nF",
+        "TrentC U": "TrentC\nU",
+        "TrentC F": "TrentC\nF",
+        "CLIF-mapped": "CLIF-\nmapped",
+        "Freq-matched": "Freq-\nmatched",
+    }
+    return replacements.get(label, label)
 
 
 def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float, float]) -> plt.Figure:
@@ -909,101 +1098,187 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
     return fig
 
 
-def build_exp1_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
-    _save_source(_collect_exp1_source(metrics), out_dir / "sources" / "exp1_granularities_source.csv")
-    fig = _render_exp1_granularity_figure(metrics, (17.0, 10.2))
+def build_exp1_figure(
+    metrics: pd.DataFrame,
+    pairwise: pd.DataFrame,
+    out_dir: Path,
+    *,
+    shared_vmax: dict[str, float],
+) -> None:
+    handle_order = [handle for handle, _, _ in EXP1_ORDER]
+    labels = EXP1_HANDLE_SHORT_LABELS.copy()
+    labels["deciles_unfused"] = "Dec U\nbase"
+    binary = _baseline_delta_source(
+        metrics,
+        pairwise,
+        families=["exp1_primary_binary", "exp1_additional_binary"],
+        metric="roc_auc",
+        outcome_order=BINARY_OUTCOME_ORDER_EXP12,
+        handle_order=handle_order,
+        baseline_handle="deciles_unfused",
+        panel="binary",
+    )
+    regression = _baseline_delta_source(
+        metrics,
+        pairwise,
+        families=["exp1_length_of_stay", "exp1_extended_regression"],
+        metric="spearman_rho",
+        outcome_order=REGRESSION_OUTCOME_ORDER,
+        handle_order=handle_order,
+        baseline_handle="deciles_unfused",
+        panel="regression",
+    )
+    source = pd.concat([binary, regression], ignore_index=True)
+    _save_source(source, out_dir / "sources" / "exp1_granularities_source.csv")
+
+    fig, axes = plt.subplots(1, 2, figsize=(16.2, 10.0), sharey=False)
+    _plot_delta_heatmap_panel(
+        axes[0],
+        binary,
+        outcome_order=BINARY_OUTCOME_ORDER_EXP12,
+        handle_order=handle_order,
+        handle_labels=labels,
+        panel_title="Binary outcomes",
+        colorbar_label=r"$\Delta$ AUROC vs. deciles_unfused",
+        group_breaks=[1, 3, 5, 7, 9],
+        fixed_vmax=shared_vmax["binary"],
+        cbar_ticks=[-0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15],
+    )
+    _plot_delta_heatmap_panel(
+        axes[1],
+        regression,
+        outcome_order=REGRESSION_OUTCOME_ORDER,
+        handle_order=handle_order,
+        handle_labels=labels,
+        panel_title="Regression outcomes",
+        colorbar_label=r"$\Delta$ Spearman $\rho$ vs. deciles_unfused",
+        group_breaks=[1, 3, 5, 7, 9],
+        fixed_vmax=shared_vmax["regression"],
+        cbar_ticks=[-0.20, -0.10, 0.00, 0.10, 0.20],
+    )
+    fig.tight_layout()
     fig.savefig(out_dir / "exp1_granularities.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
-def build_exp2_regression_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
-    source = _collect_exp2_source(metrics)
-    _save_source(source, out_dir / "sources" / "exp2_encoding_mechanics_source.csv")
-    fig, axes = plt.subplots(1, 2, figsize=(16.5, 10.0), sharey=False)
-    bin_src = source[source["panel"] == "binary"]
-    reg_src = source[source["panel"] == "regression"]
-    _plot_handle_metric_panel(
-        axes[0],
-        bin_src,
+def build_exp2_regression_figure(
+    metrics: pd.DataFrame,
+    pairwise: pd.DataFrame,
+    out_dir: Path,
+    *,
+    shared_vmax: dict[str, float],
+) -> None:
+    labels = EXP2_HANDLE_SHORT_LABELS.copy()
+    labels["discrete_tt"] = "Disc tt\nbase"
+    binary = _baseline_delta_source(
+        metrics,
+        pairwise,
+        families=["exp2_primary_binary", "exp2_additional_binary"],
+        metric="roc_auc",
         outcome_order=BINARY_OUTCOME_ORDER_EXP12,
         handle_order=EXP2_HANDLE_ORDER,
-        handle_colors=EXP2_HANDLE_COLORS,
-        marker_for_handle=_exp2_marker,
-        panel_title="Binary outcomes",
-        xlabel="AUROC",
+        baseline_handle="discrete_tt",
+        panel="binary",
     )
-    _plot_handle_metric_panel(
-        axes[1],
-        reg_src,
+    regression = _baseline_delta_source(
+        metrics,
+        pairwise,
+        families=["exp2_length_of_stay", "exp2_extended_regression"],
+        metric="spearman_rho",
         outcome_order=REGRESSION_OUTCOME_ORDER,
         handle_order=EXP2_HANDLE_ORDER,
-        handle_colors=EXP2_HANDLE_COLORS,
-        marker_for_handle=_exp2_marker,
-        panel_title="Regression outcomes",
-        xlabel=r"Spearman $\rho$",
+        baseline_handle="discrete_tt",
+        panel="regression",
     )
-    legend_handles = [
-        Line2D(
-            [0],
-            [0],
-            marker=_exp2_marker(h),
-            color=EXP2_HANDLE_COLORS[h],
-            markerfacecolor=EXP2_HANDLE_COLORS[h],
-            markeredgecolor="#222222",
-            linewidth=0,
-            markersize=6,
-            label=EXP2_HANDLE_SHORT_LABELS[h],
-        )
-        for h in EXP2_HANDLE_ORDER
-    ]
-    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.015), ncol=4, frameon=False)
-    fig.tight_layout(rect=[0, 0, 1, 0.92])
+    source = pd.concat([binary, regression], ignore_index=True)
+    _save_source(source, out_dir / "sources" / "exp2_encoding_mechanics_source.csv")
+
+    fig, axes = plt.subplots(1, 2, figsize=(15.4, 9.8), sharey=False)
+    _plot_delta_heatmap_panel(
+        axes[0],
+        binary,
+        outcome_order=BINARY_OUTCOME_ORDER_EXP12,
+        handle_order=EXP2_HANDLE_ORDER,
+        handle_labels=labels,
+        panel_title="Binary outcomes",
+        colorbar_label=r"$\Delta$ AUROC vs. discrete_tt",
+        group_breaks=[3],
+        fixed_vmax=shared_vmax["binary"],
+        cbar_ticks=[-0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15],
+    )
+    _plot_delta_heatmap_panel(
+        axes[1],
+        regression,
+        outcome_order=REGRESSION_OUTCOME_ORDER,
+        handle_order=EXP2_HANDLE_ORDER,
+        handle_labels=labels,
+        panel_title="Regression outcomes",
+        colorbar_label=r"$\Delta$ Spearman $\rho$ vs. discrete_tt",
+        group_breaks=[3],
+        fixed_vmax=shared_vmax["regression"],
+        cbar_ticks=[-0.20, -0.10, 0.00, 0.10, 0.20],
+    )
+    fig.tight_layout()
     fig.savefig(out_dir / "exp2_encoding_mechanics.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
-def build_exp3_binary_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
-    source = _collect_exp3_source(metrics)
-    _save_source(source, out_dir / "sources" / "exp3_binary_expansion_source.csv")
-    fig, axes = plt.subplots(1, 2, figsize=(16.2, 10.0), sharey=False)
-    bin_src = source[source["panel"] == "binary"]
-    reg_src = source[source["panel"] == "regression"]
-    _plot_handle_metric_panel(
-        axes[0],
-        bin_src,
+def build_exp3_binary_figure(
+    metrics: pd.DataFrame,
+    pairwise: pd.DataFrame,
+    out_dir: Path,
+    *,
+    shared_vmax: dict[str, float],
+) -> None:
+    labels = EXP3_HANDLE_SHORT_LABELS.copy()
+    labels["meds"] = "MEDS\nbase"
+    binary = _baseline_delta_source(
+        metrics,
+        pairwise,
+        families=["exp3_primary_binary", "exp3_additional_binary"],
+        metric="roc_auc",
         outcome_order=BINARY_OUTCOME_ORDER_EXP3,
         handle_order=EXP3_HANDLE_ORDER,
-        handle_colors=EXP3_HANDLE_COLORS,
-        marker_for_handle=_exp3_marker,
-        panel_title="Binary outcomes",
-        xlabel="AUROC",
+        baseline_handle="meds",
+        panel="binary",
     )
-    _plot_handle_metric_panel(
-        axes[1],
-        reg_src,
+    regression = _baseline_delta_source(
+        metrics,
+        pairwise,
+        families=["exp3_length_of_stay", "exp3_extended_regression"],
+        metric="spearman_rho",
         outcome_order=REGRESSION_OUTCOME_ORDER,
         handle_order=EXP3_HANDLE_ORDER,
-        handle_colors=EXP3_HANDLE_COLORS,
-        marker_for_handle=_exp3_marker,
-        panel_title="Regression outcomes",
-        xlabel=r"Spearman $\rho$",
+        baseline_handle="meds",
+        panel="regression",
     )
-    legend_handles = [
-        Line2D(
-            [0],
-            [0],
-            marker=_exp3_marker(h),
-            color=EXP3_HANDLE_COLORS[h],
-            markerfacecolor=EXP3_HANDLE_COLORS[h],
-            markeredgecolor="#222222",
-            linewidth=0,
-            markersize=6,
-            label=EXP3_HANDLE_SHORT_LABELS[h],
-        )
-        for h in EXP3_HANDLE_ORDER
-    ]
-    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.015), ncol=4, frameon=False)
-    fig.tight_layout(rect=[0, 0, 1, 0.92])
+    source = pd.concat([binary, regression], ignore_index=True)
+    _save_source(source, out_dir / "sources" / "exp3_binary_expansion_source.csv")
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.6, 9.8), sharey=False)
+    _plot_delta_heatmap_panel(
+        axes[0],
+        binary,
+        outcome_order=BINARY_OUTCOME_ORDER_EXP3,
+        handle_order=EXP3_HANDLE_ORDER,
+        handle_labels=labels,
+        panel_title="Binary outcomes",
+        colorbar_label=r"$\Delta$ AUROC vs. MEDS",
+        fixed_vmax=shared_vmax["binary"],
+        cbar_ticks=[-0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15],
+    )
+    _plot_delta_heatmap_panel(
+        axes[1],
+        regression,
+        outcome_order=REGRESSION_OUTCOME_ORDER,
+        handle_order=EXP3_HANDLE_ORDER,
+        handle_labels=labels,
+        panel_title="Regression outcomes",
+        colorbar_label=r"$\Delta$ Spearman $\rho$ vs. MEDS",
+        fixed_vmax=shared_vmax["regression"],
+        cbar_ticks=[-0.20, -0.10, 0.00, 0.10, 0.20],
+    )
+    fig.tight_layout()
     fig.savefig(out_dir / "exp3_binary_expansion.pdf", bbox_inches="tight")
     plt.close(fig)
 
@@ -1279,7 +1554,7 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
 def build_exp1_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> None:
     source = _exp1_knob_summary_source(metrics)
     _save_source(source, out_dir / "sources" / "appendix_exp1_knob_summary_bars_source.csv")
-    fig, axes = plt.subplots(2, 3, figsize=(14.2, 7.3))
+    fig, axes = plt.subplots(2, 3, figsize=(14.8, 7.8))
     knob_specs = [
         ("Fusion", ["Unfused", "Fused"], EXP1_FUSION_SUMMARY_COLORS, None),
         ("Granularity", ["Deciles", "Ventiles", "Trentiles", "Centiles"], EXP1_GRANULARITY_SUMMARY_COLORS, None),
@@ -1317,9 +1592,17 @@ def build_exp1_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
 def build_exp2_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> None:
     source = _exp2_knob_summary_source(metrics)
     _save_source(source, out_dir / "sources" / "appendix_exp2_knob_summary_bars_source.csv")
-    fig, axes = plt.subplots(2, 2, figsize=(11.6, 7.2))
+    fig, axes = plt.subplots(2, 2, figsize=(12.2, 7.8))
     knob_specs = [
-        ("Value encoder", ["Discrete", "Soft", "xVal", "xVal-affine"], EXP2_VALUE_SUMMARY_COLORS, None),
+        (
+            "Value encoder",
+            ["Discrete", "Soft", "xVal (code-normalized)", "xVal-affine (code-normalized + affine shift)"],
+            EXP2_VALUE_SUMMARY_COLORS,
+            {
+                "xVal (code-normalized)": "xVal\n(code-norm.)",
+                "xVal-affine (code-normalized + affine shift)": "xVal-affine\n(code-norm. + shift)",
+            },
+        ),
         (
             "Temporal encoding",
             ["Time tokens", "Time-Aware RoPE"],
@@ -1354,7 +1637,7 @@ def build_exp2_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
 def build_exp3_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> None:
     source = _exp3_knob_summary_source(metrics)
     _save_source(source, out_dir / "sources" / "appendix_exp3_knob_summary_bars_source.csv")
-    fig, axes = plt.subplots(2, 1, figsize=(7.0, 7.2))
+    fig, axes = plt.subplots(2, 1, figsize=(7.6, 7.8))
     panel_specs = [
         ("binary", "Mean AUROC across outcomes", 0.58),
         ("regression", r"Mean Spearman $\rho$ across outcomes", 0.0),
@@ -1389,7 +1672,7 @@ def build_statistical_trend_figure(metrics: pd.DataFrame, out_dir: Path) -> None
     source = _handle_average_summary(metrics)
     _save_source(source, out_dir / "sources" / "statistical_trend_summary_source.csv")
 
-    fig, axes = plt.subplots(2, 3, figsize=(16.8, 7.8), sharey="row")
+    fig, axes = plt.subplots(2, 3, figsize=(17.6, 8.4), sharey="row")
     experiments = ["Exp1", "Exp2", "Exp3"]
     panel_specs = [
         ("binary", "Mean AUROC across outcomes", 0.58),
@@ -1426,15 +1709,16 @@ def build_statistical_trend_figure(metrics: pd.DataFrame, out_dir: Path) -> None
                 zorder=4,
             )
             ax.set_xticks(x)
-            rotate = len(sub) > 6
             ax.set_xticklabels(
-                sub["label"].tolist(),
-                rotation=24 if rotate else 0,
-                ha="right" if rotate else "center",
+                [_wrap_bar_tick_label(label) for label in sub["label"].tolist()],
+                rotation=0,
+                ha="center",
             )
             ax.set_title(experiment if row_idx == 0 else "")
             ax.set_ylabel(ylabel if col_idx == 0 else "")
             ax.grid(axis="y", alpha=0.25, zorder=0)
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
             if panel == "binary":
                 ax.axhline(0.5, color="#666666", linewidth=0.8, alpha=0.45, linestyle="--")
             lower = float(np.nanmin(ci_lo)) - 0.02
@@ -1452,8 +1736,8 @@ def build_legacy_statistical_count_summary(pairwise: pd.DataFrame, out_dir: Path
     exp2_specs = [
         ("Discrete + tt -> Soft + tt", "discrete_tt", "soft_tt"),
         ("Discrete + RoPE -> Soft + RoPE", "discrete_rope", "soft_rope"),
-        ("xVal + tt -> xVal-affine + tt", "xval_tt", "xval_affine_tt"),
-        ("xVal + RoPE -> xVal-affine + RoPE", "xval_rope", "xval_affine_rope"),
+        ("xVal-CN + tt -> xVal-Aff + tt", "xval_tt", "xval_affine_tt"),
+        ("xVal-CN + RoPE -> xVal-Aff + RoPE", "xval_rope", "xval_affine_rope"),
     ]
     exp3_specs = [
         ("MEDS -> CLIF-mapped", "meds", "mapped"),
@@ -1689,10 +1973,11 @@ def main() -> int:
     figures_dir = args.figures_dir.expanduser().resolve()
     figures_dir.mkdir(parents=True, exist_ok=True)
     (figures_dir / "sources").mkdir(parents=True, exist_ok=True)
+    shared_vmax = _compute_shared_heatmap_vmax(metrics, pairwise)
 
-    build_exp1_figure(metrics, figures_dir)
-    build_exp2_regression_figure(metrics, figures_dir)
-    build_exp3_binary_figure(metrics, figures_dir)
+    build_exp1_figure(metrics, pairwise, figures_dir, shared_vmax=shared_vmax)
+    build_exp2_regression_figure(metrics, pairwise, figures_dir, shared_vmax=shared_vmax)
+    build_exp3_binary_figure(metrics, pairwise, figures_dir, shared_vmax=shared_vmax)
     build_centile_pca_grid(figures_dir)
     build_exp1_appendix_figure(metrics, figures_dir)
     build_exp2_appendix_figure(metrics, figures_dir)

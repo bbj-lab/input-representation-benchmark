@@ -27,7 +27,6 @@ These paths are part of the Stage0 -> Stage3 -> stats -> paper refresh chain.
 - `slurm/15_submit_aligned_family_stats.sh`
 - `slurm/ref_qse/09_extract_reps.sh`
 - `slurm/ref_qse/10_xfer_rep_based_preds.sh`
-- `slurm/ref_qse/11_diag_eval.sh`
 - `pipeline/scripts/align_cohorts.py`
 - `pipeline/scripts/build_exp3_meds_semantics_arms.py`
 - `pipeline/scripts/split_meds_by_hadm_splits.py`
@@ -64,10 +63,10 @@ These paths are active but not on the mandatory run chain.
 - `utilities/scripts/verify_refrange_meds.py`
 - `utilities/scripts/verify_refrange_meds_charttime.py`
 - `utilities/scripts/verify_refrange_stats.py`
-- `utilities/scripts/xgboost_baseline.py`
 - `utilities/qc/`
 - `slurm/12_run_diag_gpu1.sh`
 - `slurm/14_run_token_ce_gpuq.sh`
+- `slurm/ref_qse/11_diag_eval.sh`
 - `slurm/90_stage0_tokenize_only_debug.sh`
 - `slurm/91_meds_notation_ambiguity_qc.sh`
 - `slurm/92_flashattn_install_and_preflight_gpuq.sh`
@@ -75,16 +74,18 @@ These paths are active but not on the mandatory run chain.
 - `slurm/gen_calibration_plot.sh`
 - `slurm/generate_exp1_preds.sh`
 - `slurm/manual_inspect.sh`
-- `slurm/xgboost_baseline.sh`
 
 ## Deprecate-Now Candidates
 
 These paths are outside the active benchmark path and are treated as deprecated.
 
 - `deprecated/slurm/strict_parity_exp23/generated/demo/`
+- `deprecated/slurm/xgboost_baseline.sh`
 - `deprecated/scripts/legacy_misc/check_icu.py`
 - `deprecated/scripts/legacy_misc/extract_metrics.py`
 - `deprecated/scripts/legacy_misc/inspect_data.py`
+- `deprecated/scripts/xgboost_baseline.py`
+- `deprecated/outputs/xgboost_baseline/`
 - `deprecated/docs/paper_audit_trail.md`
 - `deprecated/methods/`
 - `deprecated/models_archive/`

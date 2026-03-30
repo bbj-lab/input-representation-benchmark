@@ -6,30 +6,28 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=04:00:00
-#SBATCH --output=slurm/logs/xgb_baseline_%j.out
-#SBATCH --error=slurm/logs/xgb_baseline_%j.err
+#SBATCH --output=deprecated/slurm/logs/xgb_baseline_%j.out
+#SBATCH --error=deprecated/slurm/logs/xgb_baseline_%j.err
 
 set -euo pipefail
 
 PROJECT_ROOT="/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark"
 cd "$PROJECT_ROOT"
 
-mkdir -p slurm/logs outputs/xgboost_baseline
+mkdir -p deprecated/slurm/logs deprecated/outputs/xgboost_baseline
 
-# Activate conda env
 eval "$(conda shell.bash hook)"
 conda activate input-rep
 
-# Ensure xgboost is installed (fallback to lightgbm if not)
 python -c "import xgboost; print(f'xgboost {xgboost.__version__}')" 2>/dev/null || \
     echo "WARNING: xgboost not installed, will try lightgbm"
 
-echo "=== XGBoost/LightGBM Baseline ==="
+echo "=== Archived XGBoost/LightGBM Baseline ==="
 echo "Start: $(date)"
 
-python utilities/scripts/xgboost_baseline.py \
+python deprecated/scripts/xgboost_baseline.py \
     --meds_events_dir data/clif/raw \
-    --output_dir outputs/xgboost_baseline \
+    --output_dir deprecated/outputs/xgboost_baseline \
     --model auto \
     --n_bootstrap 1000
 

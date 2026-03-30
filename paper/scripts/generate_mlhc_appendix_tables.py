@@ -24,7 +24,7 @@ DEFAULT_PAIRWISE = (
     / "runs"
     / "statistics"
     / "paper_audit_20260316_idaligned_fullstats"
-    / "all_family_pairwise.csv"
+    / "all_family_pairwise_baseline.csv"
 )
 DEFAULT_OUT_DIR = ROOT.parent / "697b81f1f269207e5416f18d" / "MLHC" / "generated"
 
@@ -78,10 +78,10 @@ HANDLE_LABELS = {
     "discrete_rope": "Discrete + RoPE",
     "soft_tt": "Soft + tt",
     "soft_rope": "Soft + RoPE",
-    "xval_tt": "xVal + tt",
-    "xval_rope": "xVal + RoPE",
-    "xval_affine_tt": "xVal-affine + tt",
-    "xval_affine_rope": "xVal-affine + RoPE",
+    "xval_tt": "xVal (code-normalized) + tt",
+    "xval_rope": "xVal (code-normalized) + RoPE",
+    "xval_affine_tt": "xVal-affine (code-normalized + affine shift) + tt",
+    "xval_affine_rope": "xVal-affine (code-normalized + affine shift) + RoPE",
     "meds": "MEDS",
     "mapped": "CLIF-mapped",
     "randomized": "Randomized control",
@@ -191,12 +191,6 @@ def _coverage_table(metrics: pd.DataFrame, pairwise: pd.DataFrame) -> pd.DataFra
                 ]
             )
         ].copy()
-        mlp_outcomes = (
-            metrics[
-                (metrics["family_name"] == f"exp{exp}_mlp_primary")
-                & (metrics["metric"] == "roc_auc")
-            ]["outcome"].nunique()
-        )
         alignment_modes = ", ".join(sorted(pair_rows["alignment_mode"].dropna().unique()))
         rows.append(
             {
@@ -204,8 +198,7 @@ def _coverage_table(metrics: pd.DataFrame, pairwise: pd.DataFrame) -> pd.DataFra
                 "Models": str(exp_rows["handle"].nunique()),
                 "Binary LR sweep": "16 outcomes x AUROC/AUPRC/Brier/ECE",
                 "Regression sweep": "13 outcomes x Spearman/R2/MAE/RMSE",
-                "MLP subset": f"{mlp_outcomes} binary outcomes x AUROC/AUPRC/Brier/ECE",
-                "Full-sweep pairwise alignment": alignment_modes,
+                "Pairwise alignment": alignment_modes,
             }
         )
     return pd.DataFrame(rows)
@@ -284,18 +277,18 @@ def main() -> int:
     regression.to_csv(out_dir / "appendix_regression_sweep.csv", index=False)
 
     coverage_tex = _df_to_latex(
-        coverage,
+        coverage.rename(columns={"Experiment": "Exp."}),
         caption=(
             "\\textbf{Statistical coverage across the reported benchmark sweeps.} "
-            "The full CI and pairwise-testing audit covers the complete logistic-regression "
+            "The full CI and baseline-centered pairwise-testing audit covers the complete logistic-regression "
             "binary sweep and Ridge-regression sweep for every experiment, i.e., all 30 "
             "benchmark outcomes at the benchmark level (17 binary outcomes and 13 regression "
             "outcomes, with each experiment using 16 binary outcomes because the ICU "
             "endpoint differs between Experiments~1--2 and 3). The final column refers to those "
-            "full LR/Ridge sweeps only. The MLP probe remains a narrower binary-only sensitivity analysis."
+            "full LR/Ridge sweeps only."
         ),
         label="tab:evaluation_coverage",
-        colspec="p{0.07\\textwidth}p{0.07\\textwidth}p{0.23\\textwidth}p{0.23\\textwidth}p{0.18\\textwidth}p{0.16\\textwidth}",
+        colspec="p{0.08\\textwidth}p{0.08\\textwidth}p{0.27\\textwidth}p{0.27\\textwidth}p{0.20\\textwidth}",
         tabcolsep=3,
     )
     binary_tex = _df_to_latex(
@@ -303,27 +296,37 @@ def main() -> int:
         caption=(
             "\\textbf{Full binary-outcome sweep} (best AUROC with 95\\% bootstrap CI for each "
             "experiment). Each cell reports the best-performing configuration within that "
-            "experiment on the named binary outcome. AUPRC, Brier score, ECE-15, and the full "
-            "BH-corrected pairwise permutation results for the same outcomes are reported in the "
-            "aligned statistics files. ICU admission appears only in Experiments~1--2; ICU LOS "
+            "experiment on the named binary outcome. AUPRC, Brier score, ECE-15, and the "
+            "baseline-centered BH-corrected paired permutation results for the same outcomes are "
+            "reported in the aligned statistics files. ICU admission appears only in Experiments~1--2; ICU LOS "
             "$>48$h appears only in Experiment~3."
         ),
         label="tab:appendix_binary_sweep",
-        colspec="p{0.18\\textwidth}p{0.26\\textwidth}p{0.26\\textwidth}p{0.26\\textwidth}",
-        tabcolsep=3,
+        colspec=(
+            ">{\\raggedright\\arraybackslash}p{0.17\\textwidth}"
+            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
+            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
+            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
+        ),
+        tabcolsep=2,
     )
     regression_tex = _df_to_latex(
         regression,
         caption=(
             "\\textbf{Full regression-outcome sweep} (best Spearman $\\rho$ with 95\\% bootstrap CI "
             "for each experiment). Each cell reports the best-performing configuration within that "
-            "experiment on the named regression outcome. $R^2$, MAE, RMSE, and the full BH-corrected "
-            "pairwise permutation results for the same outcomes are reported in the aligned "
+            "experiment on the named regression outcome. $R^2$, MAE, RMSE, and the baseline-centered "
+            "BH-corrected paired permutation results for the same outcomes are reported in the aligned "
             "statistics files."
         ),
         label="tab:appendix_regression_sweep",
-        colspec="p{0.18\\textwidth}p{0.26\\textwidth}p{0.26\\textwidth}p{0.26\\textwidth}",
-        tabcolsep=3,
+        colspec=(
+            ">{\\raggedright\\arraybackslash}p{0.17\\textwidth}"
+            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
+            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
+            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
+        ),
+        tabcolsep=2,
     )
 
     _write_text(out_dir / "appendix_stats_coverage.tex", coverage_tex + "\n")
