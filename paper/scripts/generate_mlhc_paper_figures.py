@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import subprocess
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,13 +30,20 @@ from pipeline.scripts.diagnostics.diag_embedding_geometry import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_METRICS = ROOT / "artifacts" / "runs" / "statistics" / "paper_audit_20260316_idaligned_fullstats" / "all_family_metrics.csv"
-DEFAULT_PAIRWISE = ROOT / "artifacts" / "runs" / "statistics" / "paper_audit_20260316_idaligned_fullstats" / "all_family_pairwise_baseline.csv"
+DEFAULT_METRICS = ROOT / "artifacts" / "runs" / "statistics" / "paper_audit_20260409_exp1_restored_exp23_refresh" / "all_family_metrics.csv"
+DEFAULT_PAIRWISE = ROOT / "artifacts" / "runs" / "statistics" / "paper_audit_20260409_exp1_restored_exp23_refresh" / "all_family_pairwise_baseline.csv"
 DEFAULT_FIG_DIR = (
     ROOT.parent
-    / "697b81f1f269207e5416f18d"
+    / "MLHC2026"
     / "MLHC"
     / "figures"
+)
+DEFAULT_TOKEN_ROOT = (
+    ROOT
+    / "artifacts"
+    / "runs"
+    / "tokenized"
+    / "mimiciv-3.1_meds_70-10-20"
 )
 
 EXP1_ORDER = [
@@ -206,6 +215,10 @@ REGRESSION_OUTCOME_ORDER = [
 ]
 
 EXP2_HANDLE_ORDER = [
+    "discrete_none",
+    "soft_none",
+    "xval_none",
+    "xval_affine_none",
     "discrete_tt",
     "soft_tt",
     "xval_tt",
@@ -217,17 +230,25 @@ EXP2_HANDLE_ORDER = [
 ]
 
 EXP2_HANDLE_SHORT_LABELS = {
-    "discrete_tt": "Disc tt",
-    "soft_tt": "Soft tt",
-    "xval_tt": "xVal-CN tt",
-    "xval_affine_tt": "xVal-Aff tt",
-    "discrete_rope": "Disc RoPE",
-    "soft_rope": "Soft RoPE",
-    "xval_rope": "xVal-CN RoPE",
-    "xval_affine_rope": "xVal-Aff RoPE",
+    "discrete_none": "Disc event order",
+    "soft_none": "Soft event order",
+    "xval_none": "xVal-CN event order",
+    "xval_affine_none": "xVal-Aff event order",
+    "discrete_tt": "Disc time tokens",
+    "soft_tt": "Soft time tokens",
+    "xval_tt": "xVal-CN time tokens",
+    "xval_affine_tt": "xVal-Aff time tokens",
+    "discrete_rope": "Disc adm.-rel. RoPE",
+    "soft_rope": "Soft adm.-rel. RoPE",
+    "xval_rope": "xVal-CN adm.-rel. RoPE",
+    "xval_affine_rope": "xVal-Aff adm.-rel. RoPE",
 }
 
 EXP2_HANDLE_COLORS = {
+    "discrete_none": "#4E79A7",
+    "soft_none": "#76B7B2",
+    "xval_none": "#F28E2B",
+    "xval_affine_none": "#B07AA1",
     "discrete_tt": "#4E79A7",
     "soft_tt": "#76B7B2",
     "xval_tt": "#F28E2B",
@@ -241,10 +262,10 @@ EXP2_HANDLE_COLORS = {
 EXP3_HANDLE_ORDER = ["meds", "mapped", "randomized", "freqmatched"]
 
 EXP3_HANDLE_SHORT_LABELS = {
-    "meds": "MEDS",
+    "meds": "Native MIMIC codes",
     "mapped": "CLIF-mapped",
-    "randomized": "Random",
-    "freqmatched": "Freq-matched",
+    "randomized": "Randomized mapped codes",
+    "freqmatched": "Frequency-matched mapped codes",
 }
 
 EXP3_HANDLE_COLORS = {
@@ -279,23 +300,26 @@ EXP2_VALUE_SUMMARY_COLORS = {
 }
 
 EXP2_TEMPORAL_SUMMARY_COLORS = {
+    "Event order only": "#59A14F",
     "Time tokens": "#A0CBE8",
-    "Time-Aware RoPE": "#4E79A7",
+    "Admission-relative RoPE": "#4E79A7",
 }
 
 EXP2_EFFECT_COMPARISONS = [
-    ("Soft - Disc (tt)", "discrete_tt", "soft_tt", "#2A9D8F", "o"),
-    ("Soft - Disc (RoPE)", "discrete_rope", "soft_rope", "#2A9D8F", "s"),
-    ("xVal-CN - Disc (tt)", "discrete_tt", "xval_tt", "#6C4E9B", "o"),
-    ("xVal-CN - Disc (RoPE)", "discrete_rope", "xval_rope", "#6C4E9B", "s"),
-    ("xVal-Aff - xVal-CN (tt)", "xval_tt", "xval_affine_tt", "#E76F51", "o"),
-    ("xVal-Aff - xVal-CN (RoPE)", "xval_rope", "xval_affine_rope", "#E76F51", "s"),
+    ("Discrete: time tokens - event order", "discrete_none", "discrete_tt", "#2A9D8F", "o"),
+    ("Discrete: adm.-rel. RoPE - event order", "discrete_none", "discrete_rope", "#2A9D8F", "s"),
+    ("Soft - Discrete (event order)", "discrete_none", "soft_none", "#4E79A7", "^"),
+    ("Soft - Discrete (adm.-rel. RoPE)", "discrete_rope", "soft_rope", "#4E79A7", "s"),
+    ("xVal-CN - Discrete (event order)", "discrete_none", "xval_none", "#6C4E9B", "^"),
+    ("xVal-CN - Discrete (adm.-rel. RoPE)", "discrete_rope", "xval_rope", "#6C4E9B", "s"),
+    ("xVal-Aff - xVal-CN (event order)", "xval_none", "xval_affine_none", "#E76F51", "^"),
+    ("xVal-Aff - xVal-CN (adm.-rel. RoPE)", "xval_rope", "xval_affine_rope", "#E76F51", "s"),
 ]
 
 EXP3_EFFECT_COMPARISONS = [
-    ("Mapped - MEDS", "meds", "mapped", "#2A9D8F", "o"),
-    ("Random - MEDS", "meds", "randomized", "#E76F51", "s"),
-    ("Freq - MEDS", "meds", "freqmatched", "#6C4E9B", "D"),
+    ("CLIF-mapped - Native MIMIC codes", "meds", "mapped", "#2A9D8F", "o"),
+    ("Randomized mapped codes - Native MIMIC codes", "meds", "randomized", "#E76F51", "s"),
+    ("Frequency-matched mapped codes - Native MIMIC codes", "meds", "freqmatched", "#6C4E9B", "D"),
 ]
 
 
@@ -329,11 +353,11 @@ def _style():
             "font.family": "serif",
             "axes.edgecolor": "#333333",
             "axes.linewidth": 1.0,
-            "axes.titlesize": 12,
+            "axes.titlesize": 13,
             "axes.labelsize": 11,
-            "legend.fontsize": 9,
-            "xtick.labelsize": 9,
-            "ytick.labelsize": 9,
+            "legend.fontsize": 10,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
         }
     )
 
@@ -516,7 +540,7 @@ def _plot_exp1_granularity_panel(
                 zorder=4,
             )
     ax.set_yticks(base_y)
-    ax.set_yticklabels([ylab_map[o] for o in outcome_order], fontsize=8)
+    ax.set_yticklabels([ylab_map[o] for o in outcome_order], fontsize=14)
     ax.set_title(panel_title)
     ax.set_xlabel(xlabel)
     ax.grid(axis="x", alpha=0.25)
@@ -580,7 +604,7 @@ def _plot_handle_metric_panel(
                 zorder=4,
             )
     ax.set_yticks(base_y)
-    ax.set_yticklabels([APPENDIX_OUTCOME_LABELS[o] for o in outcome_order], fontsize=8)
+    ax.set_yticklabels([APPENDIX_OUTCOME_LABELS[o] for o in outcome_order], fontsize=14)
     ax.set_title(panel_title)
     ax.set_xlabel(xlabel)
     ax.grid(axis="x", alpha=0.25)
@@ -707,10 +731,10 @@ def _plot_delta_heatmap_panel(
     )
 
     ax.set_yticks(np.arange(len(outcome_labels)))
-    ax.set_yticklabels(outcome_labels, fontsize=8)
+    ax.set_yticklabels(outcome_labels, fontsize=10)
     ax.set_xticks(np.arange(len(handle_order)))
     labels = [_wrap_bar_tick_label(handle_labels[h]) for h in handle_order]
-    ax.set_xticklabels(labels, fontsize=8)
+    ax.set_xticklabels(labels, fontsize=10)
     ax.set_title(panel_title, pad=8)
     ax.tick_params(
         axis="x",
@@ -756,7 +780,7 @@ def _plot_delta_heatmap_panel(
                 r"$\ast$",
                 ha="center",
                 va="center",
-                fontsize=8.1,
+                fontsize=9.5,
                 color="#111827",
                 zorder=8,
                 path_effects=[pe.withStroke(linewidth=1.15, foreground="white", alpha=0.95)],
@@ -775,8 +799,8 @@ def _plot_delta_heatmap_panel(
     )
     if cbar_ticks is not None:
         cbar.set_ticks(cbar_ticks)
-    cbar.set_label(colorbar_label, fontsize=8.8, labelpad=3)
-    cbar.ax.tick_params(labelsize=7.8, length=2)
+    cbar.set_label(colorbar_label, fontsize=11, labelpad=3)
+    cbar.ax.tick_params(labelsize=9, length=2)
     cbar.outline.set_linewidth(0.55)
 
 
@@ -792,7 +816,7 @@ def _mean_interval(source: pd.DataFrame, *, group_cols: list[str]) -> pd.DataFra
     )
 
 
-def _exp1_knob_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
+def _exp1_axis_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
     source = _collect_exp1_source(metrics).copy()
     source["panel"] = np.where(source["metric"] == "roc_auc", "binary", "regression")
     handle_meta = pd.DataFrame(EXP1_ORDER, columns=["handle", "granularity_label", "fusion_raw"])
@@ -815,27 +839,31 @@ def _exp1_knob_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
     anchor_source = source[source["granularity"].isin(["Ventiles", "Trentiles"])].copy()
     frames = [
         _mean_interval(
-            source.assign(knob="Fusion", level=source["fusion"]),
-            group_cols=["panel", "knob", "level"],
+            source.assign(axis="Fusion", level=source["fusion"]),
+            group_cols=["panel", "axis", "level"],
         ),
         _mean_interval(
-            source.assign(knob="Granularity", level=source["granularity"]),
-            group_cols=["panel", "knob", "level"],
+            source.assign(axis="Granularity", level=source["granularity"]),
+            group_cols=["panel", "axis", "level"],
         ),
         _mean_interval(
-            anchor_source.assign(knob="Anchoring", level=anchor_source["anchoring"]),
-            group_cols=["panel", "knob", "level"],
+            anchor_source.assign(axis="Anchoring", level=anchor_source["anchoring"]),
+            group_cols=["panel", "axis", "level"],
         ),
     ]
     return pd.concat(frames, ignore_index=True)
 
 
-def _exp2_knob_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
+def _exp2_axis_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
     source = _collect_exp2_source(metrics).copy()
     value_family = {
+        "discrete_none": "Discrete",
         "discrete_tt": "Discrete",
+        "soft_none": "Soft",
         "soft_tt": "Soft",
+        "xval_none": "xVal (code-normalized)",
         "xval_tt": "xVal (code-normalized)",
+        "xval_affine_none": "xVal-affine (code-normalized + affine shift)",
         "xval_affine_tt": "xVal-affine (code-normalized + affine shift)",
         "discrete_rope": "Discrete",
         "soft_rope": "Soft",
@@ -843,45 +871,49 @@ def _exp2_knob_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
         "xval_affine_rope": "xVal-affine (code-normalized + affine shift)",
     }
     temporal_family = {
+        "discrete_none": "Event order only",
+        "soft_none": "Event order only",
+        "xval_none": "Event order only",
+        "xval_affine_none": "Event order only",
         "discrete_tt": "Time tokens",
         "soft_tt": "Time tokens",
         "xval_tt": "Time tokens",
         "xval_affine_tt": "Time tokens",
-        "discrete_rope": "Time-Aware RoPE",
-        "soft_rope": "Time-Aware RoPE",
-        "xval_rope": "Time-Aware RoPE",
-        "xval_affine_rope": "Time-Aware RoPE",
+        "discrete_rope": "Admission-relative RoPE",
+        "soft_rope": "Admission-relative RoPE",
+        "xval_rope": "Admission-relative RoPE",
+        "xval_affine_rope": "Admission-relative RoPE",
     }
     frames = [
         _mean_interval(
-            source.assign(knob="Value encoder", level=source["handle"].map(value_family)),
-            group_cols=["panel", "knob", "level"],
+            source.assign(axis="Value encoder", level=source["handle"].map(value_family)),
+            group_cols=["panel", "axis", "level"],
         ),
         _mean_interval(
             source.assign(
-                knob="Temporal encoding",
+                axis="Temporal encoding",
                 level=source["handle"].map(temporal_family),
             ),
-            group_cols=["panel", "knob", "level"],
+            group_cols=["panel", "axis", "level"],
         ),
     ]
     return pd.concat(frames, ignore_index=True)
 
 
-def _exp3_knob_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
+def _exp3_axis_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
     source = _collect_exp3_source(metrics).copy()
     level_labels = {
-        "meds": "MEDS",
+        "meds": "Native MIMIC codes",
         "mapped": "CLIF-mapped",
-        "randomized": "Randomized",
-        "freqmatched": "Freq-matched",
+        "randomized": "Randomized mapped codes",
+        "freqmatched": "Frequency-matched mapped codes",
     }
     return _mean_interval(
         source.assign(
-            knob="Vocabulary arm",
+            axis="Vocabulary arm",
             level=source["handle"].map(level_labels),
         ),
-        group_cols=["panel", "knob", "level"],
+        group_cols=["panel", "axis", "level"],
     )
 
 
@@ -999,7 +1031,11 @@ def _plot_summary_bar_panel(
 
 
 def _exp2_marker(handle: str) -> str:
-    return "o" if handle.endswith("_tt") else "s"
+    if handle.endswith("_none"):
+        return "^"
+    if handle.endswith("_tt"):
+        return "o"
+    return "s"
 
 
 EXP3_HANDLE_MARKERS = {
@@ -1016,20 +1052,26 @@ def _exp3_marker(handle: str) -> str:
 
 def _wrap_bar_tick_label(label: str) -> str:
     replacements = {
-        "Disc RoPE": "Disc\nRoPE",
-        "Soft RoPE": "Soft\nRoPE",
-        "xVal-CN RoPE": "xVal-CN\nRoPE",
-        "xVal-Aff RoPE": "xVal-Aff\nRoPE",
-        "Disc tt": "Disc\ntt",
-        "Soft tt": "Soft\ntt",
-        "xVal-CN tt": "xVal-CN\ntt",
-        "xVal-Aff tt": "xVal-Aff\ntt",
+        "Disc event order": "Disc\nevent\norder",
+        "Soft event order": "Soft\nevent\norder",
+        "xVal-CN event order": "xVal-CN\nevent\norder",
+        "xVal-Aff event order": "xVal-Aff\nevent\norder",
+        "Disc adm.-rel. RoPE": "Disc\nadm.-rel.\nRoPE",
+        "Soft adm.-rel. RoPE": "Soft\nadm.-rel.\nRoPE",
+        "xVal-CN adm.-rel. RoPE": "xVal-CN\nadm.-rel.\nRoPE",
+        "xVal-Aff adm.-rel. RoPE": "xVal-Aff\nadm.-rel.\nRoPE",
+        "Disc time tokens": "Disc\ntime\ntokens",
+        "Soft time tokens": "Soft\ntime\ntokens",
+        "xVal-CN time tokens": "xVal-CN\ntime\ntokens",
+        "xVal-Aff time tokens": "xVal-Aff\ntime\ntokens",
         "VentC U": "VentC\nU",
         "VentC F": "VentC\nF",
         "TrentC U": "TrentC\nU",
         "TrentC F": "TrentC\nF",
         "CLIF-mapped": "CLIF-\nmapped",
-        "Freq-matched": "Freq-\nmatched",
+        "Native MIMIC codes": "Native\nMIMIC\ncodes",
+        "Randomized mapped codes": "Randomized\nmapped\ncodes",
+        "Frequency-matched mapped codes": "Frequency-\nmatched\nmapped codes",
     }
     return replacements.get(label, label)
 
@@ -1073,7 +1115,7 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
             markerfacecolor=color,
             markeredgecolor="#222222",
             linewidth=0,
-            markersize=7,
+            markersize=9,
             label=f"{label}, unfused",
             alpha=0.55,
         )
@@ -1087,14 +1129,14 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
             markerfacecolor=color,
             markeredgecolor="#222222",
             linewidth=0,
-            markersize=7,
+            markersize=9,
             label=f"{label}, fused",
             alpha=0.95,
         )
         for label, color in EXP1_COLORS.items()
     ]
-    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.01), ncol=4, frameon=False)
-    fig.tight_layout(rect=[0, 0, 1, 0.93])
+    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.01), ncol=4, frameon=False, fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.90])
     return fig
 
 
@@ -1169,7 +1211,7 @@ def build_exp2_regression_figure(
     shared_vmax: dict[str, float],
 ) -> None:
     labels = EXP2_HANDLE_SHORT_LABELS.copy()
-    labels["discrete_tt"] = "Disc tt\nbase"
+    labels["discrete_none"] = "Disc\nevent\norder\nbase"
     binary = _baseline_delta_source(
         metrics,
         pairwise,
@@ -1177,7 +1219,7 @@ def build_exp2_regression_figure(
         metric="roc_auc",
         outcome_order=BINARY_OUTCOME_ORDER_EXP12,
         handle_order=EXP2_HANDLE_ORDER,
-        baseline_handle="discrete_tt",
+        baseline_handle="discrete_none",
         panel="binary",
     )
     regression = _baseline_delta_source(
@@ -1187,13 +1229,13 @@ def build_exp2_regression_figure(
         metric="spearman_rho",
         outcome_order=REGRESSION_OUTCOME_ORDER,
         handle_order=EXP2_HANDLE_ORDER,
-        baseline_handle="discrete_tt",
+        baseline_handle="discrete_none",
         panel="regression",
     )
     source = pd.concat([binary, regression], ignore_index=True)
     _save_source(source, out_dir / "sources" / "exp2_encoding_mechanics_source.csv")
 
-    fig, axes = plt.subplots(1, 2, figsize=(15.4, 9.8), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=(18.2, 9.8), sharey=False)
     _plot_delta_heatmap_panel(
         axes[0],
         binary,
@@ -1201,8 +1243,8 @@ def build_exp2_regression_figure(
         handle_order=EXP2_HANDLE_ORDER,
         handle_labels=labels,
         panel_title="Binary outcomes",
-        colorbar_label=r"$\Delta$ AUROC vs. discrete_tt",
-        group_breaks=[3],
+        colorbar_label=r"$\Delta$ AUROC vs. Discrete + event order only",
+        group_breaks=[3, 7],
         fixed_vmax=shared_vmax["binary"],
         cbar_ticks=[-0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15],
     )
@@ -1213,8 +1255,8 @@ def build_exp2_regression_figure(
         handle_order=EXP2_HANDLE_ORDER,
         handle_labels=labels,
         panel_title="Regression outcomes",
-        colorbar_label=r"$\Delta$ Spearman $\rho$ vs. discrete_tt",
-        group_breaks=[3],
+        colorbar_label=r"$\Delta$ Spearman $\rho$ vs. Discrete + event order only",
+        group_breaks=[3, 7],
         fixed_vmax=shared_vmax["regression"],
         cbar_ticks=[-0.20, -0.10, 0.00, 0.10, 0.20],
     )
@@ -1231,7 +1273,7 @@ def build_exp3_binary_figure(
     shared_vmax: dict[str, float],
 ) -> None:
     labels = EXP3_HANDLE_SHORT_LABELS.copy()
-    labels["meds"] = "MEDS\nbase"
+    labels["meds"] = "Native\nMIMIC\ncodes\nbase"
     binary = _baseline_delta_source(
         metrics,
         pairwise,
@@ -1263,7 +1305,7 @@ def build_exp3_binary_figure(
         handle_order=EXP3_HANDLE_ORDER,
         handle_labels=labels,
         panel_title="Binary outcomes",
-        colorbar_label=r"$\Delta$ AUROC vs. MEDS",
+        colorbar_label=r"$\Delta$ AUROC vs. Native MIMIC codes",
         fixed_vmax=shared_vmax["binary"],
         cbar_ticks=[-0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15],
     )
@@ -1274,7 +1316,7 @@ def build_exp3_binary_figure(
         handle_order=EXP3_HANDLE_ORDER,
         handle_labels=labels,
         panel_title="Regression outcomes",
-        colorbar_label=r"$\Delta$ Spearman $\rho$ vs. MEDS",
+        colorbar_label=r"$\Delta$ Spearman $\rho$ vs. Native MIMIC codes",
         fixed_vmax=shared_vmax["regression"],
         cbar_ticks=[-0.20, -0.10, 0.00, 0.10, 0.20],
     )
@@ -1368,11 +1410,11 @@ def build_centile_pca_grid(out_dir: Path) -> None:
         )
     shared_ax.set_title(
         "Shared centile tokens\n(one manifold for all numeric variables)",
-        fontsize=12,
+        fontsize=13,
         fontweight="bold",
     )
-    shared_ax.set_xlabel(f"PC1 ({100 * shared_evr[0]:.1f}% var)", fontsize=9)
-    shared_ax.set_ylabel(f"PC2 ({100 * shared_evr[1]:.1f}% var)", fontsize=9)
+    shared_ax.set_xlabel(f"PC1 ({100 * shared_evr[0]:.1f}% var)", fontsize=11)
+    shared_ax.set_ylabel(f"PC2 ({100 * shared_evr[1]:.1f}% var)", fontsize=11)
     shared_ax.grid(alpha=0.22)
 
     for ax, (measurement_name, measurement_code) in zip(fused_axes, PCA_MEASUREMENTS):
@@ -1419,25 +1461,26 @@ def build_centile_pca_grid(out_dir: Path) -> None:
                 xytext=(3, 2),
                 fontsize=6.5,
             )
-        ax.set_title(measurement_name, fontsize=11, fontweight="bold")
-        ax.set_xlabel(f"PC1 ({100 * fused_evr[0]:.1f}% var)", fontsize=8)
-        ax.set_ylabel(f"PC2 ({100 * fused_evr[1]:.1f}% var)", fontsize=8)
+        ax.set_title(measurement_name, fontsize=12.5, fontweight="bold")
+        ax.set_xlabel(f"PC1 ({100 * fused_evr[0]:.1f}% var)", fontsize=10)
+        ax.set_ylabel(f"PC2 ({100 * fused_evr[1]:.1f}% var)", fontsize=10)
         ax.grid(alpha=0.22)
         ax.text(
-            0.03,
-            0.94,
+            0.97,
+            0.05,
             f"{len(fused_bins)} realized bins",
             transform=ax.transAxes,
-            fontsize=7,
-            va="top",
-            ha="left",
-            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.75, "pad": 1.5},
+            fontsize=9,
+            fontweight="semibold",
+            va="bottom",
+            ha="right",
+            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.8},
         )
 
     mappable = plt.cm.ScalarMappable(norm=Normalize(vmin=0, vmax=num_bins - 1), cmap=cmap)
     cbar_ax = fig.add_axes([0.12, 0.07, 0.76, 0.028])
     cbar = fig.colorbar(mappable, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label("Centile index (quantile bin id)", fontsize=9)
+    cbar.set_label("Centile index (quantile bin id)", fontsize=11)
     _save_source(pd.DataFrame(source_rows), out_dir / "sources" / "pca_centile_geometry_grid_source.csv")
     fig.savefig(out_dir / "pca_centile_geometry_grid.png", dpi=220, bbox_inches="tight")
     plt.close(fig)
@@ -1448,7 +1491,7 @@ def build_exp1_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         _collect_exp1_source(metrics),
         out_dir / "sources" / "appendix_exp1_outcome_forests_source.csv",
     )
-    fig = _render_exp1_granularity_figure(metrics, (18.2, 11.0))
+    fig = _render_exp1_granularity_figure(metrics, (10.0, 11.0))
     fig.savefig(out_dir / "appendix_exp1_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)
 
@@ -1459,7 +1502,7 @@ def build_exp2_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         source,
         out_dir / "sources" / "appendix_exp2_outcome_forests_source.csv",
     )
-    fig, axes = plt.subplots(1, 2, figsize=(17.0, 10.8), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 12.0), sharey=False)
     bin_src = source[source["panel"] == "binary"]
     reg_src = source[source["panel"] == "regression"]
     _plot_handle_metric_panel(
@@ -1491,13 +1534,13 @@ def build_exp2_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
             markerfacecolor=EXP2_HANDLE_COLORS[h],
             markeredgecolor="#222222",
             linewidth=0,
-            markersize=6,
+            markersize=8,
             label=EXP2_HANDLE_SHORT_LABELS[h],
         )
         for h in EXP2_HANDLE_ORDER
     ]
-    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.015), ncol=4, frameon=False)
-    fig.tight_layout(rect=[0, 0, 1, 0.92])
+    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.02), ncol=4, frameon=False, fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.83])
     fig.savefig(out_dir / "appendix_exp2_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)
 
@@ -1508,7 +1551,7 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         source,
         out_dir / "sources" / "appendix_exp3_outcome_forests_source.csv",
     )
-    fig, axes = plt.subplots(1, 2, figsize=(16.8, 10.8), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=(9.5, 10.5), sharey=False)
     bin_src = source[source["panel"] == "binary"]
     reg_src = source[source["panel"] == "regression"]
     _plot_handle_metric_panel(
@@ -1540,22 +1583,22 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
             markerfacecolor=EXP3_HANDLE_COLORS[h],
             markeredgecolor="#222222",
             linewidth=0,
-            markersize=6,
+            markersize=8,
             label=EXP3_HANDLE_SHORT_LABELS[h],
         )
         for h in EXP3_HANDLE_ORDER
     ]
-    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.015), ncol=4, frameon=False)
-    fig.tight_layout(rect=[0, 0, 1, 0.92])
+    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.015), ncol=2, frameon=False, fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.90])
     fig.savefig(out_dir / "appendix_exp3_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
 def build_exp1_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> None:
-    source = _exp1_knob_summary_source(metrics)
-    _save_source(source, out_dir / "sources" / "appendix_exp1_knob_summary_bars_source.csv")
-    fig, axes = plt.subplots(2, 3, figsize=(14.8, 7.8))
-    knob_specs = [
+    source = _exp1_axis_summary_source(metrics)
+    _save_source(source, out_dir / "sources" / "appendix_exp1_axis_summary_bars_source.csv")
+    fig, axes = plt.subplots(2, 3, figsize=(9.5, 7.0))
+    axis_specs = [
         ("Fusion", ["Unfused", "Fused"], EXP1_FUSION_SUMMARY_COLORS, None),
         ("Granularity", ["Deciles", "Ventiles", "Trentiles", "Centiles"], EXP1_GRANULARITY_SUMMARY_COLORS, None),
         (
@@ -1573,27 +1616,27 @@ def build_exp1_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
         ("regression", r"Mean Spearman $\rho$ across outcomes", 0.0),
     ]
     for row_idx, (panel, ylabel, floor) in enumerate(panel_specs):
-        for col_idx, (knob, order, colors, display) in enumerate(knob_specs):
+        for col_idx, (axis, order, colors, display) in enumerate(axis_specs):
             _plot_summary_bar_panel(
                 axes[row_idx, col_idx],
-                source[(source["panel"] == panel) & (source["knob"] == knob)],
+                source[(source["panel"] == panel) & (source["axis"] == axis)],
                 level_order=order,
                 color_map=colors,
-                title=knob,
+                title=axis,
                 ylabel=ylabel if col_idx == 0 else "",
                 y_floor=floor,
                 display_labels=display,
             )
     fig.tight_layout()
-    fig.savefig(out_dir / "appendix_exp1_knob_summary_bars.pdf", bbox_inches="tight")
+    fig.savefig(out_dir / "appendix_exp1_axis_summary_bars.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
 def build_exp2_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> None:
-    source = _exp2_knob_summary_source(metrics)
-    _save_source(source, out_dir / "sources" / "appendix_exp2_knob_summary_bars_source.csv")
-    fig, axes = plt.subplots(2, 2, figsize=(12.2, 7.8))
-    knob_specs = [
+    source = _exp2_axis_summary_source(metrics)
+    _save_source(source, out_dir / "sources" / "appendix_exp2_axis_summary_bars_source.csv")
+    fig, axes = plt.subplots(2, 2, figsize=(9.0, 7.0))
+    axis_specs = [
         (
             "Value encoder",
             ["Discrete", "Soft", "xVal (code-normalized)", "xVal-affine (code-normalized + affine shift)"],
@@ -1605,11 +1648,12 @@ def build_exp2_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
         ),
         (
             "Temporal encoding",
-            ["Time tokens", "Time-Aware RoPE"],
+            ["Event order only", "Time tokens", "Admission-relative RoPE"],
             EXP2_TEMPORAL_SUMMARY_COLORS,
             {
+                "Event order only": "Event\norder\nonly",
                 "Time tokens": "Time\ntokens",
-                "Time-Aware RoPE": "Time-Aware\nRoPE",
+                "Admission-relative RoPE": "Admission-\nrelative\nRoPE",
             },
         ),
     ]
@@ -1618,45 +1662,51 @@ def build_exp2_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
         ("regression", r"Mean Spearman $\rho$ across outcomes", 0.0),
     ]
     for row_idx, (panel, ylabel, floor) in enumerate(panel_specs):
-        for col_idx, (knob, order, colors, display) in enumerate(knob_specs):
+        for col_idx, (axis, order, colors, display) in enumerate(axis_specs):
             _plot_summary_bar_panel(
                 axes[row_idx, col_idx],
-                source[(source["panel"] == panel) & (source["knob"] == knob)],
+                source[(source["panel"] == panel) & (source["axis"] == axis)],
                 level_order=order,
                 color_map=colors,
-                title=knob,
+                title=axis,
                 ylabel=ylabel if col_idx == 0 else "",
                 y_floor=floor,
                 display_labels=display,
             )
     fig.tight_layout()
-    fig.savefig(out_dir / "appendix_exp2_knob_summary_bars.pdf", bbox_inches="tight")
+    fig.savefig(out_dir / "appendix_exp2_axis_summary_bars.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
 def build_exp3_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> None:
-    source = _exp3_knob_summary_source(metrics)
-    _save_source(source, out_dir / "sources" / "appendix_exp3_knob_summary_bars_source.csv")
-    fig, axes = plt.subplots(2, 1, figsize=(7.6, 7.8))
+    source = _exp3_axis_summary_source(metrics)
+    _save_source(source, out_dir / "sources" / "appendix_exp3_axis_summary_bars_source.csv")
+    fig, axes = plt.subplots(2, 1, figsize=(5.0, 7.5))
     panel_specs = [
         ("binary", "Mean AUROC across outcomes", 0.58),
         ("regression", r"Mean Spearman $\rho$ across outcomes", 0.0),
     ]
     display = {
         "CLIF-mapped": "CLIF-\nmapped",
-        "Randomized": "Randomized",
-        "Freq-matched": "Freq-\nmatched",
+        "Native MIMIC codes": "Native\nMIMIC\ncodes",
+        "Randomized mapped codes": "Randomized\nmapped\ncodes",
+        "Frequency-matched mapped codes": "Frequency-\nmatched\nmapped codes",
     }
     for ax, (panel, ylabel, floor) in zip(axes, panel_specs):
         _plot_summary_bar_panel(
             ax,
             source[source["panel"] == panel],
-            level_order=["MEDS", "CLIF-mapped", "Randomized", "Freq-matched"],
+            level_order=[
+                "Native MIMIC codes",
+                "CLIF-mapped",
+                "Randomized mapped codes",
+                "Frequency-matched mapped codes",
+            ],
             color_map={
-                "MEDS": EXP3_HANDLE_COLORS["meds"],
+                "Native MIMIC codes": EXP3_HANDLE_COLORS["meds"],
                 "CLIF-mapped": EXP3_HANDLE_COLORS["mapped"],
-                "Randomized": EXP3_HANDLE_COLORS["randomized"],
-                "Freq-matched": EXP3_HANDLE_COLORS["freqmatched"],
+                "Randomized mapped codes": EXP3_HANDLE_COLORS["randomized"],
+                "Frequency-matched mapped codes": EXP3_HANDLE_COLORS["freqmatched"],
             },
             title="Vocabulary arm",
             ylabel=ylabel,
@@ -1664,7 +1714,7 @@ def build_exp3_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
             display_labels=display,
         )
     fig.tight_layout()
-    fig.savefig(out_dir / "appendix_exp3_knob_summary_bars.pdf", bbox_inches="tight")
+    fig.savefig(out_dir / "appendix_exp3_axis_summary_bars.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -1672,7 +1722,7 @@ def build_statistical_trend_figure(metrics: pd.DataFrame, out_dir: Path) -> None
     source = _handle_average_summary(metrics)
     _save_source(source, out_dir / "sources" / "statistical_trend_summary_source.csv")
 
-    fig, axes = plt.subplots(2, 3, figsize=(17.6, 8.4), sharey="row")
+    fig, axes = plt.subplots(2, 3, figsize=(20.4, 8.4), sharey="row")
     experiments = ["Exp1", "Exp2", "Exp3"]
     panel_specs = [
         ("binary", "Mean AUROC across outcomes", 0.58),
@@ -1713,6 +1763,7 @@ def build_statistical_trend_figure(metrics: pd.DataFrame, out_dir: Path) -> None
                 [_wrap_bar_tick_label(label) for label in sub["label"].tolist()],
                 rotation=0,
                 ha="center",
+                fontsize=10,
             )
             ax.set_title(experiment if row_idx == 0 else "")
             ax.set_ylabel(ylabel if col_idx == 0 else "")
@@ -1734,15 +1785,19 @@ def build_statistical_trend_figure(metrics: pd.DataFrame, out_dir: Path) -> None
 def build_legacy_statistical_count_summary(pairwise: pd.DataFrame, out_dir: Path) -> None:
     exp1_specs = EXP1_TREND_COMPARISONS
     exp2_specs = [
-        ("Discrete + tt -> Soft + tt", "discrete_tt", "soft_tt"),
-        ("Discrete + RoPE -> Soft + RoPE", "discrete_rope", "soft_rope"),
-        ("xVal-CN + tt -> xVal-Aff + tt", "xval_tt", "xval_affine_tt"),
-        ("xVal-CN + RoPE -> xVal-Aff + RoPE", "xval_rope", "xval_affine_rope"),
+        ("Discrete event order -> Discrete time tokens", "discrete_none", "discrete_tt"),
+        ("Discrete event order -> Discrete admission-relative RoPE", "discrete_none", "discrete_rope"),
+        ("Discrete event order -> Soft event order", "discrete_none", "soft_none"),
+        ("Discrete admission-relative RoPE -> Soft admission-relative RoPE", "discrete_rope", "soft_rope"),
+        ("Discrete event order -> xVal-CN event order", "discrete_none", "xval_none"),
+        ("Discrete admission-relative RoPE -> xVal-CN admission-relative RoPE", "discrete_rope", "xval_rope"),
+        ("xVal-CN event order -> xVal-Aff event order", "xval_none", "xval_affine_none"),
+        ("xVal-CN admission-relative RoPE -> xVal-Aff admission-relative RoPE", "xval_rope", "xval_affine_rope"),
     ]
     exp3_specs = [
-        ("MEDS -> CLIF-mapped", "meds", "mapped"),
-        ("MEDS -> Randomized", "meds", "randomized"),
-        ("MEDS -> Freq-matched", "meds", "freqmatched"),
+        ("Native MIMIC codes -> CLIF-mapped", "meds", "mapped"),
+        ("Native MIMIC codes -> Randomized mapped codes", "meds", "randomized"),
+        ("Native MIMIC codes -> Frequency-matched mapped codes", "meds", "freqmatched"),
     ]
 
     rows: list[dict[str, object]] = []
@@ -1960,6 +2015,59 @@ def build_maintext_selection_summary(metrics: pd.DataFrame, pairwise: pd.DataFra
     _save_source(pd.DataFrame(rows), out_dir / "sources" / "maintext_selection_summary.csv")
 
 
+def build_length_histograms(out_dir: Path) -> None:
+    """Build non-metric token-length histograms from tokenized parquet outputs."""
+    script = ROOT / "utilities" / "qc" / "plot_length_histograms.py"
+    base = DEFAULT_TOKEN_ROOT
+
+    common_args = [
+        sys.executable,
+        str(script),
+        "--base",
+        str(base),
+        "--split",
+        "train",
+    ]
+
+    subprocess.run(
+        common_args
+        + [
+            "--versions",
+            "deciles_none_unfused_time_tokens",
+            "deciles_none_fused_time_tokens",
+            "deciles_none_unfused_time_tokens_first_24h",
+            "deciles_none_fused_time_tokens_first_24h",
+            "--labels",
+            "unfused - full timeline",
+            "fused - full timeline",
+            "unfused - first 24h",
+            "fused - first 24h",
+            "--out_pdf",
+            str(out_dir / "length_histograms_train.pdf"),
+        ],
+        check=True,
+    )
+
+    subprocess.run(
+        common_args
+        + [
+            "--versions",
+            "deciles_none_unfused_time_tokens",
+            "deciles_none_unfused_time_rope",
+            "deciles_none_unfused_time_tokens_first_24h",
+            "deciles_none_unfused_time_rope_first_24h",
+            "--labels",
+            "time tokens — full timeline",
+            "no time tokens (event order / admission-relative RoPE) — full timeline",
+            "time tokens — first 24h",
+            "no time tokens (event order / admission-relative RoPE) — first 24h",
+            "--out_pdf",
+            str(out_dir / "length_histograms_temporal_train.pdf"),
+        ],
+        check=True,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--metrics_csv", type=Path, default=DEFAULT_METRICS)
@@ -1987,6 +2095,7 @@ def main() -> int:
     build_exp3_appendix_summary_bars(metrics, figures_dir)
     build_statistical_trend_figure(metrics, figures_dir)
     build_maintext_selection_summary(metrics, pairwise, figures_dir)
+    build_length_histograms(figures_dir)
     print(figures_dir)
     return 0
 

@@ -15,7 +15,7 @@ DEFAULT_METRICS = (
     / "artifacts"
     / "runs"
     / "statistics"
-    / "paper_audit_20260316_idaligned_fullstats"
+    / "paper_audit_20260409_exp1_restored_exp23_refresh"
     / "all_family_metrics.csv"
 )
 DEFAULT_PAIRWISE = (
@@ -23,16 +23,16 @@ DEFAULT_PAIRWISE = (
     / "artifacts"
     / "runs"
     / "statistics"
-    / "paper_audit_20260316_idaligned_fullstats"
+    / "paper_audit_20260409_exp1_restored_exp23_refresh"
     / "all_family_pairwise_baseline.csv"
 )
-DEFAULT_OUT_DIR = ROOT.parent / "697b81f1f269207e5416f18d" / "MLHC" / "generated"
+DEFAULT_OUT_DIR = ROOT.parent / "MLHC2026" / "MLHC" / "generated"
 
 OUTCOME_LABELS = {
     "same_admission_death": "Hospital mortality",
-    "long_length_of_stay": "Hospital LOS > 7 d",
+    "long_length_of_stay": "Hospital LOS $>$ 7 d",
     "icu_admission": "ICU admission",
-    "prolonged_icu_stay": "ICU LOS > 48 h",
+    "prolonged_icu_stay": "ICU LOS $>$ 48 h",
     "imv_event": "IMV",
     "hyperkalemia": "Hyperkalemia",
     "severe_hypokalemia": "Severe hypokalemia",
@@ -74,18 +74,22 @@ HANDLE_LABELS = {
     "trentiles_10_10_10_fused": "Trentiles (clin.), fused",
     "centiles_unfused": "Centiles, unfused",
     "centiles_fused": "Centiles, fused",
-    "discrete_tt": "Discrete + tt",
-    "discrete_rope": "Discrete + RoPE",
-    "soft_tt": "Soft + tt",
-    "soft_rope": "Soft + RoPE",
-    "xval_tt": "xVal (code-normalized) + tt",
-    "xval_rope": "xVal (code-normalized) + RoPE",
-    "xval_affine_tt": "xVal-affine (code-normalized + affine shift) + tt",
-    "xval_affine_rope": "xVal-affine (code-normalized + affine shift) + RoPE",
-    "meds": "MEDS",
+    "discrete_none": "Discrete + event order only",
+    "discrete_tt": "Discrete + time tokens",
+    "discrete_rope": "Discrete + admission-relative RoPE",
+    "soft_none": "Soft + event order only",
+    "soft_tt": "Soft + time tokens",
+    "soft_rope": "Soft + admission-relative RoPE",
+    "xval_none": "xVal (code-normalized) + event order only",
+    "xval_tt": "xVal (code-normalized) + time tokens",
+    "xval_rope": "xVal (code-normalized) + admission-relative RoPE",
+    "xval_affine_none": "xVal-affine (code-normalized + affine shift) + event order only",
+    "xval_affine_tt": "xVal-affine (code-normalized + affine shift) + time tokens",
+    "xval_affine_rope": "xVal-affine (code-normalized + affine shift) + admission-relative RoPE",
+    "meds": "Native MIMIC codes",
     "mapped": "CLIF-mapped",
-    "randomized": "Randomized control",
-    "freqmatched": "Freq-matched control",
+    "randomized": "Randomized mapped codes",
+    "freqmatched": "Frequency-matched mapped codes",
 }
 
 BINARY_OUTCOME_ORDER = [

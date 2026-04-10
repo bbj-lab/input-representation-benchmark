@@ -326,7 +326,7 @@ def plot_z_vs_norm(
     import matplotlib.pyplot as plt
 
     n_layers = len(layer_data)
-    fig, axes = plt.subplots(1, n_layers, figsize=(7 * n_layers, 6))
+    fig, axes = plt.subplots(1, n_layers, figsize=(9, 5))
     if n_layers == 1:
         axes = [axes]
 
@@ -355,14 +355,15 @@ def plot_z_vs_norm(
             ax.plot(bin_centers, bin_means, "k-o", markersize=4, linewidth=2,
                     label="Binned mean", zorder=10)
 
-        ax.set_xlabel("|z| (absolute z-score)", fontsize=12)
-        ax.set_ylabel("||h||₂ (hidden state L2 norm)", fontsize=12)
-        ax.set_title(f"Layer {layer_idx}", fontsize=13, fontweight="bold")
-        ax.legend(fontsize=9)
+        ax.set_xlabel("|z| (absolute z-score)", fontsize=15)
+        ax.set_ylabel("||h||₂ (hidden state L2 norm)", fontsize=15)
+        ax.set_title(f"Layer {layer_idx}", fontsize=16, fontweight="bold")
+        ax.tick_params(axis="both", labelsize=13)
+        ax.legend(fontsize=12)
         ax.grid(alpha=0.3)
 
     fig.suptitle(f"xVal Zero-Out: {model_name}\n||h||₂ at [NUM] positions vs |z|",
-                 fontsize=14, fontweight="bold", y=1.02)
+                 fontsize=15, fontweight="bold", y=1.02)
     fig.tight_layout()
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close(fig)

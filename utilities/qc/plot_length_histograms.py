@@ -50,6 +50,16 @@ def _pretty_version_label(version: str) -> str:
 
     fused = "fused" if ("fused" in v and "unfused" not in v) else "unfused"
     cut = "first 24h" if "first_24h" in v else "full timeline"
+
+    if "time_tokens" in v and "time_rope" not in v:
+        temporal = "time-spacing tokens"
+    elif "time_rope" in v:
+        temporal = "no time-spacing tokens"
+    else:
+        temporal = None
+
+    if temporal is not None:
+        return f"{temporal} — {cut}"
     return f"{fused} — {cut}"
 
 
@@ -162,6 +172,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", type=Path, required=True, help="Base directory containing tokenized versions.")
     ap.add_argument("--versions", type=str, nargs="+", required=True, help="Exactly 4 versions (unfused/fused × full/24h).")
+    ap.add_argument("--labels", type=str, nargs="*", default=None, help="Optional explicit labels for each version panel (must match --versions count).")
     ap.add_argument("--split", type=str, default="train", choices=["train", "val", "test"])
     ap.add_argument("--out_pdf", type=Path, required=True)
     ap.add_argument("--title", type=str, default="Token-length distributions (tokens column)")
@@ -180,6 +191,9 @@ def main() -> None:
     versions = list(args.versions)
     if len(versions) != 4:
         raise ValueError(f"--versions must provide exactly 4 entries, got {len(versions)}")
+    explicit_labels = args.labels
+    if explicit_labels is not None and len(explicit_labels) != len(versions):
+        raise ValueError(f"--labels must match --versions count ({len(versions)}), got {len(explicit_labels)}")
 
     # Resolve parquet paths and summaries
     paths = []
@@ -204,7 +218,7 @@ def main() -> None:
     except Exception:
         pass
 
-    fig, axes = plt.subplots(2, 2, figsize=(10.5, 7.5), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize=(8.5, 7.5), constrained_layout=True)
     axes = axes.flatten()
     for panel_idx, (ax, (v, p)) in enumerate(zip(axes, paths)):
         counts = histogram_counts(p, bins=bins)
@@ -224,7 +238,8 @@ def main() -> None:
         )
 
         panel_letter = "ABCD"[panel_idx] if panel_idx < 4 else ""
-        ax.set_title(f"{panel_letter}. {_pretty_version_label(v)}", fontsize=11, loc="left")
+        label = explicit_labels[panel_idx] if explicit_labels is not None else _pretty_version_label(v)
+        ax.set_title(f"{panel_letter}. {label}", fontsize=12, loc="left")
         ax.set_xlabel("Tokenized length (tokens per admission)")
         ax.set_ylabel("Probability mass")
         ax.grid(True, axis="y", alpha=0.25)
@@ -262,12 +277,12 @@ def main() -> None:
             transform=ax.transAxes,
             ha="right",
             va="top",
-            fontsize=8.5,
+            fontsize=9,
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="0.75", alpha=0.92),
         )
         ax.set_xlim(0, xmax)
 
-    fig.suptitle(args.title, fontsize=13)
+    fig.suptitle(args.title, fontsize=14)
     out_pdf = args.out_pdf.expanduser().resolve()
     out_pdf.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_pdf)
