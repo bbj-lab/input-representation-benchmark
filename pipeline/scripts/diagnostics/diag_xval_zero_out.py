@@ -326,7 +326,8 @@ def plot_z_vs_norm(
     import matplotlib.pyplot as plt
 
     n_layers = len(layer_data)
-    fig, axes = plt.subplots(1, n_layers, figsize=(9, 5))
+    # Wide figure so per-layer panels stay legible in two-column PDFs.
+    fig, axes = plt.subplots(1, n_layers, figsize=(14, 5.5))
     if n_layers == 1:
         axes = [axes]
 
@@ -334,12 +335,12 @@ def plot_z_vs_norm(
         z = np.abs(np.array(data["z_values"]))
         norms = np.array(data["norms"])
 
-        ax.scatter(z, norms, s=3, alpha=0.15, color="steelblue", rasterized=True)
+        ax.scatter(z, norms, s=5, alpha=0.15, color="steelblue", rasterized=True)
 
         # Red zone near z ≈ 0
         near_zero = z < 0.5
         if near_zero.sum() > 0:
-            ax.scatter(z[near_zero], norms[near_zero], s=5, alpha=0.3,
+            ax.scatter(z[near_zero], norms[near_zero], s=8, alpha=0.3,
                        color="red", rasterized=True, label=f"|z| < 0.5 (n={near_zero.sum()})")
 
         # Mean norm in bins
@@ -352,20 +353,20 @@ def plot_z_vs_norm(
                 bin_means.append(norms[mask].mean())
                 bin_centers.append((bins[i] + bins[i + 1]) / 2)
         if bin_centers:
-            ax.plot(bin_centers, bin_means, "k-o", markersize=4, linewidth=2,
+            ax.plot(bin_centers, bin_means, "k-o", markersize=5, linewidth=2.25,
                     label="Binned mean", zorder=10)
 
-        ax.set_xlabel("|z| (absolute z-score)", fontsize=15)
-        ax.set_ylabel("||h||₂ (hidden state L2 norm)", fontsize=15)
-        ax.set_title(f"Layer {layer_idx}", fontsize=16, fontweight="bold")
-        ax.tick_params(axis="both", labelsize=13)
-        ax.legend(fontsize=12)
+        ax.set_xlabel("|z| (absolute z-score)", fontsize=18)
+        ax.set_ylabel("||h||₂ (hidden state L2 norm)", fontsize=18)
+        ax.set_title(f"Layer {layer_idx}", fontsize=19, fontweight="bold")
+        ax.tick_params(axis="both", labelsize=15)
+        ax.legend(fontsize=14)
         ax.grid(alpha=0.3)
 
-    fig.suptitle(f"xVal Zero-Out: {model_name}\n||h||₂ at [NUM] positions vs |z|",
-                 fontsize=15, fontweight="bold", y=1.02)
+    fig.suptitle(f"xVal zero-out: {model_name}\n||h||₂ at [NUM] positions vs |z|",
+                 fontsize=18, fontweight="bold", y=1.02)
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved zero-out plot: {output_path}")
 

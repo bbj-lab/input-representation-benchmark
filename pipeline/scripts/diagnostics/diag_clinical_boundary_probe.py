@@ -254,7 +254,8 @@ def plot_probe_results(
     x = np.arange(n_groups)
     width = 0.8 / n_bars
 
-    fig, ax = plt.subplots(figsize=(8, 5.5))
+    # Publication-sized defaults (matches appendix figures in the MLHC manuscript).
+    fig, ax = plt.subplots(figsize=(14, 7))
     colors = plt.cm.Set2(np.linspace(0, 1, n_bars))
 
     for i, gran in enumerate(granularities):
@@ -272,12 +273,12 @@ def plot_probe_results(
         for bar, acc in zip(bars, accs):
             if acc > 0:
                 ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
-                        f"{acc:.0%}", ha="center", va="bottom", fontsize=9)
+                        f"{acc:.0%}", ha="center", va="bottom", fontsize=13)
 
-    ax.set_xlabel("Lab test", fontsize=14)
-    ax.set_ylabel("LOO-CV Accuracy", fontsize=14)
-    ax.set_title("Clinical Boundary Probe: Embedding Abnormality Classification",
-                 fontsize=15, fontweight="bold")
+    ax.set_xlabel("Lab test", fontsize=18)
+    ax.set_ylabel("LOO-CV accuracy", fontsize=18)
+    ax.set_title("Clinical boundary probe: embedding abnormality classification",
+                 fontsize=20, fontweight="bold")
     ax.set_xticks(x)
 
     # Use display names
@@ -285,17 +286,17 @@ def plot_probe_results(
     for measurement in measurements:
         info = MEASUREMENT_REFERENCE_RANGES.get(measurement, {})
         measurement_names.append(info.get("name", measurement.split("//")[1] if "//" in measurement else measurement))
-    ax.set_xticklabels(measurement_names, rotation=30, ha="right", fontsize=12)
-    ax.tick_params(axis="y", labelsize=12)
+    ax.set_xticklabels(measurement_names, rotation=30, ha="right", fontsize=15)
+    ax.tick_params(axis="y", labelsize=15)
 
     ax.set_ylim(0, 1.15)
     ax.axhline(y=0.5, color="red", linestyle="--", linewidth=1, alpha=0.5,
                label="Chance level")
-    ax.legend(fontsize=11, loc="upper right")
+    ax.legend(fontsize=14, loc="upper right")
     ax.grid(axis="y", alpha=0.3)
 
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved probe results plot: {output_path}")
 
