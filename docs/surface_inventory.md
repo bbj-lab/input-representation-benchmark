@@ -42,6 +42,22 @@ These paths are part of the Stage0 -> Stage3 -> stats -> paper refresh chain.
 - `artifacts/`
 - `benchmarks/mimic-meds-extraction/`
 
+## Active manuscript surfaces
+
+These paths are the current paper-facing surfaces for the MLHC manuscript and
+its supporting statistics.
+
+- `../MLHC2026/MLHC/paper.tex`
+- `../MLHC2026/MLHC/generated/`
+- `../MLHC2026/MLHC/figures/`
+- `paper/scripts/generate_mlhc_appendix_tables.py`
+- `paper/scripts/generate_mlhc_appendix_outcome_descriptives.py`
+- `paper/scripts/generate_mlhc_paper_figures.py`
+- `paper/scripts/recompute_baseline_pairwise_view.py`
+- `artifacts/runs/statistics/paper_stats_combined/` (combined CSVs read by the paper generator scripts: `all_family_metrics.csv`, `all_family_pairwise_baseline.csv`)
+- `artifacts/runs/statistics/paper_stats_run_artifacts/` (per-family Exp1/2/3 statistics produced by `slurm/16_prepare_submit_paper_rerun.sh`; source of the Exp1 rows in the combined dir)
+- `artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/` (per-family Exp2/3 statistics under the `discrete_none` Exp2 baseline; source of the Exp2/3 rows in the combined dir)
+
 ## Active Utilities
 
 These paths are active but not on the mandatory run chain.
@@ -57,7 +73,7 @@ These paths are active but not on the mandatory run chain.
 - `utilities/scripts/compute_prevalence.py`
 - `utilities/scripts/download_literature.py`
 - `utilities/scripts/generate_calibration_plot.py`
-- `utilities/scripts/preflight_perf_knobs.py`
+- `utilities/scripts/preflight_perf_settings.py`
 - `utilities/scripts/setup_conda_env_input_rep.sh`
 - `utilities/scripts/setup_conda_env_meds_extract.sh`
 - `utilities/scripts/verify_refrange_meds.py`

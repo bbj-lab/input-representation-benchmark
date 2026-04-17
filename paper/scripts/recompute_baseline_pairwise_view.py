@@ -23,7 +23,7 @@ DEFAULT_IN = (
     / "artifacts"
     / "runs"
     / "statistics"
-    / "paper_audit_20260316_idaligned_fullstats"
+    / "paper_stats_run_artifacts"
     / "all_family_pairwise.csv"
 )
 DEFAULT_OUT = (
@@ -31,7 +31,7 @@ DEFAULT_OUT = (
     / "artifacts"
     / "runs"
     / "statistics"
-    / "paper_audit_20260316_idaligned_fullstats"
+    / "paper_stats_run_artifacts"
     / "all_family_pairwise_baseline.csv"
 )
 EXP1_BASELINE = "deciles_unfused"

@@ -15,7 +15,7 @@ DEFAULT_METRICS = (
     / "artifacts"
     / "runs"
     / "statistics"
-    / "paper_audit_20260409_exp1_restored_exp23_refresh"
+    / "paper_stats_combined"
     / "all_family_metrics.csv"
 )
 DEFAULT_PAIRWISE = (
@@ -23,7 +23,7 @@ DEFAULT_PAIRWISE = (
     / "artifacts"
     / "runs"
     / "statistics"
-    / "paper_audit_20260409_exp1_restored_exp23_refresh"
+    / "paper_stats_combined"
     / "all_family_pairwise_baseline.csv"
 )
 DEFAULT_OUT_DIR = ROOT.parent / "MLHC2026" / "MLHC" / "generated"

@@ -102,7 +102,7 @@ Entry points:
 
 Primary stats root:
 
-- `artifacts/runs/statistics/paper_audit_20260316_idaligned_fullstats/`
+- `artifacts/runs/statistics/paper_stats_run_artifacts/`
 
 ## 8. Paper refresh
 

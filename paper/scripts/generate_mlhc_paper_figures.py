@@ -30,8 +30,8 @@ from pipeline.scripts.diagnostics.diag_embedding_geometry import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_METRICS = ROOT / "artifacts" / "runs" / "statistics" / "paper_audit_20260409_exp1_restored_exp23_refresh" / "all_family_metrics.csv"
-DEFAULT_PAIRWISE = ROOT / "artifacts" / "runs" / "statistics" / "paper_audit_20260409_exp1_restored_exp23_refresh" / "all_family_pairwise_baseline.csv"
+DEFAULT_METRICS = ROOT / "artifacts" / "runs" / "statistics" / "paper_stats_combined" / "all_family_metrics.csv"
+DEFAULT_PAIRWISE = ROOT / "artifacts" / "runs" / "statistics" / "paper_stats_combined" / "all_family_pairwise_baseline.csv"
 DEFAULT_FIG_DIR = (
     ROOT.parent
     / "MLHC2026"
