@@ -267,9 +267,44 @@ fi
 # Users should set these in ~/.bashrc or .env:
 #   WANDB_API_KEY - Get from https://wandb.ai/authorize
 #   WANDB_ENTITY  - Your W&B username or team name
-if [[ -z "${WANDB_API_KEY:-}" ]]; then
-    echo "NOTE: WANDB_API_KEY not set. Runs will not be logged to W&B."
-    echo "      Get your key at: https://wandb.ai/authorize"
+_is_true() {
+    case "${1:-}" in
+        1|true|TRUE|True|yes|YES|on|ON|y|Y) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+IRB_REQUIRE_WANDB="${IRB_REQUIRE_WANDB:-false}"
+_has_wandb_auth=0
+if [[ -n "${WANDB_API_KEY:-}" ]]; then
+    _has_wandb_auth=1
+elif python - <<'PY' >/dev/null 2>&1
+import sys
+try:
+    import netrc
+    n = netrc.netrc()
+    if n.authenticators("api.wandb.ai") or n.authenticators("wandb.ai"):
+        sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+PY
+then
+    _has_wandb_auth=1
+fi
+
+if [[ "${_has_wandb_auth}" -eq 1 ]]; then
+    export WANDB_MODE="${WANDB_MODE:-online}"
+    export WANDB_LOG_MODEL="${WANDB_LOG_MODEL:-checkpoint}"
+    export WANDB_WATCH="${WANDB_WATCH:-false}"
+elif _is_true "${IRB_REQUIRE_WANDB}"; then
+    echo "ERROR: W&B auth is required but not configured."
+    echo "  - Set WANDB_API_KEY in your shell, or run wandb login to populate ~/.netrc."
+    echo "  - Key URL: https://wandb.ai/authorize"
+    exit 2
+else
+    echo "NOTE: W&B auth not found. Switching to offline mode."
+    echo "      Set WANDB_API_KEY or run wandb login for remote logging."
     export WANDB_MODE=offline
 fi
 

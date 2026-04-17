@@ -35,6 +35,8 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IRB_HOME="$(cd "${SCRIPT_DIR}/.." && pwd)"
+export IRB_REQUIRE_WANDB="${IRB_REQUIRE_WANDB:-true}"
+export WANDB_LOG_MODEL="${WANDB_LOG_MODEL:-checkpoint}"
 source "${IRB_HOME}/slurm/00_preamble.sh"
 
 # Exp2 Stage1 consumes the main tokenized timelines, not the raw MEDS events root.

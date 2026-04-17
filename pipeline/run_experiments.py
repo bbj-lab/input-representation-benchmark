@@ -466,7 +466,7 @@ def generate_exp1_stage1_job_file(
         f.write("# Submit with:\n")
         f.write(
             f"#   sbatch --array=0-{(len(configs) * len(training_seeds)) - 1} "
-            f"slurm/05_run_stage1_gpu4_train.sh {output_path}\n"
+            f"slurm/06_run_stage1_gpu1_train.sh {output_path}\n"
         )
         f.write("\n")
 
@@ -958,7 +958,7 @@ def main():
         help=(
             "If set, generate an Exp1 evaluation retokenization Stage0 jobfile that reuses the original "
             "training vocab.gzip but increases max_padded_len, and point Exp1 Stage2/Stage3 at this eval "
-            "tokenized dataset (no Exp1 Stage1 rerun). This is the fairness knob for fused vs unfused "
+            "tokenized dataset (no Exp1 Stage1 rerun). This is the fairness setting for fused vs unfused "
             "comparisons when the intended comparison is token semantics (not token budget/coverage). "
             "Choose this from the observed token-length distribution (see qc/eval_maxlen_analysis.py); "
             "as a practical starting point, 4096 often substantially reduces truncation while keeping "
@@ -1291,7 +1291,7 @@ def main():
         if exp == 1:
             # Exp1 (4-stage; Option B):
             #   Stage 0 (CPU): tokenize + outcomes (once per config)
-            #   Stage 1 (GPU; 4 GPUs/job): FM training (packed) per config×seed
+            #   Stage 1 (GPU; 1 GPU/job): FM training (packed) per config×seed
             #   Stage 2 (GPU; 1 GPU/job): extract reps (per config×seed)
             #   Stage 3 (CPU tier2q): logistic regression on reps (per config×seed)
             stage0_path = generated_dir / "04_exp1_stage0_tokenize.jobfile"
@@ -1414,7 +1414,7 @@ def main():
     if exp1_n0 is not None:
         print("  2. Exp1:")
         print(f"     - Stage 0 (tier2q CPU): sbatch --array=0-{exp1_n0 - 1} slurm/02_run_stage0_tier2q_tokenize.sh {generated_dir}/04_exp1_stage0_tokenize.jobfile")
-        print(f"     - Stage 1 (4 GPUs/job): TRAIN_JID=$(sbatch --parsable --array=0-{exp1_n1 - 1} slurm/05_run_stage1_gpu4_train.sh {generated_dir}/07a_exp1_stage1_train.jobfile)")
+        print(f"     - Stage 1 (1 GPU/job): TRAIN_JID=$(sbatch --parsable --array=0-{exp1_n1 - 1} slurm/06_run_stage1_gpu1_train.sh {generated_dir}/07a_exp1_stage1_train.jobfile)")
         if args.exp1_eval_max_padded_len is not None:
             print(f"     - Stage 0E (tier2q CPU; eval retokenize): EVAL0_JID=$(sbatch --parsable --array=0-{exp1_n0 - 1} slurm/02_run_stage0_tier2q_tokenize.sh {generated_dir}/04b_exp1_stage0_eval_retokenize.jobfile)")
             print(f"     - Stage 2 (1 GPU/job; eval dv): EXTRACT_JID=$(sbatch --parsable --dependency=afterok:\"${{TRAIN_JID}}:${{EVAL0_JID}}\" --array=0-{exp1_n1 - 1} slurm/09_run_stage2_gpu2_extract.sh {generated_dir}/07b_exp1_stage2_extract_reps.jobfile)")

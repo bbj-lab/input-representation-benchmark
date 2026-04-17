@@ -2,14 +2,15 @@
 # =============================================================================
 # Exp1 Stage 1 (GPU): packed-collation FM training + small LR sweep
 #
-# This replaces the legacy 8-GPU vendored reference launcher. The benchmark paper
-# uses a fixed 4×A100 allocation for Stage1 across configurations.
+# The current paper rerun path standardizes on 1 GPU per model for Stage1.
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IRB_HOME="$(cd "${SCRIPT_DIR}/.." && pwd)"
+export IRB_REQUIRE_WANDB="${IRB_REQUIRE_WANDB:-true}"
+export WANDB_LOG_MODEL="${WANDB_LOG_MODEL:-checkpoint}"
 source "${IRB_HOME}/slurm/00_preamble.sh"
 cd "${IRB_HOME}"
 
@@ -25,13 +26,13 @@ FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
 # Deterministic seed-based id for reproducible naming.
 jid="s${seed}"
 
-NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-4}"
+NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-1}"
 NNODES="${SLURM_JOB_NUM_NODES:-1}"
 NODE_RANK="${SLURM_NODEID:-0}"
 
-# Benchmark contract: 4 GPUs per configuration (single node).
-if [[ "${NPROC_PER_NODE}" -ne 4 ]]; then
-  echo "ERROR: IRB_NPROC_PER_NODE must be 4 for benchmark runs (got ${NPROC_PER_NODE})." >&2
+# Benchmark contract: 1 GPU per configuration (single node).
+if [[ "${NPROC_PER_NODE}" -ne 1 ]]; then
+  echo "ERROR: IRB_NPROC_PER_NODE must be 1 for paper reruns (got ${NPROC_PER_NODE})." >&2
   exit 2
 fi
 if [[ "${NNODES}" -ne 1 ]]; then
@@ -42,6 +43,13 @@ fi
 # Optional overrides (defaults preserve paper runs).
 N_EPOCHS="${IRB_EXP1_STAGE1_EPOCHS:-1}"
 N_TRIALS="${IRB_EXP1_LR_TRIALS:-3}"
+DO_HPO="${IRB_EXP1_DO_HPO:-true}"
+RESUME_CKPT="${IRB_EXP1_RESUME_CHECKPOINT:-}"
+
+extra_resume_args=()
+if [[ -n "${RESUME_CKPT}" ]]; then
+  extra_resume_args=( --resume_from_checkpoint "${RESUME_CKPT}" )
+fi
 
 torchrun_args=( "${FMS_EHRS_HOME}/fms_ehrs/scripts/tune_model.py" )
 if [[ "${NNODES}" -gt 1 ]]; then
@@ -54,7 +62,9 @@ fi
 
 torchrun "${torchrun_args[@]}" \
   --n_epochs "${N_EPOCHS}" \
+  --do_hpo "${DO_HPO}" \
   --n_trials "${N_TRIALS}" \
+  "${extra_resume_args[@]}" \
   --data_dir "${TOKENIZED_DATA_DIR}" \
   --data_version "${data_version}" \
   --model_dir "${MODEL_DIR}" \
