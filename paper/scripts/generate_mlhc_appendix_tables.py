@@ -33,7 +33,7 @@ OUTCOME_LABELS = {
     "long_length_of_stay": "Hospital LOS $>$ 7 d",
     "icu_admission": "ICU admission",
     "prolonged_icu_stay": "ICU LOS $>$ 48 h",
-    "imv_event": "IMV",
+    "imv_event": "Invasive mechanical ventilation",
     "hyperkalemia": "Hyperkalemia",
     "severe_hypokalemia": "Severe hypokalemia",
     "severe_anemia": "Severe anemia",
@@ -89,7 +89,7 @@ HANDLE_LABELS = {
     "meds": "Native MIMIC",
     "mapped": "CLIF-mapped",
     "randomized": "Randomized mapped",
-    "freqmatched": "Frequency-matched mapped",
+    "freqmatched": "Freq-matched mapped",
 }
 
 BINARY_OUTCOME_ORDER = [
@@ -130,9 +130,9 @@ REGRESSION_OUTCOME_ORDER = [
 
 BINARY_GROUPS = [
     ("Hospital", ["same_admission_death", "long_length_of_stay"]),
-    ("ICU endpoint", ["icu_admission", "prolonged_icu_stay"]),
+    ("ICU endpoints", ["icu_admission", "prolonged_icu_stay"]),
     (
-        "Intervention",
+        "Interventions",
         ["imv_event", "vasopressor_initiation", "crrt_initiation", "hemodialysis_initiation"],
     ),
     (
@@ -318,6 +318,7 @@ def _grouped_sweep_to_latex(
     first_exp_col_width: str | None = None,
     size_cmd: str = "\\scriptsize",
     tabcolsep: int = 3,
+    note: str | None = None,
 ) -> str:
     rows_by_key = {
         str(row["OutcomeKey"]): row
@@ -362,9 +363,18 @@ def _grouped_sweep_to_latex(
         [
             "    \\bottomrule",
             "  \\end{tabular}",
-            "\\end{table*}",
         ]
     )
+    if note:
+        lines.extend(
+            [
+                "  \\vspace{1pt}",
+                "  \\begin{minipage}{0.98\\textwidth}",
+                f"  \\tiny {note}",
+                "  \\end{minipage}",
+            ]
+        )
+    lines.append("\\end{table*}")
     return "\n".join(lines)
 
 
@@ -408,6 +418,13 @@ def main() -> int:
         colspec="p{0.08\\textwidth}p{0.08\\textwidth}p{0.27\\textwidth}p{0.27\\textwidth}p{0.20\\textwidth}",
         tabcolsep=3,
     )
+    abbrev_note = (
+        "\\textit{Abbreviations.} ICU = intensive care unit; LOS = length of stay; "
+        "IMV = invasive mechanical ventilation; CRRT = continuous renal replacement therapy; "
+        "SBP = systolic blood pressure; DBP = diastolic blood pressure; BNP = B-type natriuretic peptide / NT-proBNP; "
+        "clin. = reference-range anchored clinical bins; order = event order only; tokens = inserted time tokens; "
+        "RoPE = admission-relative rotary position embeddings; Freq-matched = frequency-matched mapped codes."
+    )
     binary_tex = _grouped_sweep_to_latex(
         binary,
         groups=BINARY_GROUPS,
@@ -420,6 +437,7 @@ def main() -> int:
         ),
         label="tab:appendix_binary_sweep",
         first_exp_col_width="0.255\\textwidth",
+        note=abbrev_note,
     )
     regression_tex = _grouped_sweep_to_latex(
         regression,
@@ -431,6 +449,7 @@ def main() -> int:
             "are reported in the aligned statistics files."
         ),
         label="tab:appendix_regression_sweep",
+        note=abbrev_note,
     )
 
     _write_text(out_dir / "appendix_stats_coverage.tex", coverage_tex + "\n")

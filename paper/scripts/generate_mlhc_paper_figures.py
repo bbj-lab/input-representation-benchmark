@@ -995,10 +995,10 @@ def _plot_summary_bar_panel(
     ax.bar(
         x,
         points,
-        width=0.64,
+        width=0.68,
         color=[color_map[str(level)] for level in sub["level"]],
         edgecolor="#2A2A2A",
-        linewidth=0.7,
+        linewidth=0.8,
         zorder=3,
     )
     ax.errorbar(
@@ -1007,8 +1007,8 @@ def _plot_summary_bar_panel(
         yerr=err,
         fmt="none",
         ecolor="#222222",
-        elinewidth=1.0,
-        capsize=2.5,
+        elinewidth=1.2,
+        capsize=3.0,
         zorder=4,
     )
     lower = float(np.nanmin(ci_lo)) - 0.02
@@ -1020,14 +1020,26 @@ def _plot_summary_bar_panel(
     needs_rotation = any("\n" not in label and len(label) > 10 for label in labels)
     ax.set_xticklabels(
         labels,
-        rotation=18 if needs_rotation else 0,
+        rotation=16 if needs_rotation else 0,
         ha="right" if needs_rotation else "center",
+        fontsize=10,
     )
-    ax.set_title(title)
-    ax.set_ylabel(ylabel)
-    ax.grid(axis="y", alpha=0.25, zorder=0)
+    ax.set_title(title, fontsize=12.5, pad=6)
+    ax.set_ylabel(ylabel, fontsize=11)
+    ax.tick_params(axis="y", labelsize=10)
+    ax.grid(axis="y", alpha=0.18, linestyle=":", linewidth=0.8, zorder=0)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    for xi, yi, hi in zip(x, points, ci_hi):
+        ax.text(
+            xi,
+            hi + 0.008,
+            f"{yi:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=8.5,
+            color="#222222",
+        )
 
 
 def _exp2_marker(handle: str) -> str:
@@ -1600,7 +1612,7 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
 def build_exp1_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> None:
     source = _exp1_axis_summary_source(metrics)
     _save_source(source, out_dir / "sources" / "appendix_exp1_axis_summary_bars_source.csv")
-    fig, axes = plt.subplots(2, 3, figsize=(9.5, 7.0))
+    fig, axes = plt.subplots(2, 3, figsize=(10.2, 7.4))
     axis_specs = [
         ("Fusion", ["Unfused", "Fused"], EXP1_FUSION_SUMMARY_COLORS, None),
         ("Granularity", ["Deciles", "Ventiles", "Trentiles", "Centiles"], EXP1_GRANULARITY_SUMMARY_COLORS, None),
@@ -1638,7 +1650,7 @@ def build_exp1_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
 def build_exp2_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> None:
     source = _exp2_axis_summary_source(metrics)
     _save_source(source, out_dir / "sources" / "appendix_exp2_axis_summary_bars_source.csv")
-    fig, axes = plt.subplots(2, 2, figsize=(9.0, 7.0))
+    fig, axes = plt.subplots(2, 2, figsize=(9.4, 7.4))
     axis_specs = [
         (
             "Value encoder",
@@ -1684,7 +1696,7 @@ def build_exp2_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
 def build_exp3_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> None:
     source = _exp3_axis_summary_source(metrics)
     _save_source(source, out_dir / "sources" / "appendix_exp3_axis_summary_bars_source.csv")
-    fig, axes = plt.subplots(2, 1, figsize=(5.0, 7.5))
+    fig, axes = plt.subplots(2, 1, figsize=(5.4, 7.7))
     panel_specs = [
         ("binary", "Mean AUROC across outcomes", 0.58),
         ("regression", r"Mean Spearman $\rho$ across outcomes", 0.0),
