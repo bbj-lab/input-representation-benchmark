@@ -346,9 +346,12 @@ def _grouped_sweep_to_latex(
     ]
     for group_idx, (group_name, outcome_keys) in enumerate(groups):
         bold_italic = "\\textbf{\\textit{" + group_name + "}}"
+        if group_idx > 0:
+            lines.append("    \\midrule")
         lines.append(f"    \\multicolumn{{4}}{{l}}{{{bold_italic}}} \\\\")
-        lines.append("    \\addlinespace[1pt]")
-        for outcome_key in outcome_keys:
+        lines.append("    \\cmidrule(lr){1-4}")
+        last_idx = len(outcome_keys) - 1
+        for i, outcome_key in enumerate(outcome_keys):
             row = rows_by_key[outcome_key]
             values = [
                 _latex_escape(str(row["Outcome"])),
@@ -357,8 +360,8 @@ def _grouped_sweep_to_latex(
                 _fmt_ci_latex(str(row["Exp3"])),
             ]
             lines.append("    " + " & ".join(values) + " \\\\")
-        if group_idx != len(groups) - 1:
-            lines.append("    \\addlinespace[2pt]")
+            if i != last_idx:
+                lines.append("    \\cmidrule(lr){1-4}")
     lines.extend(
         [
             "    \\bottomrule",
