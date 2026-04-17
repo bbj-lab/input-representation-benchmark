@@ -48,8 +48,20 @@ Model-side execution is handled by the sibling `../fms-ehrs` repository.
 
 For the full file-by-file stage walkthrough, use `PIPELINE.md`.
 
-Exp3 note:
-The arm-construction step rewrites more code domains upstream, but the tokenizer used for the reported Exp3 runs reads only the `LAB` and `VITAL` event blocks. See `pipeline/scripts/build_exp3_meds_semantics_arms.py` together with `../fms-ehrs/fms_ehrs/config/mimic-meds-exp3-icu.yaml`.
+Experiment 3 note:
+The arm-construction step rewrites CLIF-covered `LAB`, `VITAL`, `MEDICATION`, and `INFUSION` codes upstream, but the tokenizer used for the reported Experiment 3 runs reads only the `LAB` and `VITAL` event blocks. See `pipeline/scripts/build_exp3_meds_semantics_arms.py` together with `../fms-ehrs/fms_ehrs/config/mimic-meds-exp3-icu.yaml`.
+
+## Reported MLHC compute environment
+
+The paper appendix keeps a short compute summary. The fuller stage-by-stage resource record for the reported MLHC runs is:
+
+- `Stage0` (`tokenization + outcomes`, CPU-only): 8 CPUs, 300 GB RAM.
+- `Stage0E` (`evaluation retokenization`, CPU-only): 8 CPUs, 80 GB RAM.
+- `Stage1` (`generative medical event model training`, GPU): 4 x `NVIDIA A100-PCIE-40GB` for Exp1, 2 x `A100` for Exp2--3, and 1 x `A100` for the xVal-affine reruns; 8--16 CPUs, 128--256 GB RAM.
+- `Stage2` (`representation extraction`, GPU): 1 x `NVIDIA A100-PCIE-40GB`, 8 CPUs, 128 GB RAM.
+- `Stage3` (`logistic regression probes`, CPU-only): 8 CPUs, 256 GB RAM.
+
+All reported jobs were single-node runs. All reported Stage1 runs used `FlashAttention-2`; those precision and kernel choices affected runtime and memory, but not the model objective or evaluation definitions.
 
 ## MLHC paper audit
 
