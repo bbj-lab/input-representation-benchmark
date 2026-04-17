@@ -50,12 +50,12 @@ Labs (hosp/labevents → code "LAB//{itemid}//{uom}"):
     50912  : Creatinine (mg/dL)
     51003  : Troponin T (ng/mL)
     51002  : Troponin I (ng/mL)                 [less common]
-    51222  : Hemoglobin (g/dL)       [blood gas]
-    50811  : Hemoglobin (g/dL)       [CBC]
-    50971  : Potassium (mEq/L)       [blood gas]
-    50822  : Potassium (mEq/L)       [chemistry]
-    50931  : Glucose (mg/dL)         [blood gas]
-    50809  : Glucose (mg/dL)         [chemistry]
+    51222  : Hemoglobin (g/dL)       [CBC / hematology]
+    50811  : Hemoglobin (g/dL)       [blood gas]
+    50971  : Potassium (mEq/L)       [chemistry]
+    50822  : Potassium (mEq/L)       [blood gas]
+    50931  : Glucose (mg/dL)         [chemistry]
+    50809  : Glucose (mg/dL)         [blood gas]
     50963  : BNP (pg/mL)
     50964  : NT-proBNP (pg/mL)
 
