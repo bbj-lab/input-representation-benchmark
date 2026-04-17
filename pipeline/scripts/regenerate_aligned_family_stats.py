@@ -100,6 +100,13 @@ def main() -> int:
         help="Optional single family to regenerate.",
     )
     parser.add_argument(
+        "--outcomes",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Optional subset of outcomes to regenerate within each selected family.",
+    )
+    parser.add_argument(
         "--skip_combine",
         action="store_true",
         help="Skip writing combined all-family CSVs.",
@@ -166,6 +173,8 @@ def main() -> int:
             ]
             if args.baseline_handle is not None:
                 sys.argv.extend(["--baseline_handle", str(args.baseline_handle)])
+            if args.outcomes:
+                sys.argv.extend(["--outcomes", *map(str, args.outcomes)])
             rc = summarize_main()
             if rc != 0:
                 return int(rc)
