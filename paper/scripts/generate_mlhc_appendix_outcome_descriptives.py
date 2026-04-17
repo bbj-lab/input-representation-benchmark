@@ -225,7 +225,7 @@ def main() -> int:
             "Exp3 and ICU LOS $>48$h is left blank for Exp1--2."
         ),
         label="tab:appendix_binary_outcome_descriptives",
-        colspec="p{0.22\\textwidth}p{0.14\\textwidth}p{0.17\\textwidth}p{0.14\\textwidth}p{0.17\\textwidth}",
+        colspec="p{0.22\\textwidth}p{0.155\\textwidth}p{0.155\\textwidth}p{0.155\\textwidth}p{0.155\\textwidth}",
         tabcolsep=3,
     )
     regression_tex = _df_to_latex(
@@ -238,7 +238,7 @@ def main() -> int:
             "cohort; Exp3 uses the ICU-only cohort."
         ),
         label="tab:appendix_regression_outcome_descriptives",
-        colspec="p{0.22\\textwidth}p{0.14\\textwidth}p{0.17\\textwidth}p{0.14\\textwidth}p{0.17\\textwidth}",
+        colspec="p{0.22\\textwidth}p{0.155\\textwidth}p{0.155\\textwidth}p{0.155\\textwidth}p{0.155\\textwidth}",
         tabcolsep=3,
     )
 
