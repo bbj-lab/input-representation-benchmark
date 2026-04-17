@@ -1595,7 +1595,7 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         source,
         out_dir / "sources" / "appendix_exp3_outcome_forests_source.csv",
     )
-    fig, axes = plt.subplots(1, 2, figsize=(9.5, 10.5), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=(15.6, 9.0), sharey=False)
     bin_src = source[source["panel"] == "binary"]
     reg_src = source[source["panel"] == "regression"]
     _plot_handle_metric_panel(
@@ -1632,8 +1632,20 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         )
         for h in EXP3_HANDLE_ORDER
     ]
-    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.015), ncol=2, frameon=False, fontsize=12)
-    fig.tight_layout(rect=[0, 0, 1, 0.90])
+    top_edge = 0.94
+    fig.tight_layout(rect=[0, 0, 1, top_edge])
+    fig.legend(
+        handles=legend_handles,
+        loc="lower left",
+        bbox_to_anchor=(0.02, top_edge, 0.96, 0.12),
+        ncol=4,
+        mode="expand",
+        frameon=False,
+        fontsize=11,
+        columnspacing=1.0,
+        handletextpad=0.5,
+        borderpad=0.0,
+    )
     fig.savefig(out_dir / "appendix_exp3_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)
 
@@ -1687,7 +1699,7 @@ def build_exp2_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
             EXP2_VALUE_SUMMARY_COLORS,
             {
                 "xVal (code-normalized)": "xVal\n(code-norm.)",
-                "xVal-affine (code-normalized + affine shift)": "xVal-affine\n(code-norm. + shift)",
+                "xVal-affine (code-normalized + affine shift)": "xVal-affine",
             },
         ),
         (
