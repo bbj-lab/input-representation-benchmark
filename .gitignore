@@ -86,7 +86,12 @@ premeds/
 
 # Model checkpoints
 models/
-artifacts/runs/
+artifacts/runs/*
+!artifacts/runs/statistics/
+artifacts/runs/statistics/*
+!artifacts/runs/statistics/paper_stats_combined/
+artifacts/runs/statistics/paper_stats_combined/*
+!artifacts/runs/statistics/paper_stats_combined/*.csv
 checkpoints/
 
 # Hydra
