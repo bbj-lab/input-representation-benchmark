@@ -432,9 +432,8 @@ def main() -> int:
         groups=BINARY_GROUPS,
         caption=(
             "\\textbf{Binary outcome sweep across experiments.} Each cell lists the best configuration "
-            "in that experiment, followed by AUROC and its 95\\% bootstrap CI. AUPRC, Brier score, "
-            "ECE-15, and baseline-centered BH-adjusted paired tests for the same outcomes are reported in the "
-            "aligned statistics files. ICU admission appears only in Experiments~1--2, ICU LOS "
+            "in that experiment, followed by AUROC and its 95\\% bootstrap CI. "
+            "ICU admission appears only in Experiments~1--2, ICU LOS "
             "$>48$h appears only in Experiment~3, and cells shown as --- are not applicable."
         ),
         label="tab:appendix_binary_sweep",
