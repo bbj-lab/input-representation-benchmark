@@ -1133,7 +1133,7 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
             markeredgecolor="#222222",
             linewidth=0,
             markersize=9,
-            label=_wrap_legend_label(f"{label}, unfused", width=22),
+            label=_wrap_legend_label(f"{label}, unfused", width=30),
             alpha=0.55,
         )
         for label, color in EXP1_COLORS.items()
@@ -1147,21 +1147,22 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
             markeredgecolor="#222222",
             linewidth=0,
             markersize=9,
-            label=_wrap_legend_label(f"{label}, fused", width=22),
+            label=_wrap_legend_label(f"{label}, fused", width=30),
             alpha=0.95,
         )
         for label, color in EXP1_COLORS.items()
     ]
-    top_edge = 0.82
+    top_edge = 0.94
     fig.tight_layout(rect=[0, 0, 1, top_edge])
     fig.legend(
         handles=legend_handles,
-        loc="lower center",
-        bbox_to_anchor=(0.5, top_edge),
-        ncol=4,
+        loc="lower left",
+        bbox_to_anchor=(0.02, top_edge, 0.96, 0.12),
+        ncol=6,
+        mode="expand",
         frameon=False,
         fontsize=10,
-        columnspacing=1.4,
+        columnspacing=1.0,
         handletextpad=0.5,
         borderpad=0.0,
     )
@@ -1522,7 +1523,7 @@ def build_exp1_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         _collect_exp1_source(metrics),
         out_dir / "sources" / "appendix_exp1_outcome_forests_source.csv",
     )
-    fig = _render_exp1_granularity_figure(metrics, (15.0, 8.0))
+    fig = _render_exp1_granularity_figure(metrics, (15.6, 9.0))
     fig.savefig(out_dir / "appendix_exp1_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)
 
@@ -1533,7 +1534,7 @@ def build_exp2_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         source,
         out_dir / "sources" / "appendix_exp2_outcome_forests_source.csv",
     )
-    fig, axes = plt.subplots(1, 2, figsize=(15.0, 8.5), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=(15.6, 9.0), sharey=False)
     bin_src = source[source["panel"] == "binary"]
     reg_src = source[source["panel"] == "regression"]
     _plot_handle_metric_panel(
@@ -1566,20 +1567,21 @@ def build_exp2_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
             markeredgecolor="#222222",
             linewidth=0,
             markersize=8,
-            label=_wrap_legend_label(EXP2_HANDLE_SHORT_LABELS[h], width=24),
+            label=_wrap_legend_label(EXP2_HANDLE_SHORT_LABELS[h], width=34),
         )
         for h in EXP2_HANDLE_ORDER
     ]
-    top_edge = 0.80
+    top_edge = 0.94
     fig.tight_layout(rect=[0, 0, 1, top_edge])
     fig.legend(
         handles=legend_handles,
-        loc="lower center",
-        bbox_to_anchor=(0.5, top_edge),
-        ncol=4,
+        loc="lower left",
+        bbox_to_anchor=(0.02, top_edge, 0.96, 0.12),
+        ncol=6,
+        mode="expand",
         frameon=False,
         fontsize=9.5,
-        columnspacing=1.4,
+        columnspacing=1.0,
         handletextpad=0.5,
         borderpad=0.0,
     )

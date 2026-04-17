@@ -349,7 +349,7 @@ def _grouped_sweep_to_latex(
         if group_idx > 0:
             lines.append("    \\midrule")
         lines.append(f"    \\multicolumn{{4}}{{l}}{{{bold_italic}}} \\\\")
-        lines.append("    \\cmidrule(lr){1-4}")
+        lines.append("    \\cmidrule{1-4}")
         last_idx = len(outcome_keys) - 1
         for i, outcome_key in enumerate(outcome_keys):
             row = rows_by_key[outcome_key]
@@ -361,7 +361,7 @@ def _grouped_sweep_to_latex(
             ]
             lines.append("    " + " & ".join(values) + " \\\\")
             if i != last_idx:
-                lines.append("    \\cmidrule(lr){1-4}")
+                lines.append("    \\cmidrule{1-4}")
     lines.extend(
         [
             "    \\bottomrule",
