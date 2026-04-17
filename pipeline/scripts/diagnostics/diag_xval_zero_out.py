@@ -325,22 +325,31 @@ def plot_z_vs_norm(
     """Scatter plot of |z| vs ||h||_2 per layer."""
     import matplotlib.pyplot as plt
 
-    n_layers = len(layer_data)
-    # Wide figure so per-layer panels stay legible in two-column PDFs.
-    fig, axes = plt.subplots(1, n_layers, figsize=(14, 5.5))
+    layer_items = sorted(layer_data.items())
+    n_layers = len(layer_items)
+    share_y = n_layers <= 2
+
+    # Figure 9 discusses layers 0 and 7; when plotting two layers, use a taller,
+    # lower-density layout so the axis labels remain legible in the PDF.
+    if n_layers <= 2:
+        fig, axes = plt.subplots(1, n_layers, figsize=(12.0, 6.8), sharey=share_y)
+    else:
+        fig_w = max(12.0, 5.2 * float(n_layers))
+        fig, axes = plt.subplots(1, n_layers, figsize=(fig_w, 6.6), sharey=False)
+
     if n_layers == 1:
         axes = [axes]
 
-    for ax, (layer_idx, data) in zip(axes, sorted(layer_data.items())):
+    for idx, (ax, (layer_idx, data)) in enumerate(zip(axes, layer_items)):
         z = np.abs(np.array(data["z_values"]))
         norms = np.array(data["norms"])
 
-        ax.scatter(z, norms, s=5, alpha=0.15, color="steelblue", rasterized=True)
+        ax.scatter(z, norms, s=8, alpha=0.15, color="steelblue", rasterized=True)
 
         # Red zone near z ≈ 0
         near_zero = z < 0.5
         if near_zero.sum() > 0:
-            ax.scatter(z[near_zero], norms[near_zero], s=8, alpha=0.3,
+            ax.scatter(z[near_zero], norms[near_zero], s=12, alpha=0.3,
                        color="red", rasterized=True, label=f"|z| < 0.5 (n={near_zero.sum()})")
 
         # Mean norm in bins
@@ -353,19 +362,21 @@ def plot_z_vs_norm(
                 bin_means.append(norms[mask].mean())
                 bin_centers.append((bins[i] + bins[i + 1]) / 2)
         if bin_centers:
-            ax.plot(bin_centers, bin_means, "k-o", markersize=5, linewidth=2.25,
+            ax.plot(bin_centers, bin_means, "k-o", markersize=7, linewidth=2.4,
                     label="Binned mean", zorder=10)
 
-        ax.set_xlabel("|z| (absolute z-score)", fontsize=18)
-        ax.set_ylabel("||h||₂ (hidden state L2 norm)", fontsize=18)
-        ax.set_title(f"Layer {layer_idx}", fontsize=19, fontweight="bold")
-        ax.tick_params(axis="both", labelsize=15)
-        ax.legend(fontsize=14)
+        ax.set_xlabel("|z| (absolute z-score)", fontsize=20)
+        if idx == 0 or not share_y:
+            ax.set_ylabel("||h||₂ (hidden state L2 norm)", fontsize=20)
+        else:
+            ax.set_ylabel("")
+        ax.set_title(f"Layer {layer_idx}", fontsize=21, fontweight="bold")
+        ax.tick_params(axis="both", labelsize=17)
+        if idx == 0 or n_layers == 1:
+            ax.legend(fontsize=16, loc="best")
         ax.grid(alpha=0.3)
 
-    fig.suptitle(f"xVal zero-out: {model_name}\n||h||₂ at [NUM] positions vs |z|",
-                 fontsize=18, fontweight="bold", y=1.02)
-    fig.tight_layout()
+    fig.tight_layout(pad=1.0)
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved zero-out plot: {output_path}")
@@ -423,6 +434,12 @@ def main():
     parser.add_argument("--split", type=str, default="test",
                         help="Data split to use (default: test, to prove inference-time failure)")
     parser.add_argument("--output_dir", type=pathlib.Path, default=pathlib.Path("outputs/diagnostics"))
+    parser.add_argument(
+        "--model_names",
+        nargs="+",
+        default=None,
+        help="Optional subset of xVal config names to run (e.g. xVal-TimeTokens xVal-Affine-TimeTokens)",
+    )
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
@@ -457,6 +474,12 @@ def main():
             "data_version": "deciles_none_unfused_time_rope_numencxval_first_24h",
         },
     ]
+
+    if args.model_names is not None:
+        requested = set(args.model_names)
+        xval_configs = [cfg for cfg in xval_configs if cfg["name"] in requested]
+        if not xval_configs:
+            raise ValueError(f"No xVal configs matched --model_names={sorted(requested)}")
 
     all_results = {}
 

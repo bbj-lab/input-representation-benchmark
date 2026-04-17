@@ -254,8 +254,8 @@ def plot_probe_results(
     x = np.arange(n_groups)
     width = 0.8 / n_bars
 
-    # Publication-sized defaults (matches appendix figures in the MLHC manuscript).
-    fig, ax = plt.subplots(figsize=(14, 7))
+    # Wide layout and larger type for two-column / appendix PDF inclusion at \linewidth.
+    fig, ax = plt.subplots(figsize=(14.5, 7.0))
     colors = plt.cm.Set2(np.linspace(0, 1, n_bars))
 
     for i, gran in enumerate(granularities):
@@ -273,12 +273,12 @@ def plot_probe_results(
         for bar, acc in zip(bars, accs):
             if acc > 0:
                 ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
-                        f"{acc:.0%}", ha="center", va="bottom", fontsize=13)
+                        f"{acc:.0%}", ha="center", va="bottom", fontsize=12)
 
     ax.set_xlabel("Lab test", fontsize=18)
-    ax.set_ylabel("LOO-CV accuracy", fontsize=18)
-    ax.set_title("Clinical boundary probe: embedding abnormality classification",
-                 fontsize=20, fontweight="bold")
+    ax.set_ylabel("LOO-CV Accuracy", fontsize=18)
+    ax.set_title("Clinical Boundary Probe: Embedding Abnormality Classification",
+                 fontsize=19, fontweight="bold")
     ax.set_xticks(x)
 
     # Use display names
@@ -292,7 +292,7 @@ def plot_probe_results(
     ax.set_ylim(0, 1.15)
     ax.axhline(y=0.5, color="red", linestyle="--", linewidth=1, alpha=0.5,
                label="Chance level")
-    ax.legend(fontsize=14, loc="upper right")
+    ax.legend(fontsize=14, loc="lower right")
     ax.grid(axis="y", alpha=0.3)
 
     fig.tight_layout()
@@ -354,18 +354,18 @@ def main():
         # the tokenized data directory that corresponds to this config.
         vocab_path = None
 
-        # Strategy: look in the cache for the matching tokenized data
+        # Strategy: support both the current artifacts/runs layout and older cache-based layouts.
         data_version = f"{quantizer}_none_unfused_time_tokens"
-        cache_base = args.models_dir.parent / ".cache" / "tokenized" / "mimiciv-3.1_meds_70-10-20"
-        tokenized_vocab = cache_base / f"{data_version}-tokenized" / "train" / "vocab.gzip"
-        if tokenized_vocab.exists():
-            vocab_path = tokenized_vocab
-        else:
-            # Try the symlinked path
-            data_base = args.models_dir.parent / "benchmarks" / "mimic-meds-extraction" / "data" / "meds" / "data"
-            tokenized_vocab = data_base / f"{data_version}-tokenized" / "train" / "vocab.gzip"
+        candidate_vocab_paths = [
+            args.models_dir.parent / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
+            args.models_dir.parent / ".cache" / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
+            args.models_dir.parent.parent / "artifacts" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
+            args.models_dir.parent.parent / "benchmarks" / "mimic-meds-extraction" / "data" / "meds" / "data" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
+        ]
+        for tokenized_vocab in candidate_vocab_paths:
             if tokenized_vocab.exists():
                 vocab_path = tokenized_vocab
+                break
 
         if vocab_path is None:
             print(f"  [SKIP] Could not find vocab.gzip for {data_version}")
