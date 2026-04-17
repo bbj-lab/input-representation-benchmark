@@ -1348,7 +1348,7 @@ def build_centile_pca_grid(out_dir: Path) -> None:
     shared_coords, shared_evr = pca_2d(shared_emb)
 
     source_rows: list[dict[str, object]] = []
-    fig = plt.figure(figsize=(17.8, 9.4))
+    fig = plt.figure(figsize=(20.0, 11.0))
     gs = fig.add_gridspec(
         2,
         4,
@@ -1377,10 +1377,10 @@ def build_centile_pca_grid(out_dir: Path) -> None:
         shared_coords[:, 0],
         shared_coords[:, 1],
         c=shared_colors,
-        s=30,
+        s=42,
         zorder=4,
         edgecolors="#222222",
-        linewidths=0.25,
+        linewidths=0.3,
     )
     shared_ax.plot(shared_coords[:, 0], shared_coords[:, 1], "k--", alpha=0.25, linewidth=0.7)
     for idx, bin_id in enumerate(shared_bins):
@@ -1406,15 +1406,16 @@ def build_centile_pca_grid(out_dir: Path) -> None:
             (shared_coords[idx, 0], shared_coords[idx, 1]),
             textcoords="offset points",
             xytext=(4, 2),
-            fontsize=7,
+            fontsize=12,
         )
     shared_ax.set_title(
         "Shared centile tokens\n(one manifold for all numeric variables)",
-        fontsize=13,
+        fontsize=19,
         fontweight="bold",
     )
-    shared_ax.set_xlabel(f"PC1 ({100 * shared_evr[0]:.1f}% var)", fontsize=11)
-    shared_ax.set_ylabel(f"PC2 ({100 * shared_evr[1]:.1f}% var)", fontsize=11)
+    shared_ax.set_xlabel(f"PC1 ({100 * shared_evr[0]:.1f}% var)", fontsize=17)
+    shared_ax.set_ylabel(f"PC2 ({100 * shared_evr[1]:.1f}% var)", fontsize=17)
+    shared_ax.tick_params(axis="both", labelsize=14)
     shared_ax.grid(alpha=0.22)
 
     for ax, (measurement_name, measurement_code) in zip(fused_axes, PCA_MEASUREMENTS):
@@ -1430,10 +1431,10 @@ def build_centile_pca_grid(out_dir: Path) -> None:
             fused_coords[:, 0],
             fused_coords[:, 1],
             c=colors,
-            s=24,
+            s=32,
             zorder=4,
             edgecolors="#222222",
-            linewidths=0.25,
+            linewidths=0.3,
         )
         ax.plot(fused_coords[:, 0], fused_coords[:, 1], "k--", alpha=0.25, linewidth=0.6)
         for idx, bin_id in enumerate(fused_bins):
@@ -1459,18 +1460,19 @@ def build_centile_pca_grid(out_dir: Path) -> None:
                 (fused_coords[idx, 0], fused_coords[idx, 1]),
                 textcoords="offset points",
                 xytext=(3, 2),
-                fontsize=6.5,
+                fontsize=11,
             )
-        ax.set_title(measurement_name, fontsize=12.5, fontweight="bold")
-        ax.set_xlabel(f"PC1 ({100 * fused_evr[0]:.1f}% var)", fontsize=10)
-        ax.set_ylabel(f"PC2 ({100 * fused_evr[1]:.1f}% var)", fontsize=10)
+        ax.set_title(measurement_name, fontsize=18, fontweight="bold")
+        ax.set_xlabel(f"PC1 ({100 * fused_evr[0]:.1f}% var)", fontsize=16)
+        ax.set_ylabel(f"PC2 ({100 * fused_evr[1]:.1f}% var)", fontsize=16)
+        ax.tick_params(axis="both", labelsize=12)
         ax.grid(alpha=0.22)
         ax.text(
             0.97,
             0.05,
             f"{len(fused_bins)} realized bins",
             transform=ax.transAxes,
-            fontsize=9,
+            fontsize=14,
             fontweight="semibold",
             va="bottom",
             ha="right",
@@ -1478,11 +1480,12 @@ def build_centile_pca_grid(out_dir: Path) -> None:
         )
 
     mappable = plt.cm.ScalarMappable(norm=Normalize(vmin=0, vmax=num_bins - 1), cmap=cmap)
-    cbar_ax = fig.add_axes([0.12, 0.07, 0.76, 0.028])
+    cbar_ax = fig.add_axes([0.12, 0.07, 0.76, 0.032])
     cbar = fig.colorbar(mappable, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label("Centile index (quantile bin id)", fontsize=11)
+    cbar.set_label("Centile index (quantile bin id)", fontsize=17)
+    cbar.ax.tick_params(labelsize=13)
     _save_source(pd.DataFrame(source_rows), out_dir / "sources" / "pca_centile_geometry_grid_source.csv")
-    fig.savefig(out_dir / "pca_centile_geometry_grid.png", dpi=220, bbox_inches="tight")
+    fig.savefig(out_dir / "pca_centile_geometry_grid.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 

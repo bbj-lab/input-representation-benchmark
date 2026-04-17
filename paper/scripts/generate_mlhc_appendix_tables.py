@@ -74,22 +74,22 @@ HANDLE_LABELS = {
     "trentiles_10_10_10_fused": "Trentiles (clin.), fused",
     "centiles_unfused": "Centiles, unfused",
     "centiles_fused": "Centiles, fused",
-    "discrete_none": "Discrete + event order only",
-    "discrete_tt": "Discrete + time tokens",
-    "discrete_rope": "Discrete + admission-relative RoPE",
-    "soft_none": "Soft + event order only",
-    "soft_tt": "Soft + time tokens",
-    "soft_rope": "Soft + admission-relative RoPE",
-    "xval_none": "xVal (code-normalized) + event order only",
-    "xval_tt": "xVal (code-normalized) + time tokens",
-    "xval_rope": "xVal (code-normalized) + admission-relative RoPE",
-    "xval_affine_none": "xVal-affine (code-normalized + affine shift) + event order only",
-    "xval_affine_tt": "xVal-affine (code-normalized + affine shift) + time tokens",
-    "xval_affine_rope": "xVal-affine (code-normalized + affine shift) + admission-relative RoPE",
-    "meds": "Native MIMIC codes",
+    "discrete_none": "Discrete + order",
+    "discrete_tt": "Discrete + tokens",
+    "discrete_rope": "Discrete + RoPE",
+    "soft_none": "Soft + order",
+    "soft_tt": "Soft + tokens",
+    "soft_rope": "Soft + RoPE",
+    "xval_none": "xVal + order",
+    "xval_tt": "xVal + tokens",
+    "xval_rope": "xVal + RoPE",
+    "xval_affine_none": "xVal-affine + order",
+    "xval_affine_tt": "xVal-affine + tokens",
+    "xval_affine_rope": "xVal-affine + RoPE",
+    "meds": "Native MIMIC",
     "mapped": "CLIF-mapped",
-    "randomized": "Randomized mapped codes",
-    "freqmatched": "Frequency-matched mapped codes",
+    "randomized": "Randomized mapped",
+    "freqmatched": "Frequency-matched mapped",
 }
 
 BINARY_OUTCOME_ORDER = [
@@ -128,10 +128,75 @@ REGRESSION_OUTCOME_ORDER = [
     "max_dbp",
 ]
 
+BINARY_GROUPS = [
+    ("Hospital", ["same_admission_death", "long_length_of_stay"]),
+    ("ICU endpoint", ["icu_admission", "prolonged_icu_stay"]),
+    (
+        "Intervention",
+        ["imv_event", "vasopressor_initiation", "crrt_initiation", "hemodialysis_initiation"],
+    ),
+    (
+        "Post-24h physiologic thresholds",
+        [
+            "hyperkalemia",
+            "severe_hypokalemia",
+            "severe_anemia",
+            "hypoglycemia",
+            "profound_hyponatremia",
+            "severe_hypernatremia",
+            "tachycardia_hr130",
+            "severe_hypertension",
+            "hypotension",
+        ],
+    ),
+]
+
+REGRESSION_GROUPS = [
+    ("Hospital", ["length_of_stay"]),
+    (
+        "Laboratory extrema",
+        [
+            "peak_creatinine",
+            "min_hemoglobin",
+            "peak_potassium",
+            "min_potassium",
+            "min_glucose",
+            "min_sodium",
+            "max_sodium",
+            "peak_troponin",
+            "peak_bnp",
+        ],
+    ),
+    ("Vital extrema", ["max_heart_rate", "max_sbp", "max_dbp"]),
+]
+
 
 def _fmt_ci(row: pd.Series) -> str:
     handle = HANDLE_LABELS.get(str(row["handle"]), str(row["handle"]))
     return f"{handle}; {row['point']:.3f} [{row['ci_lo']:.3f}, {row['ci_hi']:.3f}]"
+
+
+def _latex_escape(text: str) -> str:
+    for src, dst in (
+        ("\\", "\\textbackslash{}"),
+        ("&", "\\&"),
+        ("%", "\\%"),
+        ("_", "\\_"),
+        ("#", "\\#"),
+        ("{", "\\{"),
+        ("}", "\\}"),
+    ):
+        text = text.replace(src, dst)
+    return text
+
+
+def _fmt_ci_latex(cell: str) -> str:
+    if cell == "---":
+        return cell
+    handle, rest = cell.split("; ", 1)
+    point, ci_tail = rest.split(" [", 1)
+    ci = "[" + ci_tail
+    return f"\\shortstack[l]{{{_latex_escape(handle)}; {point}\\\\{{}}{ci}}}"
 
 
 def _best_by_outcome(
@@ -154,7 +219,7 @@ def _best_by_outcome(
 def _binary_best_table(metrics: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, str]] = []
     for outcome in BINARY_OUTCOME_ORDER:
-        row = {"Outcome": OUTCOME_LABELS[outcome]}
+        row = {"OutcomeKey": outcome, "Outcome": OUTCOME_LABELS[outcome]}
         for exp in [1, 2, 3]:
             best = _best_by_outcome(
                 metrics,
@@ -169,7 +234,7 @@ def _binary_best_table(metrics: pd.DataFrame) -> pd.DataFrame:
 def _regression_best_table(metrics: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, str]] = []
     for outcome in REGRESSION_OUTCOME_ORDER:
-        row = {"Outcome": OUTCOME_LABELS[outcome]}
+        row = {"OutcomeKey": outcome, "Outcome": OUTCOME_LABELS[outcome]}
         for exp in [1, 2, 3]:
             best = _best_by_outcome(
                 metrics,
@@ -217,19 +282,6 @@ def _df_to_latex(
     size_cmd: str = "\\scriptsize",
     tabcolsep: int = 4,
 ) -> str:
-    def _latex_escape(text: str) -> str:
-        for src, dst in (
-            ("\\", "\\textbackslash{}"),
-            ("&", "\\&"),
-            ("%", "\\%"),
-            ("_", "\\_"),
-            ("#", "\\#"),
-            ("{", "\\{"),
-            ("}", "\\}"),
-        ):
-            text = text.replace(src, dst)
-        return text
-
     header = " & ".join(_latex_escape(str(col)) for col in df.columns) + " \\\\"
     body = []
     for _, row in df.iterrows():
@@ -255,6 +307,67 @@ def _df_to_latex(
     )
 
 
+def _grouped_sweep_to_latex(
+    df: pd.DataFrame,
+    *,
+    groups: list[tuple[str, list[str]]],
+    caption: str,
+    label: str,
+    first_col_width: str = "0.17\\textwidth",
+    exp_col_width: str = "0.24\\textwidth",
+    first_exp_col_width: str | None = None,
+    size_cmd: str = "\\scriptsize",
+    tabcolsep: int = 3,
+) -> str:
+    rows_by_key = {
+        str(row["OutcomeKey"]): row
+        for _, row in df.iterrows()
+    }
+    exp1_w = first_exp_col_width if first_exp_col_width else exp_col_width
+    colspec = (
+        f">{{\\raggedright\\arraybackslash}}p{{{first_col_width}}}"
+        f">{{\\raggedright\\arraybackslash}}p{{{exp1_w}}}"
+        f">{{\\raggedright\\arraybackslash}}p{{{exp_col_width}}}"
+        f">{{\\raggedright\\arraybackslash}}p{{{exp_col_width}}}"
+    )
+    lines = [
+        "\\begin{table*}[t]",
+        "  \\centering",
+        f"  \\caption{{{caption}}}",
+        f"  \\label{{{label}}}",
+        f"  {size_cmd}",
+        "  \\renewcommand{\\arraystretch}{1.12}",
+        f"  \\setlength{{\\tabcolsep}}{{{tabcolsep}pt}}",
+        f"  \\begin{{tabular}}{{{colspec}}}",
+        "    \\toprule",
+        "    Outcome & Exp1 & Exp2 & Exp3 \\\\",
+        "    \\midrule",
+    ]
+    for group_idx, (group_name, outcome_keys) in enumerate(groups):
+        bold_italic = "\\textbf{\\textit{" + group_name + "}}"
+        lines.append(f"    \\multicolumn{{4}}{{l}}{{{bold_italic}}} \\\\")
+        lines.append("    \\addlinespace[1pt]")
+        for outcome_key in outcome_keys:
+            row = rows_by_key[outcome_key]
+            values = [
+                _latex_escape(str(row["Outcome"])),
+                _fmt_ci_latex(str(row["Exp1"])),
+                _fmt_ci_latex(str(row["Exp2"])),
+                _fmt_ci_latex(str(row["Exp3"])),
+            ]
+            lines.append("    " + " & ".join(values) + " \\\\")
+        if group_idx != len(groups) - 1:
+            lines.append("    \\addlinespace[2pt]")
+    lines.extend(
+        [
+            "    \\bottomrule",
+            "  \\end{tabular}",
+            "\\end{table*}",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
@@ -277,8 +390,8 @@ def main() -> int:
     regression = _regression_best_table(metrics)
 
     coverage.to_csv(out_dir / "appendix_stats_coverage.csv", index=False)
-    binary.to_csv(out_dir / "appendix_binary_sweep.csv", index=False)
-    regression.to_csv(out_dir / "appendix_regression_sweep.csv", index=False)
+    binary.drop(columns=["OutcomeKey"]).to_csv(out_dir / "appendix_binary_sweep.csv", index=False)
+    regression.drop(columns=["OutcomeKey"]).to_csv(out_dir / "appendix_regression_sweep.csv", index=False)
 
     coverage_tex = _df_to_latex(
         coverage.rename(columns={"Experiment": "Exp."}),
@@ -295,42 +408,29 @@ def main() -> int:
         colspec="p{0.08\\textwidth}p{0.08\\textwidth}p{0.27\\textwidth}p{0.27\\textwidth}p{0.20\\textwidth}",
         tabcolsep=3,
     )
-    binary_tex = _df_to_latex(
+    binary_tex = _grouped_sweep_to_latex(
         binary,
+        groups=BINARY_GROUPS,
         caption=(
-            "\\textbf{Full binary-outcome sweep} (best AUROC with 95\\% bootstrap CI for each "
-            "experiment). Each cell reports the best-performing configuration within that "
-            "experiment on the named binary outcome. AUPRC, Brier score, ECE-15, and the "
-            "baseline-centered BH-corrected paired permutation results for the same outcomes are "
-            "reported in the aligned statistics files. ICU admission appears only in Experiments~1--2; ICU LOS "
-            "$>48$h appears only in Experiment~3."
+            "\\textbf{Binary outcome sweep across experiments.} Each cell lists the best configuration "
+            "in that experiment, followed by AUROC and its 95\\% bootstrap CI. AUPRC, Brier score, "
+            "ECE-15, and baseline-centered BH-adjusted paired tests for the same outcomes are reported in the "
+            "aligned statistics files. ICU admission appears only in Experiments~1--2, ICU LOS "
+            "$>48$h appears only in Experiment~3, and cells shown as --- are not applicable."
         ),
         label="tab:appendix_binary_sweep",
-        colspec=(
-            ">{\\raggedright\\arraybackslash}p{0.17\\textwidth}"
-            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
-            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
-            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
-        ),
-        tabcolsep=2,
+        first_exp_col_width="0.255\\textwidth",
     )
-    regression_tex = _df_to_latex(
+    regression_tex = _grouped_sweep_to_latex(
         regression,
+        groups=REGRESSION_GROUPS,
         caption=(
-            "\\textbf{Full regression-outcome sweep} (best Spearman $\\rho$ with 95\\% bootstrap CI "
-            "for each experiment). Each cell reports the best-performing configuration within that "
-            "experiment on the named regression outcome. $R^2$, MAE, RMSE, and the baseline-centered "
-            "BH-corrected paired permutation results for the same outcomes are reported in the aligned "
-            "statistics files."
+            "\\textbf{Regression outcome sweep across experiments.} Each cell lists the best "
+            "configuration in that experiment, followed by Spearman $\\rho$ and its 95\\% bootstrap CI. "
+            "$R^2$, MAE, RMSE, and baseline-centered BH-adjusted paired tests for the same outcomes "
+            "are reported in the aligned statistics files."
         ),
         label="tab:appendix_regression_sweep",
-        colspec=(
-            ">{\\raggedright\\arraybackslash}p{0.17\\textwidth}"
-            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
-            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
-            ">{\\raggedright\\arraybackslash}p{0.265\\textwidth}"
-        ),
-        tabcolsep=2,
     )
 
     _write_text(out_dir / "appendix_stats_coverage.tex", coverage_tex + "\n")
