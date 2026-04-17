@@ -156,6 +156,48 @@ ensure_symlink() {
   ln -s "${target}" "${link}"
 }
 
+sync_stage0_products() {
+  local src_root="$1"
+  local dst_root="$2"
+  local src_real dst_real
+
+  if [[ ! -e "${src_root}" ]]; then
+    return 0
+  fi
+
+  src_real="$(realpath -m "${src_root}")"
+  dst_real="$(realpath -m "${dst_root}")"
+  if [[ "${src_real}" == "${dst_real}" ]]; then
+    return 0
+  fi
+
+  mkdir -p "${dst_root}"
+  for s in train val test; do
+    if [[ -d "${src_root}/${s}" ]]; then
+      mkdir -p "${dst_root}/${s}"
+      for f in tokens_timelines.parquet tokens_timelines_outcomes.parquet tokens_timelines_extended_outcomes.parquet; do
+        if [[ -f "${src_root}/${s}/${f}" ]]; then
+          ln -sfn "${src_root}/${s}/${f}" "${dst_root}/${s}/${f}"
+        fi
+      done
+    fi
+  done
+
+  if [[ -d "${src_root}/train" ]]; then
+    mkdir -p "${dst_root}/train"
+    for f in vocab.gzip numeric_stats.json; do
+      if [[ -f "${src_root}/train/${f}" ]]; then
+        ln -sfn "${src_root}/train/${f}" "${dst_root}/train/${f}"
+      fi
+    done
+  fi
+}
+
+sync_stage0_products "${LEGACY_LINK_24H}" "${TARGET_24H}"
+if [[ "${ONLY_24H_CUT}" != "true" ]]; then
+  sync_stage0_products "${LEGACY_LINK_MAIN}" "${TARGET_MAIN}"
+fi
+
 if [[ "${IRB_STAGE0_CREATE_TOKENIZED_LINKS}" == "true" ]]; then
   ensure_symlink "${TARGET_24H}" "${LEGACY_LINK_24H}"
   LINK_24H="${LEGACY_LINK_24H}"
@@ -372,6 +414,11 @@ else
 
   python "${FMS_EHRS_HOME}/fms_ehrs/scripts/tokenize_w_config.py" "${tokenize_args[@]}"
 
+  sync_stage0_products "${LEGACY_LINK_24H}" "${TARGET_24H}"
+  if [[ "${ONLY_24H_CUT}" != "true" ]]; then
+    sync_stage0_products "${LEGACY_LINK_MAIN}" "${TARGET_MAIN}"
+  fi
+
   # ---------------------------------------------------------------------------
   # Post-tokenization validity checks (fail loudly)
   #
@@ -428,6 +475,11 @@ else
     --tokenized_dir "${LINK_24H}" \
     --splits train,val,test \
     --strict
+fi
+
+sync_stage0_products "${LEGACY_LINK_24H}" "${TARGET_24H}"
+if [[ "${ONLY_24H_CUT}" != "true" ]]; then
+  sync_stage0_products "${LEGACY_LINK_MAIN}" "${TARGET_MAIN}"
 fi
 
 for s in train val test; do
