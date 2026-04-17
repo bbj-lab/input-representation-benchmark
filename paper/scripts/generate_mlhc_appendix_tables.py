@@ -349,7 +349,6 @@ def _grouped_sweep_to_latex(
         if group_idx > 0:
             lines.append("    \\midrule")
         lines.append(f"    \\multicolumn{{4}}{{l}}{{{bold_italic}}} \\\\")
-        lines.append("    \\cmidrule{1-4}")
         last_idx = len(outcome_keys) - 1
         for i, outcome_key in enumerate(outcome_keys):
             row = rows_by_key[outcome_key]
@@ -447,9 +446,7 @@ def main() -> int:
         groups=REGRESSION_GROUPS,
         caption=(
             "\\textbf{Regression outcome sweep across experiments.} Each cell lists the best "
-            "configuration in that experiment, followed by Spearman $\\rho$ and its 95\\% bootstrap CI. "
-            "$R^2$, MAE, RMSE, and baseline-centered BH-adjusted paired tests for the same outcomes "
-            "are reported in the aligned statistics files."
+            "configuration in that experiment, followed by Spearman $\\rho$ and its 95\\% bootstrap CI."
         ),
         label="tab:appendix_regression_sweep",
         note=abbrev_note,
