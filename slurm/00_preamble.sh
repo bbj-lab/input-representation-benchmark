@@ -146,7 +146,7 @@ export IRB_XVAL_NUMERIC_LOSS_WEIGHT="${IRB_XVAL_NUMERIC_LOSS_WEIGHT:-1.0}"
 export IRB_XVAL_CLIP_SIGMA="${IRB_XVAL_CLIP_SIGMA:-5.0}"
 
 # -----------------------------------------------------------------------------
-# Optional training performance knobs (objective-preserving)
+# Optional training performance settings (objective-preserving)
 #
 # These do not change the data, labels, or loss definitions; they only select
 # numerics / kernel implementations for speed and memory efficiency.

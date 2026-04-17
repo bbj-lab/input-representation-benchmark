@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Preflight check for optional performance knobs (bf16 + attention backend).
+Preflight check for optional performance settings (bf16 + attention backend).
 
 This script is intended to be run *on a GPU node* (e.g., via gpuq) to verify:
 - CUDA visibility
