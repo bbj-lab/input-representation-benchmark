@@ -313,11 +313,11 @@ def _grouped_sweep_to_latex(
     groups: list[tuple[str, list[str]]],
     caption: str,
     label: str,
-    first_col_width: str = "0.17\\textwidth",
-    exp_col_width: str = "0.24\\textwidth",
+    first_col_width: str = "0.16\\textwidth",
+    exp_col_width: str = "0.235\\textwidth",
     first_exp_col_width: str | None = None,
-    size_cmd: str = "\\scriptsize",
-    tabcolsep: int = 3,
+    size_cmd: str = "\\tiny",
+    tabcolsep: int = 2,
     note: str | None = None,
 ) -> str:
     rows_by_key = {
@@ -332,7 +332,7 @@ def _grouped_sweep_to_latex(
         f">{{\\raggedright\\arraybackslash}}p{{{exp_col_width}}}"
     )
     lines = [
-        "\\begin{table*}[t]",
+        "\\begin{table*}[!t]",
         "  \\centering",
         f"  \\caption{{{caption}}}",
         f"  \\label{{{label}}}",
@@ -368,9 +368,9 @@ def _grouped_sweep_to_latex(
     if note:
         lines.extend(
             [
-                "  \\vspace{1pt}",
+                "  \\vspace{0.5pt}",
                 "  \\begin{minipage}{0.98\\textwidth}",
-                f"  \\tiny {note}",
+                f"  \\scriptsize {note}",
                 "  \\end{minipage}",
             ]
         )
@@ -436,7 +436,7 @@ def main() -> int:
             "$>48$h appears only in Experiment~3, and cells shown as --- are not applicable."
         ),
         label="tab:appendix_binary_sweep",
-        first_exp_col_width="0.255\\textwidth",
+        first_exp_col_width="0.245\\textwidth",
         note=abbrev_note,
     )
     regression_tex = _grouped_sweep_to_latex(

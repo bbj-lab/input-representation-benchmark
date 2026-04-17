@@ -12,6 +12,7 @@ import argparse
 from pathlib import Path
 import subprocess
 import sys
+import textwrap
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -137,18 +138,18 @@ PCA_MEASUREMENTS = [
 ]
 
 EXP1_HANDLE_SHORT_LABELS = {
-    "deciles_unfused": "Dec U",
-    "deciles_fused": "Dec F",
-    "ventiles_unfused": "Vent U",
-    "ventiles_fused": "Vent F",
-    "ventiles_5_10_5_unfused": "VentC U",
-    "ventiles_5_10_5_fused": "VentC F",
-    "trentiles_unfused": "Trent U",
-    "trentiles_fused": "Trent F",
-    "trentiles_10_10_10_unfused": "TrentC U",
-    "trentiles_10_10_10_fused": "TrentC F",
-    "centiles_unfused": "Cent U",
-    "centiles_fused": "Cent F",
+    "deciles_unfused": "Deciles (population), unfused",
+    "deciles_fused": "Deciles (population), fused",
+    "ventiles_unfused": "Ventiles (population), unfused",
+    "ventiles_fused": "Ventiles (population), fused",
+    "ventiles_5_10_5_unfused": "Ventiles (clinical), unfused",
+    "ventiles_5_10_5_fused": "Ventiles (clinical), fused",
+    "trentiles_unfused": "Trentiles (population), unfused",
+    "trentiles_fused": "Trentiles (population), fused",
+    "trentiles_10_10_10_unfused": "Trentiles (clinical), unfused",
+    "trentiles_10_10_10_fused": "Trentiles (clinical), fused",
+    "centiles_unfused": "Centiles (population), unfused",
+    "centiles_fused": "Centiles (population), fused",
 }
 
 EXP1_TREND_COMPARISONS = [
@@ -230,18 +231,18 @@ EXP2_HANDLE_ORDER = [
 ]
 
 EXP2_HANDLE_SHORT_LABELS = {
-    "discrete_none": "Disc event order",
-    "soft_none": "Soft event order",
-    "xval_none": "xVal-CN event order",
-    "xval_affine_none": "xVal-Aff event order",
-    "discrete_tt": "Disc time tokens",
-    "soft_tt": "Soft time tokens",
-    "xval_tt": "xVal-CN time tokens",
-    "xval_affine_tt": "xVal-Aff time tokens",
-    "discrete_rope": "Disc adm.-rel. RoPE",
-    "soft_rope": "Soft adm.-rel. RoPE",
-    "xval_rope": "xVal-CN adm.-rel. RoPE",
-    "xval_affine_rope": "xVal-Aff adm.-rel. RoPE",
+    "discrete_none": "Discrete + event order only",
+    "soft_none": "Soft discretization + event order only",
+    "xval_none": "xVal (code-normalized) + event order only",
+    "xval_affine_none": "xVal-affine (code-normalized + affine shift) + event order only",
+    "discrete_tt": "Discrete + time tokens",
+    "soft_tt": "Soft discretization + time tokens",
+    "xval_tt": "xVal (code-normalized) + time tokens",
+    "xval_affine_tt": "xVal-affine (code-normalized + affine shift) + time tokens",
+    "discrete_rope": "Discrete + admission-relative RoPE",
+    "soft_rope": "Soft discretization + admission-relative RoPE",
+    "xval_rope": "xVal (code-normalized) + admission-relative RoPE",
+    "xval_affine_rope": "xVal-affine (code-normalized + affine shift) + admission-relative RoPE",
 }
 
 EXP2_HANDLE_COLORS = {
@@ -1088,6 +1089,10 @@ def _wrap_bar_tick_label(label: str) -> str:
     return replacements.get(label, label)
 
 
+def _wrap_legend_label(label: str, width: int = 24) -> str:
+    return "\n".join(textwrap.wrap(label, width=width, break_long_words=False))
+
+
 def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float, float]) -> plt.Figure:
     handle_order = [handle for handle, _, _ in EXP1_ORDER]
     handle_map = {handle: (granularity, tokenization) for handle, granularity, tokenization in EXP1_ORDER}
@@ -1128,7 +1133,7 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
             markeredgecolor="#222222",
             linewidth=0,
             markersize=9,
-            label=f"{label}, unfused",
+            label=_wrap_legend_label(f"{label}, unfused", width=22),
             alpha=0.55,
         )
         for label, color in EXP1_COLORS.items()
@@ -1142,12 +1147,12 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
             markeredgecolor="#222222",
             linewidth=0,
             markersize=9,
-            label=f"{label}, fused",
+            label=_wrap_legend_label(f"{label}, fused", width=22),
             alpha=0.95,
         )
         for label, color in EXP1_COLORS.items()
     ]
-    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.01), ncol=4, frameon=False, fontsize=12)
+    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.03), ncol=2, frameon=False, fontsize=10)
     fig.tight_layout(rect=[0, 0, 1, 0.90])
     return fig
 
@@ -1550,12 +1555,12 @@ def build_exp2_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
             markeredgecolor="#222222",
             linewidth=0,
             markersize=8,
-            label=EXP2_HANDLE_SHORT_LABELS[h],
+            label=_wrap_legend_label(EXP2_HANDLE_SHORT_LABELS[h], width=24),
         )
         for h in EXP2_HANDLE_ORDER
     ]
-    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.02), ncol=4, frameon=False, fontsize=12)
-    fig.tight_layout(rect=[0, 0, 1, 0.83])
+    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 1.06), ncol=2, frameon=False, fontsize=9.5)
+    fig.tight_layout(rect=[0, 0, 1, 0.76])
     fig.savefig(out_dir / "appendix_exp2_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)
 
