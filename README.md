@@ -63,9 +63,9 @@ The paper appendix keeps a short compute summary. The fuller stage-by-stage reso
 
 All reported jobs were single-node runs. All reported Stage1 runs used `FlashAttention-2`; those precision and kernel choices affected runtime and memory, but not the model objective or evaluation definitions.
 
-## MLHC paper audit
+## Statistics files for Reproducibility
 
-| Surface | What it stores | First use |
+| File name | What it stores | First use |
 | --- | --- | --- |
 | `artifacts/runs/statistics/paper_stats_run_artifacts/all_family_metrics.csv` | Master point estimates and 95% CIs for every reported handle, outcome, and metric. | First stop for nearly every AUROC, Spearman rho, AUPRC, Brier, and ECE value in `paper.tex`. |
 | `artifacts/runs/statistics/paper_stats_run_artifacts/all_family_pairwise.csv` | Paired permutation deltas and BH-adjusted p-values for all within-family handle comparisons. | Use for inferential comparisons and non-baseline pairwise checks. |
