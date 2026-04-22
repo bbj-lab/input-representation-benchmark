@@ -84,13 +84,13 @@ transformation.
 | `hosp/emar` | `medication`, `event_txt`, `storetime` | yes | no | `MEDICATION//drug//action` codes |
 | `hosp/transfers` | `eventtype`, `careunit`, `intime` | yes | no | `TRANSFER_TO//eventtype//careunit` codes |
 | `icu/icustays` | `first_careunit`, `intime`, `last_careunit`, `outtime` | yes | cohort only | `ICU_ADMISSION//*` and `ICU_DISCHARGE//*` codes in Exp1-2; ICU-stay linkage only in Exp3 |
-| `icu/chartevents` | `itemid`, `valueuom`, `storetime`, `valuenum` | no | yes | `VITAL//itemid//unit` codes and numeric values |
+| `icu/chartevents` | `itemid`, `valueuom`, `storetime`, `valuenum` | yes | yes | `VITAL//itemid//unit` codes and numeric values |
 | `icu/procedureevents` | `itemid`, `storetime` | yes | no | aggregated `PROC_*` suffix tokens |
 
 Important notes:
 
 - Reported Exp1-2 models use shared prefix tokens (`RACE`, `LANG`, `SEX`,
-  age, `INSR`, `MRRD`, `ADMN`), event blocks (`LAB`, `MEDICATION`,
+  age, `INSR`, `MRRD`, `ADMN`), event blocks (`VITAL`, `LAB`, `MEDICATION`,
   `TRANSFER_TO`, `ICU_ADMISSION`, `ICU_DISCHARGE`), and suffix tokens
   (`DSCG`, `PROC`).
 - Reported Exp3 models use the same static prefix and suffix scaffold, but only
