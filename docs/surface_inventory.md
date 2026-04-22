@@ -1,10 +1,10 @@
-# Surface Inventory (Benchmark Reorg)
+# File inventory (benchmark reorg)
 
-This inventory classifies the active code surface for the benchmark-first layout.
+This inventory classifies the active code and file layout for the benchmark-first setup.
 
 ## Pipeline-Critical
 
-These paths are part of the Stage0 -> Stage3 -> stats -> paper refresh chain.
+These paths are part of the Stage0 -> Stage3 -> stats -> paper build chain.
 
 - `pipeline/run_experiments.py`
 - `slurm/00_preamble.sh`
@@ -42,10 +42,10 @@ These paths are part of the Stage0 -> Stage3 -> stats -> paper refresh chain.
 - `artifacts/`
 - `benchmarks/mimic-meds-extraction/`
 
-## Active manuscript surfaces
+## Active manuscript files
 
-These paths are the current paper-facing surfaces for the MLHC manuscript and
-its supporting statistics.
+These paths are the current manuscript files for the MLHC paper and its
+supporting statistics.
 
 - `../MLHC2026/MLHC/paper.tex`
 - `../MLHC2026/MLHC/generated/`
@@ -107,7 +107,7 @@ These paths are outside the active benchmark path and are treated as deprecated.
 - `deprecated/models_archive/`
 - `deprecated/figures/`
 
-## Freeze Notes
+## Freeze notes
 
-- Local submit-time jobfiles under `slurm/generated/` are disposable and should not be treated as versioned surfaces.
-- Archived rerun-specific jobfiles that still matter for audit belong under `deprecated/`, not under the live `slurm/` tree.
+- Local submit-time jobfiles under `slurm/generated/` are disposable and should not be treated as versioned files.
+- Archived rerun-specific jobfiles that still matter for later review belong under `deprecated/`, not under the live `slurm/` tree.

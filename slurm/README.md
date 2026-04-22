@@ -22,7 +22,7 @@ Use `../pipeline/`, `../paper/`, and `../utilities/` directly for the Python ent
 - `generated/statistics/`: local stats rerun sheets emitted by the submit helpers
 - `generated/outcome_reruns/`: local outcome rerun sheets emitted during one-off refreshes
 
-Completed rerun-specific sheets that still matter for audit should be moved under `../deprecated/slurm/`.
+Completed rerun-specific sheets that still matter for later review should be moved under `../deprecated/slurm/`.
 
 ## Vendored Stage 2/3 wrappers
 

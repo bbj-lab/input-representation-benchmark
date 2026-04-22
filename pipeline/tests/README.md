@@ -1,6 +1,6 @@
 # Pipeline Tests
 
-This directory is the main audit surface for pipeline script verification.
+This directory is the main place to check pipeline scripts.
 
 ## Layout
 

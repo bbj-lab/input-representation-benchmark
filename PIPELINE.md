@@ -1,6 +1,7 @@
-# Benchmark Pipeline
+# Benchmark pipeline
 
-This file maps the live benchmark path from raw MEDS data to manuscript assets. It only covers the active path.
+This file maps the current benchmark path from raw MEDS data to the paper
+files. It only covers the current workflow.
 
 ## 1. Data preparation
 
@@ -14,7 +15,8 @@ Use the extraction wrapper under `benchmarks/mimic-meds-extraction/` to populate
 
 ### Exp3 cohort and arms
 
-Exp3 needs a fixed ICU-hospitalization cohort plus three derived semantic-control arms.
+Exp3 needs a fixed ICU-hospitalization cohort plus three derived comparison
+arms.
 
 Live scripts:
 
@@ -22,7 +24,7 @@ Live scripts:
 - `pipeline/scripts/split_meds_by_hadm_splits.py`
 - `pipeline/scripts/build_exp3_meds_semantics_arms.py`
 
-Outputs land under `artifacts/runs/exp3/`.
+Outputs are written under `artifacts/runs/exp3/`.
 
 ## 2. Stage 0: tokenization + base outcomes
 
@@ -41,7 +43,7 @@ Main outputs:
 - `<data_version>_first_24h-tokenized/<split>/tokens_timelines.parquet`
 - `<data_version>_first_24h-tokenized/<split>/tokens_timelines_outcomes.parquet`
 
-## 3. Extended outcome refresh
+## 3. Extended outcomes
 
 Entry points:
 
@@ -98,26 +100,26 @@ Entry points:
 - `pipeline/scripts/regenerate_aligned_family_stats.py`
 - `slurm/15_run_stats_cpu_jobfile.sh`
 - `slurm/15_submit_aligned_family_stats.sh`
-- local jobfiles emitted under `slurm/generated/statistics/`
+- local jobfiles written under `slurm/generated/statistics/`
 
 Primary stats root:
 
 - `artifacts/runs/statistics/paper_stats_run_artifacts/`
 
-## 8. Paper refresh
+## 8. Table and figure build
 
 Entry points:
 
 - `paper/scripts/generate_mlhc_appendix_tables.py`
 - `paper/scripts/generate_mlhc_appendix_outcome_descriptives.py`
 - `paper/scripts/generate_mlhc_paper_figures.py`
-- external manuscript file `../697b81f1f269207e5416f18d/MLHC/paper.tex`
+- manuscript file `../MLHC2026/MLHC/paper.tex`
 
 Outputs:
 
-- `../697b81f1f269207e5416f18d/MLHC/generated/`
-- `../697b81f1f269207e5416f18d/MLHC/figures/`
-- `../697b81f1f269207e5416f18d/MLHC/figures/sources/`
+- `../MLHC2026/MLHC/generated/`
+- `../MLHC2026/MLHC/figures/`
+- `../MLHC2026/MLHC/figures/sources/`
 
 ## 9. Order of operations
 
@@ -127,11 +129,11 @@ Outputs:
 4. Materialize winner files.
 5. Run Exp2.
 6. Run Exp3.
-7. Refresh extended outcomes if needed.
+7. Build extended outcomes if needed.
 8. Regenerate aligned family stats.
 9. Rebuild tables, figures, and manuscript assets.
 
-## 10. Audit checks
+## 10. Verification checks
 
 - `pipeline/tests/unit/`: unit and contract checks for pipeline scripts.
 - `pipeline/tests/dryrun/`: one dry-run wrapper per pipeline script.

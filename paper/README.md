@@ -1,9 +1,9 @@
-# Paper Surface
+# Paper scripts
 
-`paper/` contains manuscript refresh scripts.
+`paper/` contains manuscript table and figure scripts.
 
 - `paper/scripts/generate_mlhc_appendix_tables.py`
 - `paper/scripts/generate_mlhc_appendix_outcome_descriptives.py`
 - `paper/scripts/generate_mlhc_paper_figures.py`
 
-These scripts rebuild outputs in the external manuscript checkout under `../697b81f1f269207e5416f18d/MLHC/`.
+These scripts rebuild outputs in the manuscript checkout used for the paper.
