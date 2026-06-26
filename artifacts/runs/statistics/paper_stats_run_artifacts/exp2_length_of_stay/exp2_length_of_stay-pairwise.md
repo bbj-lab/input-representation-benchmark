@@ -1,0 +1,30 @@
+| family_name | task_type | outcome | metric | handle0 | handle1 | n_eval_common | alignment_mode | delta_better_ci95 | p_raw | p_adj |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| exp2_length_of_stay | regression | length_of_stay | spearman_rho | discrete_tt | soft_tt | 63750 | hospitalization_id | 0.0012 [-0.0022, 0.0048] | 0.5017491254372813 | 0.5017491254372813 |
+| exp2_length_of_stay | regression | length_of_stay | r2 | discrete_tt | soft_tt | 63750 | hospitalization_id | -0.0029 [-0.0060, 0.0006] | 0.09495252373813093 | 0.11077794436115275 |
+| exp2_length_of_stay | regression | length_of_stay | mae | discrete_tt | soft_tt | 63750 | hospitalization_id | -0.0412 [-0.2858, 0.2277] | 0.7656171914042978 | 0.7656171914042978 |
+| exp2_length_of_stay | regression | length_of_stay | rmse | discrete_tt | soft_tt | 63750 | hospitalization_id | -0.2775 [-0.5851, 0.0535] | 0.09495252373813093 | 0.11077794436115275 |
+| exp2_length_of_stay | regression | length_of_stay | spearman_rho | discrete_tt | xval_tt | 63750 | hospitalization_id | -0.1163 [-0.1219, -0.1110] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | r2 | discrete_tt | xval_tt | 63750 | hospitalization_id | -0.0614 [-0.0674, -0.0557] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | mae | discrete_tt | xval_tt | 63750 | hospitalization_id | -4.2568 [-4.6118, -3.9081] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | rmse | discrete_tt | xval_tt | 63750 | hospitalization_id | -5.8688 [-6.4554, -5.3190] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | spearman_rho | discrete_tt | xval_affine_tt | 63750 | hospitalization_id | -0.1273 [-0.1330, -0.1217] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | r2 | discrete_tt | xval_affine_tt | 63750 | hospitalization_id | -0.0693 [-0.0753, -0.0637] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | mae | discrete_tt | xval_affine_tt | 63750 | hospitalization_id | -5.0839 [-5.4553, -4.7167] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | rmse | discrete_tt | xval_affine_tt | 63750 | hospitalization_id | -6.6072 [-7.2065, -6.0548] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | spearman_rho | discrete_tt | discrete_rope | 63750 | hospitalization_id | 0.0049 [0.0012, 0.0084] | 0.0074962518740629685 | 0.010494752623688156 |
+| exp2_length_of_stay | regression | length_of_stay | r2 | discrete_tt | discrete_rope | 63750 | hospitalization_id | 0.0023 [-0.0011, 0.0058] | 0.191904047976012 | 0.191904047976012 |
+| exp2_length_of_stay | regression | length_of_stay | mae | discrete_tt | discrete_rope | 63750 | hospitalization_id | 0.3724 [0.1026, 0.6462] | 0.0034982508745627187 | 0.004897551224387806 |
+| exp2_length_of_stay | regression | length_of_stay | rmse | discrete_tt | discrete_rope | 63750 | hospitalization_id | 0.2209 [-0.1104, 0.5570] | 0.191904047976012 | 0.191904047976012 |
+| exp2_length_of_stay | regression | length_of_stay | spearman_rho | discrete_tt | soft_rope | 63750 | hospitalization_id | -0.0027 [-0.0065, 0.0012] | 0.15442278860569716 | 0.18015992003998002 |
+| exp2_length_of_stay | regression | length_of_stay | r2 | discrete_tt | soft_rope | 63750 | hospitalization_id | -0.0039 [-0.0073, -0.0004] | 0.0239880059970015 | 0.0335832083958021 |
+| exp2_length_of_stay | regression | length_of_stay | mae | discrete_tt | soft_rope | 63750 | hospitalization_id | 0.0666 [-0.2183, 0.3356] | 0.6291854072963519 | 0.7340496418457438 |
+| exp2_length_of_stay | regression | length_of_stay | rmse | discrete_tt | soft_rope | 63750 | hospitalization_id | -0.3795 [-0.7090, -0.0434] | 0.0239880059970015 | 0.0335832083958021 |
+| exp2_length_of_stay | regression | length_of_stay | spearman_rho | discrete_tt | xval_rope | 63750 | hospitalization_id | -0.1178 [-0.1233, -0.1125] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | r2 | discrete_tt | xval_rope | 63750 | hospitalization_id | -0.0597 [-0.0659, -0.0541] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | mae | discrete_tt | xval_rope | 63750 | hospitalization_id | -4.3135 [-4.6608, -3.9593] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | rmse | discrete_tt | xval_rope | 63750 | hospitalization_id | -5.7128 [-6.3054, -5.1541] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | spearman_rho | discrete_tt | xval_affine_rope | 63750 | hospitalization_id | -0.1282 [-0.1340, -0.1224] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | r2 | discrete_tt | xval_affine_rope | 63750 | hospitalization_id | -0.0725 [-0.0788, -0.0666] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | mae | discrete_tt | xval_affine_rope | 63750 | hospitalization_id | -5.3431 [-5.7267, -4.9544] | 0.0004997501249375312 | 0.0008745627186406797 |
+| exp2_length_of_stay | regression | length_of_stay | rmse | discrete_tt | xval_affine_rope | 63750 | hospitalization_id | -6.9109 [-7.5213, -6.3297] | 0.0004997501249375312 | 0.0008745627186406797 |

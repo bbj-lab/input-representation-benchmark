@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=irb-lr
 #SBATCH --output=./slurm/output/%A_%a-%x.stdout
-#SBATCH --partition=tier2q
+#SBATCH --partition=tier3q
 #SBATCH --mem=256GB
 #SBATCH --cpus-per-task=8
 #SBATCH --time=1-00:00:00
 
 # =============================================================================
-# Runner (Stage 3; tier2q; CPU): executes the Nth line of a jobfile
+# Runner (Stage 3; tier3q; CPU): executes the Nth line of a jobfile
 # =============================================================================
 
 set -euo pipefail

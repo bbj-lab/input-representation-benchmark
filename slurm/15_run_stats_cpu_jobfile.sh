@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=irb-stats
 #SBATCH --output=./slurm/output/%A_%a-%x.stdout
-#SBATCH --partition=tier2q
+#SBATCH --partition=tier3q
 #SBATCH --mem=64GB
 #SBATCH --cpus-per-task=4
 #SBATCH --time=3-00:00:00

@@ -45,7 +45,7 @@ MODEL_DIR="${MODEL_DIR:-${RUN_ARTIFACTS_DIR}/models}"
 FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
 
 JOB_NAME="exp2_${CONFIG_ID}_s${SEED}"
-JID="s${SEED}"
+JID="${IRB_RUN_JID:-s${SEED}}"
 
 NNODES="${SLURM_JOB_NUM_NODES:-1}"
 NODE_RANK="${SLURM_NODEID:-0}"
@@ -54,8 +54,8 @@ NODE_RANK="${SLURM_NODEID:-0}"
 # but allow higher-GPU runs when available.
 # Paper: "2 × A100 for Experiments 2–3, trading longer wall-clock time for faster queue throughput."
 NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-1}"
-if [[ "${NPROC_PER_NODE}" -ne 4 && "${NPROC_PER_NODE}" -ne 2 && "${NPROC_PER_NODE}" -ne 1 ]]; then
-  echo "ERROR: IRB_NPROC_PER_NODE must be 1, 2, or 4 for benchmark runs (got ${NPROC_PER_NODE})." >&2
+if [[ "${NPROC_PER_NODE}" -ne 8 && "${NPROC_PER_NODE}" -ne 4 && "${NPROC_PER_NODE}" -ne 2 && "${NPROC_PER_NODE}" -ne 1 ]]; then
+  echo "ERROR: IRB_NPROC_PER_NODE must be 1, 2, 4, or 8 for benchmark runs (got ${NPROC_PER_NODE})." >&2
   exit 2
 fi
 if [[ "${NNODES}" -ne 1 ]]; then
@@ -65,6 +65,52 @@ fi
 
 # Optional override for fast dev/debug runs (defaults preserve paper runs).
 N_EPOCHS="${IRB_EXP23_STAGE1_EPOCHS:-${IRB_STAGE1_EPOCHS:-1}}"
+MODEL_NAME="${IRB_MODEL_NAME:-meta-llama/Llama-3.2-1B}"
+MODEL_VERSION_PREFIX="${IRB_MODEL_VERSION_PREFIX:-exp2}"
+WANDB_PROJECT="${IRB_WANDB_PROJECT:-input-rep-benchmark-exp2}"
+USE_MODEL_CONFIG_OVERRIDES="${IRB_USE_MODEL_CONFIG_OVERRIDES:-true}"
+
+if [[ "${MODEL_VERSION_PREFIX}" == llama10ep_* && "${IRB_LLAMA10EP_WANDB_EPOCH_UPLOADS:-true}" == "true" ]]; then
+  export IRB_STAGE1_SAVE_STRATEGY="epoch"
+  export WANDB_LOG_MODEL="checkpoint"
+fi
+
+if [[ "${IRB_STAGE1_SAVE_STRATEGY:-steps}" == "steps" && "${SLURM_JOB_PARTITION:-}" == "sxmq" && "${N_EPOCHS}" =~ ^[0-9]+$ && "${N_EPOCHS}" -gt 1 ]]; then
+  SXMQ_MAX_SAVE_STEPS="${IRB_SXMQ_MAX_SAVE_STEPS:-500}"
+  CURRENT_SAVE_STEPS="${IRB_STAGE1_SAVE_STEPS:-2000}"
+  if [[ "${SXMQ_MAX_SAVE_STEPS}" =~ ^[0-9]+$ && "${CURRENT_SAVE_STEPS}" =~ ^[0-9]+$ && "${CURRENT_SAVE_STEPS}" -gt "${SXMQ_MAX_SAVE_STEPS}" ]]; then
+    export IRB_STAGE1_SAVE_STEPS="${SXMQ_MAX_SAVE_STEPS}"
+  fi
+fi
+
+echo "Exp2 Stage 1 configuration:"
+echo "  config_id:              ${CONFIG_ID}"
+echo "  model_name:             ${MODEL_NAME}"
+echo "  model_version:          ${MODEL_VERSION_PREFIX}_${CONFIG_ID}"
+echo "  wandb_project:          ${WANDB_PROJECT}"
+echo "  n_epochs:               ${N_EPOCHS}"
+echo "  IRB_NPROC_PER_NODE:     ${NPROC_PER_NODE}"
+echo "  SLURM_JOB_NUM_NODES:    ${NNODES}"
+echo "  config_overrides:       ${USE_MODEL_CONFIG_OVERRIDES}"
+echo "  resume_from_checkpoint: ${IRB_RESUME_FROM_CHECKPOINT:-auto}"
+echo "  save_strategy:          ${IRB_STAGE1_SAVE_STRATEGY:-steps}"
+echo "  save_steps:             ${IRB_STAGE1_SAVE_STEPS:-2000}"
+echo "  save_total_limit:       ${IRB_STAGE1_SAVE_TOTAL_LIMIT:-3}"
+echo "  eval_strategy:          ${IRB_STAGE1_EVAL_STRATEGY:-epoch}"
+echo "  wandb_log_model:        ${WANDB_LOG_MODEL:-unset}"
+echo "  load_best_at_end:       ${IRB_LOAD_BEST_MODEL_AT_END:-false}"
+echo "  mapped_dataset_cache:   ${IRB_USE_MAPPED_DATASET_CACHE:-true}"
+echo "  mapped_cache_dir:       ${IRB_MAPPED_DATASET_CACHE_DIR:-${HF_DATASETS_CACHE}/irb-mapped}"
+
+model_config_args=()
+if [[ "${USE_MODEL_CONFIG_OVERRIDES}" == "true" || "${USE_MODEL_CONFIG_OVERRIDES}" == "1" ]]; then
+  model_config_args=(
+    --hidden_size "${IRB_MODEL_HIDDEN_SIZE:-1024}"
+    --intermediate_size "${IRB_MODEL_INTERMEDIATE_SIZE:-2048}"
+    --num_hidden_layers "${IRB_MODEL_NUM_HIDDEN_LAYERS:-8}"
+    --num_attention_heads "${IRB_MODEL_NUM_ATTENTION_HEADS:-8}"
+  )
+fi
 
 torchrun_args=( "${FMS_EHRS_HOME}/fms_ehrs/scripts/train_representation.py" )
 if [[ "${NNODES}" -gt 1 ]]; then
@@ -79,14 +125,11 @@ torchrun "${torchrun_args[@]}" \
   --data_dir "${TOKENIZED_DATA_DIR}" \
   --data_version "${DATA_VERSION}" \
   --model_dir "${MODEL_DIR}" \
-  --model_version "exp2_${CONFIG_ID}" \
-  --model_name "meta-llama/Llama-3.2-1B" \
+  --model_version "${MODEL_VERSION_PREFIX}_${CONFIG_ID}" \
+  --model_name "${MODEL_NAME}" \
   --use_bf16 "${IRB_USE_BF16}" \
   --attn_implementation "${IRB_ATTN_IMPL}" \
-  --hidden_size "${IRB_MODEL_HIDDEN_SIZE:-1024}" \
-  --intermediate_size "${IRB_MODEL_INTERMEDIATE_SIZE:-2048}" \
-  --num_hidden_layers "${IRB_MODEL_NUM_HIDDEN_LAYERS:-8}" \
-  --num_attention_heads "${IRB_MODEL_NUM_ATTENTION_HEADS:-8}" \
+  "${model_config_args[@]}" \
   --max_seq_length "${IRB_MAX_SEQ_LENGTH}" \
   --windowed_padded "${IRB_WINDOWED_PADDED:-true}" \
   --window_stride "${IRB_WINDOW_STRIDE:-${IRB_MAX_SEQ_LENGTH}}" \
@@ -107,9 +150,15 @@ torchrun "${torchrun_args[@]}" \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 1 \
   --gradient_accumulation_steps 2 \
+  --resume_from_checkpoint "${IRB_RESUME_FROM_CHECKPOINT:-auto}" \
+  --save_strategy "${IRB_STAGE1_SAVE_STRATEGY:-steps}" \
+  --save_steps "${IRB_STAGE1_SAVE_STEPS:-2000}" \
+  --save_total_limit "${IRB_STAGE1_SAVE_TOTAL_LIMIT:-3}" \
+  --eval_strategy "${IRB_STAGE1_EVAL_STRATEGY:-epoch}" \
+  --load_best_model_at_end "${IRB_LOAD_BEST_MODEL_AT_END:-false}" \
   --seed "${SEED}" \
   --jid "${JID}" \
-  --wandb_project input-rep-benchmark-exp2
+  --wandb_project "${WANDB_PROJECT}"
 
 # NOTE: Exp2/Exp3 Stage1 no longer runs Optuna HPO; all hypers are fixed.
 

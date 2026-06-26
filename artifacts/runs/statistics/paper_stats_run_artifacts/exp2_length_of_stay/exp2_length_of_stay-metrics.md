@@ -1,0 +1,34 @@
+| family_name | task_type | outcome | handle | metric | n_eval | estimate_ci95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| exp2_length_of_stay | regression | length_of_stay | discrete_tt | spearman_rho | 63750 | 0.5377 [0.5316, 0.5436] |
+| exp2_length_of_stay | regression | length_of_stay | discrete_tt | r2 | 63750 | 0.1708 [0.1621, 0.1797] |
+| exp2_length_of_stay | regression | length_of_stay | discrete_tt | mae | 63750 | 85.7854 [84.7298, 86.8637] |
+| exp2_length_of_stay | regression | length_of_stay | discrete_tt | rmse | 63750 | 161.4006 [156.1788, 166.8154] |
+| exp2_length_of_stay | regression | length_of_stay | soft_tt | spearman_rho | 63750 | 0.5389 [0.5332, 0.5447] |
+| exp2_length_of_stay | regression | length_of_stay | soft_tt | r2 | 63750 | 0.1680 [0.1600, 0.1765] |
+| exp2_length_of_stay | regression | length_of_stay | soft_tt | mae | 63750 | 85.8266 [84.7778, 86.9224] |
+| exp2_length_of_stay | regression | length_of_stay | soft_tt | rmse | 63750 | 161.6782 [156.4011, 167.0117] |
+| exp2_length_of_stay | regression | length_of_stay | xval_tt | spearman_rho | 63750 | 0.4214 [0.4149, 0.4280] |
+| exp2_length_of_stay | regression | length_of_stay | xval_tt | r2 | 63750 | 0.1094 [0.1024, 0.1164] |
+| exp2_length_of_stay | regression | length_of_stay | xval_tt | mae | 63750 | 90.0422 [88.9256, 91.1468] |
+| exp2_length_of_stay | regression | length_of_stay | xval_tt | rmse | 63750 | 167.2694 [161.8449, 172.8883] |
+| exp2_length_of_stay | regression | length_of_stay | xval_affine_tt | spearman_rho | 63750 | 0.4104 [0.4036, 0.4170] |
+| exp2_length_of_stay | regression | length_of_stay | xval_affine_tt | r2 | 63750 | 0.1015 [0.0947, 0.1082] |
+| exp2_length_of_stay | regression | length_of_stay | xval_affine_tt | mae | 63750 | 90.8693 [89.7535, 91.9757] |
+| exp2_length_of_stay | regression | length_of_stay | xval_affine_tt | rmse | 63750 | 168.0078 [162.6249, 173.6607] |
+| exp2_length_of_stay | regression | length_of_stay | discrete_rope | spearman_rho | 63750 | 0.5426 [0.5369, 0.5483] |
+| exp2_length_of_stay | regression | length_of_stay | discrete_rope | r2 | 63750 | 0.1731 [0.1646, 0.1812] |
+| exp2_length_of_stay | regression | length_of_stay | discrete_rope | mae | 63750 | 85.4130 [84.3897, 86.5518] |
+| exp2_length_of_stay | regression | length_of_stay | discrete_rope | rmse | 63750 | 161.1797 [156.0175, 166.6556] |
+| exp2_length_of_stay | regression | length_of_stay | soft_rope | spearman_rho | 63750 | 0.5350 [0.5292, 0.5405] |
+| exp2_length_of_stay | regression | length_of_stay | soft_rope | r2 | 63750 | 0.1669 [0.1584, 0.1750] |
+| exp2_length_of_stay | regression | length_of_stay | soft_rope | mae | 63750 | 85.7187 [84.6764, 86.8260] |
+| exp2_length_of_stay | regression | length_of_stay | soft_rope | rmse | 63750 | 161.7801 [156.6304, 167.2692] |
+| exp2_length_of_stay | regression | length_of_stay | xval_rope | spearman_rho | 63750 | 0.4199 [0.4133, 0.4261] |
+| exp2_length_of_stay | regression | length_of_stay | xval_rope | r2 | 63750 | 0.1111 [0.1041, 0.1182] |
+| exp2_length_of_stay | regression | length_of_stay | xval_rope | mae | 63750 | 90.0989 [89.0481, 91.1251] |
+| exp2_length_of_stay | regression | length_of_stay | xval_rope | rmse | 63750 | 167.1135 [161.9009, 172.4450] |
+| exp2_length_of_stay | regression | length_of_stay | xval_affine_rope | spearman_rho | 63750 | 0.4095 [0.4032, 0.4158] |
+| exp2_length_of_stay | regression | length_of_stay | xval_affine_rope | r2 | 63750 | 0.0983 [0.0920, 0.1045] |
+| exp2_length_of_stay | regression | length_of_stay | xval_affine_rope | mae | 63750 | 91.1285 [90.0787, 92.1520] |
+| exp2_length_of_stay | regression | length_of_stay | xval_affine_rope | rmse | 63750 | 168.3115 [163.1259, 173.6595] |

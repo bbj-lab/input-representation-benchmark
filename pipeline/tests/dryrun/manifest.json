@@ -119,6 +119,22 @@
       ]
     },
     {
+      "script": "pipeline/scripts/llama10ep_stratified_eval_loss.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__llama10ep_stratified_eval_loss.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/merge_family_stats_shards.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__merge_family_stats_shards.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
       "script": "pipeline/scripts/minimal_e2e_dryrun.py",
       "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__minimal_e2e_dryrun.sh",
       "mode": "execute",

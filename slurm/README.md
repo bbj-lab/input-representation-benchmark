@@ -1,33 +1,32 @@
-# Benchmark SLURM Layout
+# Benchmark SLURM layout
 
-This directory holds the live benchmark runners.
+Live benchmark launchers. Python entrypoints live in `../pipeline/`, `../paper/`,
+and `../utilities/`. Run path: [`../README.md`](../README.md).
 
-Use `../pipeline/`, `../paper/`, and `../utilities/` directly for the Python entrypoints behind these launchers.
+## Numbered runners
 
-## Numbered stage runners
+| Prefix | Role |
+| --- | --- |
+| `00_*` | shared preamble |
+| `01_*` | MEDS extraction |
+| `02_*`–`04_*` | Stage 0 |
+| `04_*`, `07_*`, `08_*` | Stage 1 |
+| `09_*` | Stage 2 array runner |
+| `10_*`, `11_*` | Stage 3 |
+| `12_*` | gated helpers |
+| `13_*` | extended outcome refresh |
+| `15_*` | stats regeneration |
+| `17_*` | additional-run jobfile generation and high-GPU helpers |
+| `18_*` | serial GPU runners and resume helpers |
 
-- `00_preamble.sh`: shared environment setup
-- `01_phase0_extract_meds.sh`: MEDS extraction wrapper
-- `02_*`: Stage 0 array runners
-- `03_*` and `04_*`: Stage 0 work scripts
-- `04_*`, `07_*`, `08_*`: Stage 1 work scripts
-- `09_*`: Stage 2 array runner
-- `10_*`, `11_*`: Stage 3 submission and array runners
-- `12_*`: gated or diagnostic helpers
-- `13_*`: extended outcome refresh
-- `15_*`: aligned stats regeneration
+## Local byproducts
 
-## Generated jobfiles
+| Path | Role |
+| --- | --- |
+| `generated/statistics/` | stats rerun jobfiles |
+| `generated/outcome_reruns/` | one-off outcome refresh jobfiles |
+| `generated/revision_gfkb/` | additional-run jobfiles (temporary `revision_*` name) |
+| `state/*.last_completed` | serial-runner resume markers |
 
-- `generated/statistics/`: local stats rerun sheets emitted by the submit helpers
-- `generated/outcome_reruns/`: local outcome rerun sheets emitted during one-off refreshes
-
-Completed rerun-specific sheets that still matter for later review should be moved under `../deprecated/slurm/`.
-
-## Vendored Stage 2/3 wrappers
-
-`ref_qse/` contains the benchmark-maintained copies of the borrowed Stage 2 and Stage 3 wrappers used by this repo.
-
-## Archived material
-
-Retired runners and stale submission helpers belong in `../deprecated/slurm/`, not here.
+`ref_qse/` holds vendored Stage 2/3 wrappers. Retired launchers belong in
+`../deprecated/slurm/`.

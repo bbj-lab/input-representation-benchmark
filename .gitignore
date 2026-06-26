@@ -67,8 +67,9 @@ logs/
 *.log
 slurm/output/
 slurm/generated/
+slurm/state/
 
-# Local caches / scratch artifacts (do not commit)
+# Local caches / scratch outputs (do not commit)
 .cache/
 models_archive/
 combined_logs.txt
@@ -89,9 +90,36 @@ models/
 artifacts/runs/*
 !artifacts/runs/statistics/
 artifacts/runs/statistics/*
+# Paper + additional-run statistics (CSV/MD only; shard dirs stay ignored)
 !artifacts/runs/statistics/paper_stats_combined/
+!artifacts/runs/statistics/paper_stats_run_artifacts/
+!artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/
+!artifacts/runs/statistics/revision_gfkb/
+!artifacts/runs/statistics/revision_gfkb_fused_only/
+!artifacts/runs/statistics/revision_qwen_scaled/
 artifacts/runs/statistics/paper_stats_combined/*
-!artifacts/runs/statistics/paper_stats_combined/*.csv
+!artifacts/runs/statistics/paper_stats_combined/**/*
+!artifacts/runs/statistics/paper_stats_combined/**/*.csv
+artifacts/runs/statistics/paper_stats_run_artifacts/*
+!artifacts/runs/statistics/paper_stats_run_artifacts/**/*
+!artifacts/runs/statistics/paper_stats_run_artifacts/**/*.csv
+!artifacts/runs/statistics/paper_stats_run_artifacts/**/*.md
+artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/*
+!artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/**/*
+!artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/**/*.csv
+!artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/**/*.md
+artifacts/runs/statistics/revision_gfkb/*
+!artifacts/runs/statistics/revision_gfkb/**/*
+!artifacts/runs/statistics/revision_gfkb/**/*.csv
+!artifacts/runs/statistics/revision_gfkb/**/*.md
+artifacts/runs/statistics/revision_gfkb_fused_only/*
+!artifacts/runs/statistics/revision_gfkb_fused_only/**/*
+!artifacts/runs/statistics/revision_gfkb_fused_only/**/*.csv
+!artifacts/runs/statistics/revision_gfkb_fused_only/**/*.md
+artifacts/runs/statistics/revision_qwen_scaled/*
+!artifacts/runs/statistics/revision_qwen_scaled/**/*
+!artifacts/runs/statistics/revision_qwen_scaled/**/*.csv
+!artifacts/runs/statistics/revision_qwen_scaled/**/*.md
 checkpoints/
 
 # Hydra
@@ -111,4 +139,8 @@ physionet.org/
 
 # Manuscript / methods working directory (kept out of git)
 methods/
+
+# OpenReview / revision helpers (local-only)
+mlhc-reviews.md
+pipeline/scripts/export_revision_gfkb_mae_table.py
 

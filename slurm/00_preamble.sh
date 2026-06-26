@@ -233,6 +233,9 @@ HF_DATASETS_CACHE="${HF_HOME}/datasets"
 HF_HUB_CACHE="${HF_HOME}/hub"
 TRANSFORMERS_CACHE="${HF_HOME}/transformers"
 mkdir -p "${HF_DATASETS_CACHE}" "${HF_HUB_CACHE}" "${TRANSFORMERS_CACHE}" 2>/dev/null || true
+export IRB_USE_MAPPED_DATASET_CACHE="${IRB_USE_MAPPED_DATASET_CACHE:-true}"
+export IRB_MAPPED_DATASET_CACHE_DIR="${IRB_MAPPED_DATASET_CACHE_DIR:-${HF_DATASETS_CACHE}/irb-mapped}"
+mkdir -p "${IRB_MAPPED_DATASET_CACHE_DIR}" 2>/dev/null || true
 if [[ -d /scratch && ! "${_user}" =~ ^[0-9]+$ && "${_user}" != uid_* ]]; then
     WANDB_CACHE_DIR="/scratch/${_user}/"
     WANDB_DIR="/scratch/${_user}/"
@@ -316,6 +319,7 @@ echo "  IRB_HOME: ${IRB_HOME}"
 echo "  FMS_EHRS_HOME: ${FMS_EHRS_HOME}"
 echo "  DATA_DIR: ${DATA_DIR}"
 echo "  HF_HOME: ${HF_HOME}"
+echo "  IRB_MAPPED_DATASET_CACHE_DIR: ${IRB_MAPPED_DATASET_CACHE_DIR}"
 echo "  Python: $(which python 2>/dev/null || echo 'not found')"
 echo "=============================================="
 

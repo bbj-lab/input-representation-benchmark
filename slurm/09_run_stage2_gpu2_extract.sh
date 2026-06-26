@@ -1,14 +1,18 @@
 #!/bin/bash
-#SBATCH --job-name=irb-extract-1gpu
+#SBATCH --job-name=irb-extract-4gpu
 #SBATCH --output=./slurm/output/%A_%a-%x.stdout
-#SBATCH --partition=gpudev
-#SBATCH --gres=gpu:1
-#SBATCH --mem=32GB
-#SBATCH --cpus-per-task=4
-#SBATCH --time=1-00:00:00
+#SBATCH --partition=sxmq
+#SBATCH --gres=gpu:8
+#SBATCH --mem=256GB
+#SBATCH --cpus-per-task=16
+#SBATCH --time=0-12:00:00
 
 # =============================================================================
-# Runner (Stage 2; 1 GPU): executes the Nth line of a jobfile
+# Runner (Stage 2; 4 torchrun ranks): executes the Nth line of a jobfile
+#
+# On sxmq we reserve the 8-GPU A100-SXM node and pin torchrun to clean GPUs 4-7
+# in slurm/ref_qse/09_extract_reps.sh. The job still uses 4 GPUs for inference,
+# but whole-node reservation avoids collisions with orphan GPU memory.
 # =============================================================================
 
 set -euo pipefail
@@ -16,7 +20,7 @@ set -euo pipefail
 JOBFILE=${1:-""}
 if [[ -z "$JOBFILE" ]]; then
   echo "ERROR: Job file not provided." >&2
-  echo "Usage: sbatch --array=0-N slurm/09_run_stage2_gpu2_extract.sh <jobfile>  # Stage2 runner (1 GPU)" >&2
+  echo "Usage: sbatch --array=0-N slurm/09_run_stage2_gpu2_extract.sh <jobfile>  # Stage2 runner (4 GPUs)" >&2
   exit 1
 fi
 if [[ ! -f "$JOBFILE" ]]; then

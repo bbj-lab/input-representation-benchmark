@@ -6,6 +6,8 @@
 #SBATCH --mem=256GB
 #SBATCH --cpus-per-task=16
 #SBATCH --time=0-12:00:00
+#SBATCH --requeue
+#SBATCH --signal=B:USR1@900
 
 # =============================================================================
 # Runner (Stage 1; 4 GPUs): executes the Nth line of a jobfile
@@ -42,6 +44,71 @@ source "${IRB_HOME}/slurm/00_preamble.sh"
 cd "${IRB_HOME}"
 mkdir -p slurm/output
 
+TRAIN_PID=""
+REQUEUE_IN_PROGRESS=0
+
+current_slurm_task_id() {
+  if [[ -n "${SLURM_ARRAY_JOB_ID:-}" && -n "${SLURM_ARRAY_TASK_ID:-}" ]]; then
+    echo "${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+  else
+    echo "${SLURM_JOB_ID:?SLURM_JOB_ID is required for requeue}"
+  fi
+}
+
+stop_training_process() {
+  if [[ -z "${TRAIN_PID}" ]] || ! kill -0 "${TRAIN_PID}" 2>/dev/null; then
+    return 0
+  fi
+
+  echo "[requeue] Forwarding SIGTERM to training process group ${TRAIN_PID}."
+  kill -TERM "-${TRAIN_PID}" 2>/dev/null || kill -TERM "${TRAIN_PID}" 2>/dev/null || true
+
+  local grace="${IRB_REQUEUE_GRACE_SECONDS:-120}"
+  local elapsed=0
+  while kill -0 "${TRAIN_PID}" 2>/dev/null && [[ "${elapsed}" -lt "${grace}" ]]; do
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  if kill -0 "${TRAIN_PID}" 2>/dev/null; then
+    echo "[requeue] Training process did not stop after ${grace}s; sending SIGKILL."
+    kill -KILL "-${TRAIN_PID}" 2>/dev/null || kill -KILL "${TRAIN_PID}" 2>/dev/null || true
+  fi
+}
+
+requeue_current_task() {
+  local signal_name="$1"
+  local task_id
+  task_id="$(current_slurm_task_id)"
+
+  echo "[requeue] Received ${signal_name}; requeueing ${task_id}."
+  REQUEUE_IN_PROGRESS=1
+  if ! scontrol requeue "${task_id}"; then
+    echo "[requeue] ERROR: failed to requeue ${task_id}." >&2
+    REQUEUE_IN_PROGRESS=0
+    stop_training_process
+    exit 1
+  fi
+  trap 'terminate_current_task TERM; exit 0' TERM
+  trap 'terminate_current_task INT; exit 0' INT
+  stop_training_process
+  exit 0
+}
+
+terminate_current_task() {
+  local signal_name="$1"
+  if [[ "${REQUEUE_IN_PROGRESS}" -eq 1 ]]; then
+    echo "[requeue] Received ${signal_name} during intentional requeue; exiting cleanly."
+    exit 0
+  fi
+  echo "[requeue] Received ${signal_name}; terminating without requeue."
+  stop_training_process
+}
+
+trap 'requeue_current_task USR1' USR1
+trap 'terminate_current_task TERM; exit 143' TERM
+trap 'terminate_current_task INT; exit 130' INT
+
 # Ensure torchrun launches the correct number of processes for the allocated GPUs.
 export IRB_NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-4}"
 if [[ "${IRB_NPROC_PER_NODE}" -ne 4 ]]; then
@@ -51,6 +118,15 @@ fi
 if [[ "${SLURM_JOB_NUM_NODES:-1}" -ne 1 ]]; then
   echo "ERROR: This benchmark assumes single-node training (got SLURM_JOB_NUM_NODES=${SLURM_JOB_NUM_NODES})." >&2
   exit 2
+fi
+
+if [[ -n "${IRB_STAGE1_CUDA_VISIBLE_DEVICES:-}" ]]; then
+  export CUDA_VISIBLE_DEVICES="${IRB_STAGE1_CUDA_VISIBLE_DEVICES}"
+elif [[ "${SLURM_JOB_PARTITION:-}" == "sxmq" && "${CUDA_VISIBLE_DEVICES:-}" == "0,1,2,3,4,5,6,7" ]]; then
+  # cri22cn501 GPUs 0-3 currently carry active/orphan processes despite Slurm
+  # reporting the node idle. Reserve the full SXM node, but run 4 DDP ranks on
+  # the clean devices until an 8-GPU health check shows all devices are clear.
+  export CUDA_VISIBLE_DEVICES="4,5,6,7"
 fi
 
 echo "=============================================="
@@ -104,5 +180,16 @@ echo "  NCCL_DEBUG=${NCCL_DEBUG:-}"
 echo "  TORCH_DISTRIBUTED_DEBUG=${TORCH_DISTRIBUTED_DEBUG:-}"
 echo ""
 
-eval "$CMD"
+if command -v setsid >/dev/null 2>&1; then
+  setsid bash -lc "${CMD}" &
+else
+  bash -lc "${CMD}" &
+fi
+TRAIN_PID=$!
+set +e
+wait "${TRAIN_PID}"
+TRAIN_STATUS=$?
+set -e
+TRAIN_PID=""
+exit "${TRAIN_STATUS}"
 
