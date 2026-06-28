@@ -15,10 +15,10 @@ CPU-only. No forward pass needed — works directly from saved weights.
 
 Usage:
     python pipeline/scripts/diagnostics/diag_embedding_geometry.py \
-        --model_discrete artifacts/runs/models/exp2_.../model-discrete-time_tokens \
-        --vocab_discrete artifacts/runs/tokenized/.../train/vocab.gzip \
-        [--model_fused artifacts/runs/models/exp1_.../checkpoint-9000] \
-        [--vocab_fused artifacts/runs/tokenized/.../train/vocab.gzip] \
+        --model_discrete outputs/runs/models/exp2_.../model-discrete-time_tokens \
+        --vocab_discrete outputs/runs/tokenized/.../train/vocab.gzip \
+        [--model_fused outputs/runs/models/exp1_.../checkpoint-9000] \
+        [--vocab_fused outputs/runs/tokenized/.../train/vocab.gzip] \
         [--measurements LAB_lab//50971//meq/l LAB_lab//51222//g/dl] \
         [--output_dir outputs/diagnostics] \
         [--dry_run]

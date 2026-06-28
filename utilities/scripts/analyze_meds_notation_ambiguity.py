@@ -165,7 +165,7 @@ def main(
         .collect(streaming=True)
     )
 
-    # Save artifacts
+    # Save outputs
     summary = {
         "meds_data_dir": str(meds_data_dir_p),
         "split": split,

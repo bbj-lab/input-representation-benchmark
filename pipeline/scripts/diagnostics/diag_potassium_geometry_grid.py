@@ -63,8 +63,8 @@ def _extract_fused_sparse(
 
 
 def _resolution_specs(repo_root: Path) -> list[dict[str, object]]:
-    model_root = repo_root / "artifacts" / "runs" / "models"
-    token_root = repo_root / "artifacts" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20"
+    model_root = repo_root / "outputs" / "runs" / "models"
+    token_root = repo_root / "outputs" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20"
 
     return [
         {

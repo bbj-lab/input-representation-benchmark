@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Backfill stable Exp1 best-model aliases in the current run artifact tree.
+Backfill stable Exp1 best-model aliases in the current run output tree.
 
 Fresh Exp1 runs already create `-hp-<data_version>` aliases via `tune_model.py`.
 This script only materializes the same aliases for the existing historical run
@@ -30,7 +30,7 @@ RUN_MAP = {
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[2]
-    model_root = repo_root / "artifacts" / "runs" / "models"
+    model_root = repo_root / "outputs" / "runs" / "models"
 
     for config_id, (data_version, run_dir) in RUN_MAP.items():
         source = model_root / f"exp1_{config_id}-s42" / run_dir / "checkpoint-9000"

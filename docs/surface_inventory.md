@@ -39,7 +39,7 @@ These paths are part of the Stage0 -> Stage3 -> stats -> paper build chain.
 - `paper/scripts/generate_mlhc_paper_figures.py`
 - `pipeline/tests/unit/`
 - `pipeline/tests/dryrun/`
-- `artifacts/`
+- `outputs/`
 - `benchmarks/mimic-meds-extraction/`
 
 ## Active manuscript files
@@ -54,22 +54,22 @@ supporting statistics.
 - `paper/scripts/generate_mlhc_appendix_outcome_descriptives.py`
 - `paper/scripts/generate_mlhc_paper_figures.py`
 - `paper/scripts/recompute_baseline_pairwise_view.py`
-- `artifacts/runs/statistics/paper_stats_combined/` (combined CSVs read by the paper generator scripts: `all_family_metrics.csv`, `all_family_pairwise_baseline.csv`)
-- `artifacts/runs/statistics/paper_stats_run_artifacts/` (per-family Exp1/2/3 statistics produced by `slurm/16_prepare_submit_paper_rerun.sh`; source of the Exp1 rows in the combined dir)
-- `artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/` (per-family Exp2/3 statistics under the `discrete_none` Exp2 baseline; source of the Exp2/3 rows in the combined dir)
+- `outputs/runs/statistics/paper_stats_combined/` (combined CSVs read by the paper generator scripts: `all_family_metrics.csv`, `all_family_pairwise_baseline.csv`)
+- `outputs/runs/statistics/paper_stats_run_outputs/` (per-family Exp1/2/3 statistics produced by `slurm/16_prepare_submit_paper_rerun.sh`; source of the Exp1 rows in the combined dir)
+- `outputs/runs/statistics/paper_stats_exp23_discrete_none_baseline/` (per-family Exp2/3 statistics under the `discrete_none` Exp2 baseline; source of the Exp2/3 rows in the combined dir)
 
 ## Active Utilities
 
 These paths are active but not on the mandatory run chain.
 
-- `pipeline/scripts/build_run_artifact_tree.py`
+- `pipeline/scripts/build_run_output_tree.py`
 - `pipeline/scripts/create_exp1_best_model_aliases.py`
 - `pipeline/scripts/create_xval_rep_mechanics.py`
 - `pipeline/scripts/minimal_e2e_dryrun.py`
 - `pipeline/scripts/normalize_meds_tokenized_layout.py`
 - `pipeline/scripts/diagnostics/`
 - `utilities/scripts/analyze_meds_notation_ambiguity.py`
-- `utilities/scripts/cleanup_artifacts.sh`
+- `utilities/scripts/cleanup_outputs.sh`
 - `utilities/scripts/compute_prevalence.py`
 - `utilities/scripts/download_literature.py`
 - `utilities/scripts/generate_calibration_plot.py`
@@ -89,11 +89,11 @@ These paths are active but not on the mandatory run chain.
 - `slurm/compute_prevalence.sh`
 - `slurm/gen_calibration_plot.sh`
 - `slurm/generate_exp1_preds.sh`
-- `slurm/manual_inspect.sh`
 
-## Deprecate-Now Candidates
+## Deprecated Archive
 
-These paths are outside the active benchmark path and are treated as deprecated.
+These paths are outside the active benchmark path and are retained only for audit
+or backtracking.
 
 - `deprecated/slurm/strict_parity_exp23/generated/demo/`
 - `deprecated/slurm/xgboost_baseline.sh`
@@ -103,8 +103,6 @@ These paths are outside the active benchmark path and are treated as deprecated.
 - `deprecated/scripts/xgboost_baseline.py`
 - `deprecated/outputs/xgboost_baseline/`
 - `deprecated/docs/paper_audit_trail.md`
-- `deprecated/methods/`
-- `deprecated/models_archive/`
 - `deprecated/figures/`
 
 ## Freeze notes

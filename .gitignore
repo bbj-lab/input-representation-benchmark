@@ -58,7 +58,44 @@ env/
 *.safetensors
 
 # Outputs
-outputs/
+outputs/*
+!outputs/README.md
+!outputs/runs/
+outputs/runs/*
+!outputs/runs/statistics/
+outputs/runs/statistics/*
+# Paper + additional-run statistics (CSV/MD only; shard dirs stay ignored)
+!outputs/runs/statistics/paper_stats_combined/
+!outputs/runs/statistics/paper_stats_run_outputs/
+!outputs/runs/statistics/paper_stats_exp23_discrete_none_baseline/
+!outputs/runs/statistics/generalizability_tests/
+outputs/runs/statistics/paper_stats_combined/*
+!outputs/runs/statistics/paper_stats_combined/**/*
+!outputs/runs/statistics/paper_stats_combined/**/*.csv
+outputs/runs/statistics/paper_stats_run_outputs/*
+!outputs/runs/statistics/paper_stats_run_outputs/**/*
+!outputs/runs/statistics/paper_stats_run_outputs/**/*.csv
+!outputs/runs/statistics/paper_stats_run_outputs/**/*.md
+outputs/runs/statistics/paper_stats_exp23_discrete_none_baseline/*
+!outputs/runs/statistics/paper_stats_exp23_discrete_none_baseline/**/*
+!outputs/runs/statistics/paper_stats_exp23_discrete_none_baseline/**/*.csv
+!outputs/runs/statistics/paper_stats_exp23_discrete_none_baseline/**/*.md
+outputs/runs/statistics/generalizability_tests/*
+!outputs/runs/statistics/generalizability_tests/**/*
+!outputs/runs/statistics/generalizability_tests/**/*.csv
+!outputs/runs/statistics/generalizability_tests/**/*.md
+# Camera-ready diagnostic figures and their CSV sources.
+!outputs/runs/figures/
+outputs/runs/figures/*
+!outputs/runs/figures/qwen_loss_curves/
+!outputs/runs/figures/qwen_loss_curves/**/*
+!outputs/runs/figures/qwen3_training_diagnostics/
+!outputs/runs/figures/qwen3_training_diagnostics/**/*
+!outputs/runs/figures/llama10ep_loss_curves/
+!outputs/runs/figures/llama10ep_loss_curves/**/*
+!outputs/runs/figures/llama10ep_training_diagnostics/
+outputs/runs/figures/llama10ep_training_diagnostics/*
+!outputs/runs/figures/llama10ep_training_diagnostics/llama10ep_gradient_lr_*
 !deprecated/outputs/
 !deprecated/outputs/xgboost_baseline/
 !deprecated/outputs/xgboost_baseline/xgboost_baseline_results.json
@@ -87,39 +124,6 @@ premeds/
 
 # Model checkpoints
 models/
-artifacts/runs/*
-!artifacts/runs/statistics/
-artifacts/runs/statistics/*
-# Paper + additional-run statistics (CSV/MD only; shard dirs stay ignored)
-!artifacts/runs/statistics/paper_stats_combined/
-!artifacts/runs/statistics/paper_stats_run_artifacts/
-!artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/
-!artifacts/runs/statistics/revision_gfkb/
-!artifacts/runs/statistics/revision_gfkb_fused_only/
-!artifacts/runs/statistics/revision_qwen_scaled/
-artifacts/runs/statistics/paper_stats_combined/*
-!artifacts/runs/statistics/paper_stats_combined/**/*
-!artifacts/runs/statistics/paper_stats_combined/**/*.csv
-artifacts/runs/statistics/paper_stats_run_artifacts/*
-!artifacts/runs/statistics/paper_stats_run_artifacts/**/*
-!artifacts/runs/statistics/paper_stats_run_artifacts/**/*.csv
-!artifacts/runs/statistics/paper_stats_run_artifacts/**/*.md
-artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/*
-!artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/**/*
-!artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/**/*.csv
-!artifacts/runs/statistics/paper_stats_exp23_discrete_none_baseline/**/*.md
-artifacts/runs/statistics/revision_gfkb/*
-!artifacts/runs/statistics/revision_gfkb/**/*
-!artifacts/runs/statistics/revision_gfkb/**/*.csv
-!artifacts/runs/statistics/revision_gfkb/**/*.md
-artifacts/runs/statistics/revision_gfkb_fused_only/*
-!artifacts/runs/statistics/revision_gfkb_fused_only/**/*
-!artifacts/runs/statistics/revision_gfkb_fused_only/**/*.csv
-!artifacts/runs/statistics/revision_gfkb_fused_only/**/*.md
-artifacts/runs/statistics/revision_qwen_scaled/*
-!artifacts/runs/statistics/revision_qwen_scaled/**/*
-!artifacts/runs/statistics/revision_qwen_scaled/**/*.csv
-!artifacts/runs/statistics/revision_qwen_scaled/**/*.md
 checkpoints/
 
 # Hydra
@@ -140,7 +144,6 @@ physionet.org/
 # Manuscript / methods working directory (kept out of git)
 methods/
 
-# OpenReview / revision helpers (local-only)
+# Review notes (local-only)
 mlhc-reviews.md
-pipeline/scripts/export_revision_gfkb_mae_table.py
 

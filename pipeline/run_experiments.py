@@ -62,7 +62,7 @@ DATA_SEED = 42
 
 # fms-ehrs repository path (relative to benchmark repo)
 FMS_EHRS_PATH = "../fms-ehrs"
-RUN_ARTIFACTS_PATH = "artifacts/runs"
+RUN_ARTIFACTS_PATH = "outputs/runs"
 TOKENIZED_DATASET_ID = "mimiciv-3.1_meds_70-10-20"
 EXP12_TOKENIZED_DIR = f"{RUN_ARTIFACTS_PATH}/tokenized/{TOKENIZED_DATASET_ID}"
 IRB_HOME = Path(__file__).resolve().parents[1]
@@ -73,7 +73,7 @@ DEFAULT_PATHS = {
     "exp12_tokenized_dir": EXP12_TOKENIZED_DIR,
     "model_dir": f"{RUN_ARTIFACTS_PATH}/models",
     "meds_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/mimic-meds-ed.yaml",
-    # Exp3 arms (data artifacts produced by pipeline/scripts/align_cohorts.py,
+    # Exp3 arms (data outputs produced by pipeline/scripts/align_cohorts.py,
     # pipeline/scripts/split_meds_by_hadm_splits.py,
     # pipeline/scripts/build_exp3_meds_semantics_arms.py)
     "exp3_meds_icu_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/meds_icu",
@@ -1238,7 +1238,7 @@ def main():
                 if not p.exists():
                     raise ValueError(
                         f"Exp3 requires {k} to exist: {p}. "
-                        "Build these artifacts first:\n"
+                        "Build these outputs first:\n"
                         "  - pipeline/scripts/split_meds_by_hadm_splits.py -> exp3_meds_icu_data_dir\n"
                         "  - pipeline/scripts/build_exp3_meds_semantics_arms.py -> exp3_meds_{mapped,randomized,freqmatched}_data_dir\n"
                     )

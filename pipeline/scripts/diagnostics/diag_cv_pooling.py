@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 def main():
-    base_dir = Path(__file__).resolve().parents[3] / "artifacts" / "runs" / "exp3" / "arms"
+    base_dir = Path(__file__).resolve().parents[3] / "outputs" / "runs" / "exp3" / "arms"
     arms = ["meds_icu_native", "meds_mapped", "meds_randomized"]
     
     # We will focus on LAB and VITAL domains where numeric values are prominent

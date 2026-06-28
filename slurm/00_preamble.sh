@@ -54,7 +54,7 @@ hm="/gpfs/data/bbj-lab/users/${_user}"
 # Project paths (default: infer from this repository location)
 IRB_HOME="${IRB_HOME:-${parent_dir}}"
 FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
-RUN_ARTIFACTS_DIR="${RUN_ARTIFACTS_DIR:-${IRB_HOME}/artifacts/runs}"
+RUN_ARTIFACTS_DIR="${RUN_ARTIFACTS_DIR:-${IRB_HOME}/outputs/runs}"
 IRB_TOKENIZED_ROOT="${IRB_TOKENIZED_ROOT:-${RUN_ARTIFACTS_DIR}/tokenized}"
 IRB_EXP3_ROOT="${IRB_EXP3_ROOT:-${RUN_ARTIFACTS_DIR}/exp3}"
 IRB_TOKEN_DATASET_ID="${IRB_TOKEN_DATASET_ID:-mimiciv-3.1_meds_70-10-20}"

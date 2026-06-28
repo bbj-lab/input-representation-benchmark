@@ -12,7 +12,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_METRICS = (
     ROOT
-    / "artifacts"
+    / "outputs"
     / "runs"
     / "statistics"
     / "paper_stats_combined"
@@ -20,7 +20,7 @@ DEFAULT_METRICS = (
 )
 DEFAULT_PAIRWISE = (
     ROOT
-    / "artifacts"
+    / "outputs"
     / "runs"
     / "statistics"
     / "paper_stats_combined"

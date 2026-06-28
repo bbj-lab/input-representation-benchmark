@@ -25,7 +25,7 @@ and `../utilities/`. Run path: [`../README.md`](../README.md).
 | --- | --- |
 | `generated/statistics/` | stats rerun jobfiles |
 | `generated/outcome_reruns/` | one-off outcome refresh jobfiles |
-| `generated/revision_gfkb/` | additional-run jobfiles (temporary `revision_*` name) |
+| `generated/generalizability_tests/` | additional-run jobfiles |
 | `state/*.last_completed` | serial-runner resume markers |
 
 `ref_qse/` holds vendored Stage 2/3 wrappers. Retired launchers belong in

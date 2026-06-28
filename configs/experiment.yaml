@@ -16,10 +16,10 @@ counts:
   total_reported: 24
 
 paths:
-  tokenized_root: artifacts/runs/tokenized/
-  model_root: artifacts/runs/models/
-  exp3_root: artifacts/runs/exp3/
-  stats_root: artifacts/runs/statistics/paper_stats_run_artifacts/
+  tokenized_root: outputs/runs/tokenized/
+  model_root: outputs/runs/models/
+  exp3_root: outputs/runs/exp3/
+  stats_root: outputs/runs/statistics/paper_stats_run_outputs/
 
 active_configs:
   meds_default: ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml

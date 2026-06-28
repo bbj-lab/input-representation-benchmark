@@ -32,7 +32,7 @@ mkdir -p slurm/output
 
 MIMIC_DIR="${IRB_HOME}/physionet.org/files/mimiciv/3.1"
 MEDS_EVENTS_DIR="${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data"
-EXP3_ROOT="${IRB_HOME}/artifacts/runs/exp3"
+EXP3_ROOT="${IRB_HOME}/outputs/runs/exp3"
 COHORT_DIR="${EXP3_ROOT}/cohort"
 MEDS_ICU_DIR="${EXP3_ROOT}/meds_icu"
 ARMS_DIR="${EXP3_ROOT}/arms"

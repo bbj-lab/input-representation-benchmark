@@ -457,8 +457,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--out_root",
         type=Path,
-        default=Path("artifacts/runs/exp3/arms"),
-        help="Output root (default: artifacts/runs/exp3/arms).",
+        default=Path("outputs/runs/exp3/arms"),
+        help="Output root (default: outputs/runs/exp3/arms).",
     )
     p.add_argument("--seed", type=int, default=42, help="Seed for randomized mapping control.")
     p.add_argument(

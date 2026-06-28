@@ -354,12 +354,12 @@ def main():
         # the tokenized data directory that corresponds to this config.
         vocab_path = None
 
-        # Strategy: support both the current artifacts/runs layout and older cache-based layouts.
+        # Strategy: support both the current outputs/runs layout and older cache-based layouts.
         data_version = f"{quantizer}_none_unfused_time_tokens"
         candidate_vocab_paths = [
             args.models_dir.parent / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
             args.models_dir.parent / ".cache" / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
-            args.models_dir.parent.parent / "artifacts" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
+            args.models_dir.parent.parent / "outputs" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
             args.models_dir.parent.parent / "benchmarks" / "mimic-meds-extraction" / "data" / "meds" / "data" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
         ]
         for tokenized_vocab in candidate_vocab_paths:

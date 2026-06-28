@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Normalize MEDS tokenized artifacts to match fms-ehrs downstream expectations.
+Normalize MEDS tokenized outputs to match fms-ehrs downstream expectations.
 
 Why
 ---

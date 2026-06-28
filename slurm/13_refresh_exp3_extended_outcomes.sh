@@ -55,13 +55,13 @@ echo "=============================================="
 
 START_TS="$(date +%s)"
 
-EXP3_NATIVE_EVENTS_DIR="artifacts/runs/exp3/meds_icu"
+EXP3_NATIVE_EVENTS_DIR="outputs/runs/exp3/meds_icu"
 require_dir "${EXP3_NATIVE_EVENTS_DIR}" "native Exp3 ICU MEDS events dir"
 TOKENIZED_DIRS=(
-  "artifacts/runs/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized"
-  "artifacts/runs/exp3/arms/meds_mapped/deciles_none_unfused_time_rope_first_24h-tokenized"
-  "artifacts/runs/exp3/arms/meds_randomized/deciles_none_unfused_time_rope_first_24h-tokenized"
-  "artifacts/runs/exp3/arms/meds_freqmatched/deciles_none_unfused_time_rope_first_24h-tokenized"
+  "outputs/runs/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized"
+  "outputs/runs/exp3/arms/meds_mapped/deciles_none_unfused_time_rope_first_24h-tokenized"
+  "outputs/runs/exp3/arms/meds_randomized/deciles_none_unfused_time_rope_first_24h-tokenized"
+  "outputs/runs/exp3/arms/meds_freqmatched/deciles_none_unfused_time_rope_first_24h-tokenized"
 )
 
 done_n=0

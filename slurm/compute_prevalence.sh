@@ -25,6 +25,6 @@ echo "Start: $(date)"
 
 python utilities/scripts/compute_prevalence.py \
     --meds_events_dir data/clif/raw \
-    --exp3_tokenized_dir artifacts/runs/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized
+    --exp3_tokenized_dir outputs/runs/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized
 
 echo "Done: $(date)"

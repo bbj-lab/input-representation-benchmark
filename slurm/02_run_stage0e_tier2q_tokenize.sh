@@ -12,7 +12,7 @@
 # Rationale:
 # - Stage0 (raw MEDS -> tokenization) can require very high memory.
 # - Stage0E (eval-time retokenization) now has a fast-path that derives eval
-#   datasets from existing 24h-cut tokenized artifacts, and therefore should not
+#   datasets from existing 24h-cut tokenized outputs, and therefore should not
 #   reserve 300GB by default (which can delay scheduling).
 # =============================================================================
 

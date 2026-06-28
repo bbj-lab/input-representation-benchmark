@@ -20,18 +20,18 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_IN = (
     ROOT
-    / "artifacts"
+    / "outputs"
     / "runs"
     / "statistics"
-    / "paper_stats_run_artifacts"
+    / "paper_stats_run_outputs"
     / "all_family_pairwise.csv"
 )
 DEFAULT_OUT = (
     ROOT
-    / "artifacts"
+    / "outputs"
     / "runs"
     / "statistics"
-    / "paper_stats_run_artifacts"
+    / "paper_stats_run_outputs"
     / "all_family_pairwise_baseline.csv"
 )
 EXP1_BASELINE = "deciles_unfused"

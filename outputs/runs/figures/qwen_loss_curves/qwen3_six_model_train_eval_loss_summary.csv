@@ -1,0 +1,7 @@
+model,condition,run_id,train_points,first_train_loss,last_logged_train_loss,final_train_loss,eval_loss,eval_perplexity,eval_source
+Qwen3-0.6B,unfused,dq9cz6td,98,5.9521,2.8088,,2.862687826156616,17.508523616573868,wandb:lee-inhyeok-university-of-chicago/input-rep-benchmark-generalizability-tests/dq9cz6td
+Qwen3-0.6B,fused,zs634t3d,89,7.7155,4.8662,,5.252161502838135,190.97862348148539,wandb:lee-inhyeok-university-of-chicago/input-rep-benchmark-generalizability-tests/zs634t3d
+Qwen3 depth8,unfused,b48y3xxf,98,5.6292,2.5931,2.7779233567513217,2.6673943996429443,14.402393378954226,wandb:lee-inhyeok-university-of-chicago/input-rep-benchmark-generalizability-tests/b48y3xxf
+Qwen3 depth8,fused,w7n0hxnz,89,7.4954,4.4289,4.625777756117149,4.910511016845703,135.70874614750377,wandb:lee-inhyeok-university-of-chicago/input-rep-benchmark-generalizability-tests/w7n0hxnz
+Qwen3 depth16,unfused,j9g0wg6o,98,5.8654,2.6805,2.904795106716517,2.729029655456543,15.318016052799717,wandb:lee-inhyeok-university-of-chicago/input-rep-benchmark-generalizability-tests/j9g0wg6o
+Qwen3 depth16,fused,bw4oz3ie,89,7.6303,4.7267,4.973277190662494,5.15681266784668,173.61021937248853,wandb:lee-inhyeok-university-of-chicago/input-rep-benchmark-generalizability-tests/bw4oz3ie

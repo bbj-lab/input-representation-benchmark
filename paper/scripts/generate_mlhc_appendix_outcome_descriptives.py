@@ -21,7 +21,7 @@ from paper.scripts.generate_mlhc_appendix_tables import (
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_EXP12_EXTENDED = (
     ROOT
-    / "artifacts"
+    / "outputs"
     / "runs"
     / "tokenized"
     / "mimiciv-3.1_meds_70-10-20"
@@ -31,7 +31,7 @@ DEFAULT_EXP12_EXTENDED = (
 )
 DEFAULT_EXP3_EXTENDED = (
     ROOT
-    / "artifacts"
+    / "outputs"
     / "runs"
     / "exp3"
     / "meds_icu"

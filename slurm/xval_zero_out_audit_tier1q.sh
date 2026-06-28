@@ -12,7 +12,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark"
-RUN_ROOT="${PROJECT_ROOT}/artifacts/runs"
+RUN_ROOT="${PROJECT_ROOT}/outputs/runs"
 OUTPUT_DIR="${PROJECT_ROOT}/outputs/diagnostics_xval_zero_audit"
 
 mkdir -p "${PROJECT_ROOT}/slurm/logs" "${OUTPUT_DIR}"

@@ -36,9 +36,11 @@ Benchmark launchers set paths and submit jobs. `fms-ehrs` scripts read tokenized
 data, write checkpoints, write `features-*.npy`, and write probe prediction
 files.
 
-**Paper stats root:** `artifacts/runs/statistics/paper_stats_run_artifacts/`
+**Paper stats root:** `outputs/runs/statistics/paper_stats_combined/`
 (`all_family_metrics.csv`, `all_family_pairwise.csv`,
 `all_family_pairwise_baseline.csv`).
+Per-family rebuild outputs live under
+`outputs/runs/statistics/paper_stats_run_outputs/`.
 
 **Exp3 note:** upstream arm building rewrites several code families, but the
 reported Exp3 tokenizer reads only `LAB` and `VITAL` blocks (see
@@ -49,41 +51,38 @@ reported Exp3 tokenizer reads only `LAB` and `VITAL` blocks (see
 
 | Goal | Path |
 | --- | --- |
-| Paper metrics (Exp1–3) | `artifacts/runs/statistics/paper_stats_run_artifacts/all_family_metrics.csv` |
-| Qwen3 additional-run stats | `artifacts/runs/statistics/revision_gfkb/`, `revision_gfkb_fused_only/`, `revision_qwen_scaled/` |
-| Llama10ep additional-run stats (when ready) | `artifacts/runs/statistics/revision_gfkb/` via `07b_stats_llama10ep_families.jobfile` |
-| Checkpoints and training logs | `artifacts/runs/models/exp*_*`, `qwen3_*`, `llama10ep_*` |
-| Tokenized timelines | `artifacts/runs/tokenized/mimiciv-3.1_meds_70-10-20/` |
+| Paper metrics (Exp1–3) | `outputs/runs/statistics/paper_stats_combined/all_family_metrics.csv` |
+| Qwen3 additional-run stats | `outputs/runs/statistics/generalizability_tests/qwen3_0p6b_llama10ep/`, `generalizability_tests/qwen3_0p6b_fused_only/`, `generalizability_tests/qwen3_scaled/` |
+| Llama10ep additional-run stats | `outputs/runs/statistics/generalizability_tests/qwen3_0p6b_llama10ep/` (`llama10ep_*` family folders and combined CSVs) |
+| Checkpoints and training logs | `outputs/runs/models/exp*_*`, `qwen3_*`, `llama10ep_*` |
+| Tokenized timelines | `outputs/runs/tokenized/mimiciv-3.1_meds_70-10-20/` |
 | Extracted features | `<data_version>_first_24h-tokenized/<split>/features-*.npy` |
 | Probe outputs | `<data_version>_first_24h-tokenized/test/*-preds-*.pkl` |
-| Exp3 mapping coverage | `artifacts/runs/exp3/arms/meds_mapped/mappings/meta.json` |
+| Exp3 mapping coverage | `outputs/runs/exp3/arms/meds_mapped/mappings/meta.json` |
 
-On-disk tree policy: [`artifacts/README.md`](artifacts/README.md).
+On-disk tree policy: [`outputs/README.md`](outputs/README.md).
 
-## Additional runs (in progress)
+## Additional runs
 
-These runs reuse the paper stage order but use separate jobfiles, model prefixes,
-and statistics roots under `revision_*`.
+These completed generalizability tests reuse the paper stage order but use
+separate jobfiles, model prefixes, and statistics roots under `generalizability_tests/`.
+Qwen3 tests stress architecture generalizability with 0.6B and scaled
+depth8/depth16 fused-vs-unfused decile RoPE runs. Llama10ep tests stress
+training-budget and seed generalizability with the scaled Llama 3.2 backbone
+trained for 10 epochs across seeds 42–46 on decile discrete RoPE and centile
+soft RoPE settings.
 
-### Status (Jun 2026)
-
-| Track | Setting | Status |
-| --- | --- | --- |
-| Qwen3-0.6B | decile, unfused vs fused, discrete + time RoPE, 1 epoch | train → extract → probes → stats complete |
-| Qwen3 scaled | depth8 and depth16 unfused/fused variants | train → extract → probes → stats complete |
-| Llama 3.2-1B | decile unfused discrete + time RoPE, **10 epochs, seeds 42–46** | decile s42–46 done; centile s42–45 done; **centile s46 running in job `12162088`**; extract, probes, and stats queued |
-
-### Revision paths
+### Additional-run paths
 
 | Item | Path |
 | --- | --- |
-| Prepare/submit | `slurm/17_prepare_submit_revision_gfkb.sh` |
-| Jobfiles | `slurm/generated/revision_gfkb/` |
-| Last job IDs | `slurm/generated/revision_gfkb/submit_state.env` |
+| Prepare/submit | `slurm/17_prepare_submit_generalizability_tests.sh` |
+| Jobfiles | `slurm/generated/generalizability_tests/` |
+| Last job IDs | `slurm/generated/generalizability_tests/submit_state.env` |
 | Serial Llama10ep runner | `slurm/18_run_gpu4_jobfile_serial.sh` |
 | Resume markers | `slurm/state/*.last_completed` (local only; not source files) |
 
-Model prefixes under `artifacts/runs/models/`: `qwen3_0p6b_exp2_*`,
+Model prefixes under `outputs/runs/models/`: `qwen3_0p6b_exp2_*`,
 `qwen3_depth8_exp2_*`, `qwen3_depth16_exp2_*`, `llama10ep_exp2_*`.
 
 Jobfile prefixes: `00` tokenize; `01*`/`02*` train; `03*`/`04` extract;
@@ -97,12 +96,12 @@ must use the same stem.
 saves epoch-boundary checkpoints when `IRB_LLAMA10EP_WANDB_EPOCH_UPLOADS=true`
 (default), avoiding step-based W&B uploads. Metrics still log normally.
 
-**Revision extraction:** four `torchrun` ranks write shards, then rank 0 merges
+**Additional-run extraction:** four `torchrun` ranks write shards, then rank 0 merges
 to one `features-*.npy` per split.
 
 ### Qwen3 output map
 
-**Models** (`artifacts/runs/models/`):
+**Models** (`outputs/runs/models/`):
 
 | Prefix | Contents |
 | --- | --- |
@@ -115,24 +114,24 @@ also have local `loss_perplexity_curve.csv`; 0.6B curves were recovered from W&B
 and trainer state.
 
 **Features** (base:
-`artifacts/runs/tokenized/mimiciv-3.1_meds_70-10-20/`):
+`outputs/runs/tokenized/mimiciv-3.1_meds_70-10-20/`):
 
 | Condition | Split dir | Files |
 | --- | --- | --- |
 | unfused | `deciles_none_unfused_time_rope_first_24h-tokenized/{train,val,test}/` | `features-model-discrete-time_rope.npy` (0.6B legacy name); `features-qwen3_depth8_exp2_...`; `features-qwen3_depth16_exp2_...` |
 | fused | `deciles_none_fused_time_rope_first_24h-tokenized/{train,val,test}/` | same pattern |
 
-**Probes:** in each `test/` dir above; tags `revision-qwen3_*` covering all four
-outcome families (`primary_binary`, `additional_binary`, `length_of_stay`,
-`extended_regression`).
+**Probes:** in each `test/` dir above; existing prediction filenames retain
+legacy `revision-qwen3_*` tags and cover all four outcome families
+(`primary_binary`, `additional_binary`, `length_of_stay`, `extended_regression`).
 
 **Stats:**
 
 | Root | Contents |
 | --- | --- |
-| `revision_gfkb/` | 0.6B metrics, pairwise tables, and per-family folders |
-| `revision_gfkb_fused_only/` | fused-only 0.6B subset |
-| `revision_qwen_scaled/` | scaled Qwen per-family stats |
+| `generalizability_tests/qwen3_0p6b_llama10ep/` | 0.6B Qwen3 and Llama10ep metrics, pairwise tables, and per-family folders |
+| `generalizability_tests/qwen3_0p6b_fused_only/` | fused-only 0.6B subset |
+| `generalizability_tests/qwen3_scaled/` | scaled Qwen per-family stats |
 
 ## Training stability outputs
 
@@ -140,13 +139,13 @@ Not paper results. Loss/LR/grad-norm plots and stratified validation-loss checks
 
 | Path | Contents |
 | --- | --- |
-| `artifacts/runs/figures/qwen_loss_curves/` | Qwen train/eval loss |
-| `artifacts/runs/figures/llama10ep_loss_curves/` | Llama10ep train/eval loss |
-| `artifacts/runs/figures/qwen3_training_diagnostics/` | Qwen LR and grad norm |
-| `artifacts/runs/figures/llama10ep_training_diagnostics/` | Llama LR, grad norm, stratified eval loss |
+| `outputs/runs/figures/qwen_loss_curves/` | Qwen train/eval loss |
+| `outputs/runs/figures/llama10ep_loss_curves/` | Llama10ep train/eval loss |
+| `outputs/runs/figures/qwen3_training_diagnostics/` | Qwen LR and grad norm |
+| `outputs/runs/figures/llama10ep_training_diagnostics/` | Llama LR, grad norm, stratified eval loss |
 
 Also: `loss_perplexity_curve.csv` in each model dir; W&B project
-`input-rep-benchmark-revision-gfkb`. Stratified eval script:
+`input-rep-benchmark-generalizability-tests`. Stratified eval script:
 `pipeline/scripts/llama10ep_stratified_eval_loss.py`.
 
 ## Model input coverage
@@ -213,7 +212,7 @@ Details: [`pipeline/tests/README.md`](pipeline/tests/README.md). Model-side test
 | `pipeline/` | orchestration and paper-side checks |
 | `paper/` | table and figure builders |
 | `slurm/` | launchers; `generated/` holds local jobfiles |
-| `artifacts/runs/` | models, tokenized data, stats, figures |
+| `outputs/runs/` | models, tokenized data, stats, figures |
 | `benchmarks/mimic-meds-extraction/` | MEDS wrapper |
 | `utilities/` | optional helpers outside the main chain |
 | `deprecated/` | archived material |

@@ -11,8 +11,8 @@ from parquet data, and produces scatter plots of ||W_learned - W_init||_2 vs log
 
 Usage:
     python pipeline/scripts/diagnostics/diag_sparsity_distance.py \
-        --model_centiles artifacts/runs/models/exp1_meds_centiles_none_fusedTrue_discrete_time_tokens-s42/run-0/checkpoint-9000 \
-        --model_deciles artifacts/runs/models/exp1_meds_deciles_none_fusedTrue_discrete_time_tokens-s42/run-0/checkpoint-9000 \
+        --model_centiles outputs/runs/models/exp1_meds_centiles_none_fusedTrue_discrete_time_tokens-s42/run-0/checkpoint-9000 \
+        --model_deciles outputs/runs/models/exp1_meds_deciles_none_fusedTrue_discrete_time_tokens-s42/run-0/checkpoint-9000 \
         --data_dir benchmarks/mimic-meds-extraction/data/meds/data \
         [--output_dir outputs/diagnostics] \
         [--dry_run]

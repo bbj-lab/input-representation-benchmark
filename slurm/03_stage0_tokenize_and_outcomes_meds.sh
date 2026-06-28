@@ -8,7 +8,7 @@
 #   sbatch --array=0-11 slurm/02_run_stage0_tier2q_tokenize.sh slurm/generated/demo/04_exp1_stage0_tokenize.jobfile
 #
 # Validity note:
-#   - Internal validity: stage0 enforces required tokenization artifacts (including numeric_stats.json)
+#   - Internal validity: stage0 enforces required tokenization outputs (including numeric_stats.json)
 #     so downstream representation comparisons do not silently mix incompatible preprocessing.
 #
 # =============================================================================
@@ -423,7 +423,7 @@ else
   # Post-tokenization validity checks (fail loudly)
   #
   # Rationale: Stage0 is the source-of-truth for downstream training inputs.
-  # We must not allow Stage0 to "succeed" while silently missing artifacts
+  # We must not allow Stage0 to "succeed" while silently missing outputs
   # required for method-faithful xVal scaling (numeric_stats.json).
   # ---------------------------------------------------------------------------
   for s in train val test; do

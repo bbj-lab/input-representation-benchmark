@@ -17,8 +17,8 @@
       ]
     },
     {
-      "script": "pipeline/scripts/build_run_artifact_tree.py",
-      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__build_run_artifact_tree.sh",
+      "script": "pipeline/scripts/build_run_output_tree.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__build_run_output_tree.sh",
       "mode": "execute",
       "args": [
         "--dry-run"

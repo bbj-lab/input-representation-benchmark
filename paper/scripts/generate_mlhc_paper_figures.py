@@ -31,8 +31,8 @@ from pipeline.scripts.diagnostics.diag_embedding_geometry import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_METRICS = ROOT / "artifacts" / "runs" / "statistics" / "paper_stats_combined" / "all_family_metrics.csv"
-DEFAULT_PAIRWISE = ROOT / "artifacts" / "runs" / "statistics" / "paper_stats_combined" / "all_family_pairwise_baseline.csv"
+DEFAULT_METRICS = ROOT / "outputs" / "runs" / "statistics" / "paper_stats_combined" / "all_family_metrics.csv"
+DEFAULT_PAIRWISE = ROOT / "outputs" / "runs" / "statistics" / "paper_stats_combined" / "all_family_pairwise_baseline.csv"
 DEFAULT_FIG_DIR = (
     ROOT.parent
     / "MLHC2026"
@@ -41,7 +41,7 @@ DEFAULT_FIG_DIR = (
 )
 DEFAULT_TOKEN_ROOT = (
     ROOT
-    / "artifacts"
+    / "outputs"
     / "runs"
     / "tokenized"
     / "mimiciv-3.1_meds_70-10-20"
@@ -1355,8 +1355,8 @@ def build_exp3_binary_figure(
 
 
 def build_centile_pca_grid(out_dir: Path) -> None:
-    model_root = ROOT / "artifacts" / "runs" / "models"
-    token_root = ROOT / "artifacts" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20"
+    model_root = ROOT / "outputs" / "runs" / "models"
+    token_root = ROOT / "outputs" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20"
     num_bins = 100
 
     shared_model = _latest_checkpoint(

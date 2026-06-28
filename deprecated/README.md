@@ -21,6 +21,6 @@ Do not use files in this tree for new runs if an active path exists in:
 - `pipeline/`
 - `paper/`
 - `utilities/`
-- `artifacts/`
+- `outputs/`
 
 Keep archived files here when they still matter for audit or backtracking. Delete only pure cache or disposable scratch output.

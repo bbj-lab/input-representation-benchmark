@@ -37,7 +37,7 @@ cd "${IRB_HOME}"
 
 DEMO_DIR="${IRB_HOME}/slurm/generated/demo"
 STATS_DIR="${IRB_HOME}/slurm/generated/statistics"
-STATS_ROOT="${IRB_HOME}/artifacts/runs/statistics/paper_stats_run_artifacts"
+STATS_ROOT="${IRB_HOME}/outputs/runs/statistics/paper_stats_run_outputs"
 mkdir -p "${DEMO_DIR}" "${STATS_DIR}" "${STATS_ROOT}" "${IRB_HOME}/slurm/output"
 
 echo "[prepare] Generating Exp1/2/3 jobfiles..."
@@ -65,7 +65,7 @@ from pathlib import Path
 ROOT = Path.cwd()
 DEMO = ROOT / "slurm" / "generated" / "demo"
 STATS_DIR = ROOT / "slurm" / "generated" / "statistics"
-STATS_ROOT = ROOT / "artifacts" / "runs" / "statistics" / "paper_stats_run_artifacts"
+STATS_ROOT = ROOT / "outputs" / "runs" / "statistics" / "paper_stats_run_outputs"
 STATS_DIR.mkdir(parents=True, exist_ok=True)
 STATS_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -245,8 +245,8 @@ def _append_family_rows(
     )
 
 
-token_root = ROOT / "artifacts" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20"
-exp3_root = ROOT / "artifacts" / "runs" / "exp3"
+token_root = ROOT / "outputs" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20"
+exp3_root = ROOT / "outputs" / "runs" / "exp3"
 
 # ---------------------------
 # Exp1 handles (12)
@@ -497,11 +497,11 @@ for s in train val test; do
   fi
 done
 for d in \
-  "${IRB_HOME}/artifacts/runs/exp3/meds_icu/train" \
-  "${IRB_HOME}/artifacts/runs/exp3/meds_icu/test" \
-  "${IRB_HOME}/artifacts/runs/exp3/arms/meds_mapped/train" \
-  "${IRB_HOME}/artifacts/runs/exp3/arms/meds_randomized/train" \
-  "${IRB_HOME}/artifacts/runs/exp3/arms/meds_freqmatched/train"; do
+  "${IRB_HOME}/outputs/runs/exp3/meds_icu/train" \
+  "${IRB_HOME}/outputs/runs/exp3/meds_icu/test" \
+  "${IRB_HOME}/outputs/runs/exp3/arms/meds_mapped/train" \
+  "${IRB_HOME}/outputs/runs/exp3/arms/meds_randomized/train" \
+  "${IRB_HOME}/outputs/runs/exp3/arms/meds_freqmatched/train"; do
   if ! require_dir "${d}" "Exp3 events split"; then
     MISSING_PREREQ=1
   fi

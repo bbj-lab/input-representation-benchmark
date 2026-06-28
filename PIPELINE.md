@@ -24,7 +24,7 @@ Live scripts:
 - `pipeline/scripts/split_meds_by_hadm_splits.py`
 - `pipeline/scripts/build_exp3_meds_semantics_arms.py`
 
-Outputs are written under `artifacts/runs/exp3/`.
+Outputs are written under `outputs/runs/exp3/`.
 
 ## 2. Stage 0: tokenization + base outcomes
 
@@ -66,7 +66,7 @@ Entry points:
 
 Main outputs:
 
-- checkpoints under `artifacts/runs/models/`
+- checkpoints under `outputs/runs/models/`
 - `representation_mechanics.pt` for wrapper models
 
 ## 5. Stage 2: hidden-state extraction
@@ -104,7 +104,7 @@ Entry points:
 
 Primary stats root:
 
-- `artifacts/runs/statistics/paper_stats_run_artifacts/`
+- `outputs/runs/statistics/paper_stats_run_outputs/`
 
 ## 8. Table and figure build
 
