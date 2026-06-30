@@ -139,13 +139,13 @@ Not paper results. Loss/LR/grad-norm plots and stratified validation-loss checks
 
 | Path | Contents |
 | --- | --- |
-| `outputs/runs/figures/qwen_loss_curves/` | Qwen train/eval loss |
-| `outputs/runs/figures/llama10ep_loss_curves/` | Llama10ep train/eval loss |
+| `outputs/runs/figures/qwen_loss_curves/` | Qwen training/validation loss |
+| `outputs/runs/figures/llama10ep_loss_curves/` | Llama10ep training/validation loss |
 | `outputs/runs/figures/qwen3_training_diagnostics/` | Qwen LR and grad norm |
-| `outputs/runs/figures/llama10ep_training_diagnostics/` | Llama LR, grad norm, stratified eval loss |
+| `outputs/runs/figures/llama10ep_training_diagnostics/` | Llama LR, grad norm, stratified validation loss |
 
 Also: `loss_perplexity_curve.csv` in each model dir; W&B project
-`input-rep-benchmark-generalizability-tests`. Stratified eval script:
+`input-rep-benchmark-generalizability-tests`. Stratified validation script:
 `pipeline/scripts/llama10ep_stratified_eval_loss.py`.
 
 ## Model input coverage

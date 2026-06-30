@@ -21,6 +21,7 @@ import matplotlib.patheffects as pe
 from matplotlib.colors import Normalize, TwoSlopeNorm
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
+from matplotlib.ticker import MaxNLocator
 
 from pipeline.scripts.diagnostics.diag_embedding_geometry import (
     extract_discrete_bin_embeddings,
@@ -48,27 +49,27 @@ DEFAULT_TOKEN_ROOT = (
 )
 
 EXP1_ORDER = [
-    ("deciles_unfused", "Deciles (pop.)", "unfused"),
-    ("deciles_fused", "Deciles (pop.)", "fused"),
-    ("ventiles_unfused", "Ventiles (pop.)", "unfused"),
-    ("ventiles_fused", "Ventiles (pop.)", "fused"),
-    ("ventiles_5_10_5_unfused", "Ventiles (clin.)", "unfused"),
-    ("ventiles_5_10_5_fused", "Ventiles (clin.)", "fused"),
-    ("trentiles_unfused", "Trentiles (pop.)", "unfused"),
-    ("trentiles_fused", "Trentiles (pop.)", "fused"),
-    ("trentiles_10_10_10_unfused", "Trentiles (clin.)", "unfused"),
-    ("trentiles_10_10_10_fused", "Trentiles (clin.)", "fused"),
-    ("centiles_unfused", "Centiles (pop.)", "unfused"),
-    ("centiles_fused", "Centiles (pop.)", "fused"),
+    ("deciles_unfused", "Deciles (population)", "unfused"),
+    ("deciles_fused", "Deciles (population)", "fused"),
+    ("ventiles_unfused", "Ventiles (population)", "unfused"),
+    ("ventiles_fused", "Ventiles (population)", "fused"),
+    ("ventiles_5_10_5_unfused", "Ventiles (reference-range)", "unfused"),
+    ("ventiles_5_10_5_fused", "Ventiles (reference-range)", "fused"),
+    ("trentiles_unfused", "Trentiles (population)", "unfused"),
+    ("trentiles_fused", "Trentiles (population)", "fused"),
+    ("trentiles_10_10_10_unfused", "Trentiles (reference-range)", "unfused"),
+    ("trentiles_10_10_10_fused", "Trentiles (reference-range)", "fused"),
+    ("centiles_unfused", "Centiles (population)", "unfused"),
+    ("centiles_fused", "Centiles (population)", "fused"),
 ]
 
 EXP1_COLORS = {
-    "Deciles (pop.)": "#4E79A7",
-    "Ventiles (pop.)": "#76B7B2",
-    "Ventiles (clin.)": "#59A14F",
-    "Trentiles (pop.)": "#E15759",
-    "Trentiles (clin.)": "#B07AA1",
-    "Centiles (pop.)": "#F28E2B",
+    "Deciles (population)": "#4E79A7",
+    "Ventiles (population)": "#76B7B2",
+    "Ventiles (reference-range)": "#59A14F",
+    "Trentiles (population)": "#E15759",
+    "Trentiles (reference-range)": "#B07AA1",
+    "Centiles (population)": "#F28E2B",
 }
 
 OUTCOME_LABELS = {
@@ -123,6 +124,62 @@ APPENDIX_OUTCOME_LABELS = {
     "max_dbp": "Maximum diastolic blood pressure",
 }
 
+FOREST_OUTCOME_LABELS = APPENDIX_OUTCOME_LABELS | {
+    "imv_event": "Invasive mechanical\nventilation",
+    "crrt_initiation": "Continuous renal\nreplacement therapy",
+    "length_of_stay": "Length of stay\n(hours)",
+    "peak_bnp": "Peak natriuretic\npeptide",
+    "max_heart_rate": "Maximum heart\nrate",
+    "max_sbp": "Maximum systolic\nblood pressure",
+    "max_dbp": "Maximum diastolic\nblood pressure",
+}
+
+FOREST_FIGSIZE = (7.3, 7.1)
+FOREST_TITLE_SIZE = 8.5
+FOREST_LABEL_SIZE = 7.5
+FOREST_TICK_SIZE = 6.8
+FOREST_LEGEND_SIZE = 6.3
+FOREST_MARKER_SIZE = 14
+FOREST_LINE_WIDTH = 0.8
+FOREST_HANDLE_SPREAD = 0.020
+FOREST_YLIM_PAD = 0.28
+FOREST_LEGEND_COLSPACING = 0.45
+FOREST_LEGEND_LABELSPACING = 0.25
+FOREST_OUTCOME_SEPARATOR_COLOR = "#D4D4D4"
+FOREST_OUTCOME_SEPARATOR_WIDTH = 0.55
+FOREST_OUTCOME_SEPARATOR_ALPHA = 0.65
+FOREST_OUTCOME_BAND_COLOR = "#F4F4F4"
+FOREST_OUTCOME_BAND_ALPHA = 0.9
+FOREST_BINARY_AUROC_X_LO_FLOOR = 0.52
+FOREST_LEGEND_TOP_EDGE = 0.925
+FOREST_LEGEND_BOX_HEIGHT = 0.075
+FOREST_LAYOUT_TOP_EDGE = 0.955
+FOREST_EXP1_LAYOUT_TOP_EDGE = 0.935
+
+SUMMARY_BAR_TITLE_SIZE = 9.2
+SUMMARY_BAR_LABEL_SIZE = 8.4
+SUMMARY_BAR_TICK_SIZE = 7.5
+SUMMARY_BAR_VALUE_SIZE = 6.8
+SUMMARY_BAR_WIDTH = 0.58
+SUMMARY_BAR_ALPHA = 0.94
+SUMMARY_BAR_EDGE_COLOR = "#FFFFFF"
+SUMMARY_BAR_ERROR_COLOR = "#2F343A"
+SUMMARY_BAR_GRID_COLOR = "#E5E7EB"
+SUMMARY_BAR_SPINE_COLOR = "#B8BDC7"
+SUMMARY_BAR_BASELINE_COLOR = "#9AA1AD"
+SUMMARY_BAR_VALUE_COLOR = "#4B5563"
+
+PCA_GRID_FIGSIZE = (12.0, 6.8)
+PCA_GRID_TITLE_SIZE = 11.0
+PCA_GRID_AXIS_LABEL_SIZE = 9.0
+PCA_GRID_TICK_SIZE = 8.0
+PCA_GRID_ANNOT_SIZE = 8.0
+PCA_GRID_PANEL_NOTE_SIZE = 8.5
+PCA_GRID_CBAR_LABEL_SIZE = 9.0
+PCA_GRID_CBAR_TICK_SIZE = 8.0
+PCA_GRID_SHARED_MARKER_SIZE = 24
+PCA_GRID_FUSED_MARKER_SIZE = 20
+
 TREND_COLORS = {
     "Binary outcomes": "#4C78A8",
     "Regression outcomes": "#F28E2B",
@@ -150,6 +207,13 @@ EXP1_HANDLE_SHORT_LABELS = {
     "trentiles_10_10_10_fused": "Trentiles (clinical), fused",
     "centiles_unfused": "Centiles (population), unfused",
     "centiles_fused": "Centiles (population), fused",
+}
+
+EXP1_COLOR_LEGEND_LABELS = {
+    label: label.replace(" (reference-range)", "\n(reference-range)")
+    if "(reference-range)" in label
+    else label
+    for label in EXP1_COLORS
 }
 
 EXP1_TREND_COMPARISONS = [
@@ -491,6 +555,57 @@ def _collect_exp1_source(metrics: pd.DataFrame) -> pd.DataFrame:
     ][["family_name", "outcome", "handle", "metric", "point", "ci_lo", "ci_hi"]].copy()
 
 
+def _forest_outcome_row_bounds(base_y: np.ndarray, idx: int) -> tuple[float, float]:
+    if len(base_y) == 1:
+        return base_y[0] - 0.35, base_y[0] + 0.35
+    if idx == 0:
+        y_top = base_y[0] + (base_y[0] - base_y[1]) / 2.0
+    else:
+        y_top = (base_y[idx - 1] + base_y[idx]) / 2.0
+    if idx == len(base_y) - 1:
+        y_bottom = base_y[-1] - (base_y[-2] - base_y[-1]) / 2.0
+    else:
+        y_bottom = (base_y[idx] + base_y[idx + 1]) / 2.0
+    return y_bottom, y_top
+
+
+def _add_forest_outcome_banding(ax, base_y: np.ndarray) -> None:
+    x0, x1 = ax.get_xlim()
+    for idx in range(len(base_y)):
+        if idx % 2 == 0:
+            continue
+        y_bottom, y_top = _forest_outcome_row_bounds(base_y, idx)
+        ax.axhspan(
+            y_bottom,
+            y_top,
+            xmin=0,
+            xmax=1,
+            facecolor=FOREST_OUTCOME_BAND_COLOR,
+            alpha=FOREST_OUTCOME_BAND_ALPHA,
+            edgecolor="none",
+            zorder=0.5,
+            clip_on=True,
+        )
+    ax.set_xlim(x0, x1)
+
+
+def _add_forest_outcome_separators(ax, base_y: np.ndarray) -> None:
+    if len(base_y) < 2:
+        return
+    x0, x1 = ax.get_xlim()
+    for idx in range(len(base_y) - 1):
+        y_sep = (base_y[idx] + base_y[idx + 1]) / 2.0
+        ax.hlines(
+            y_sep,
+            x0,
+            x1,
+            colors=FOREST_OUTCOME_SEPARATOR_COLOR,
+            linewidth=FOREST_OUTCOME_SEPARATOR_WIDTH,
+            alpha=FOREST_OUTCOME_SEPARATOR_ALPHA,
+            zorder=1,
+        )
+
+
 def _plot_exp1_granularity_panel(
     ax,
     metrics: pd.DataFrame,
@@ -508,7 +623,11 @@ def _plot_exp1_granularity_panel(
     n_out = len(outcome_order)
     n_h = len(handle_order)
     base_y = np.arange(n_out, dtype=float)[::-1]
-    offsets = np.linspace(-(n_h - 1) * 0.032, (n_h - 1) * 0.032, n_h) if n_h > 1 else np.array([0.0])
+    offsets = (
+        np.linspace((n_h - 1) * FOREST_HANDLE_SPREAD, -(n_h - 1) * FOREST_HANDLE_SPREAD, n_h)
+        if n_h > 1
+        else np.array([0.0])
+    )
     pts: list[float] = []
     for o_idx, outcome in enumerate(outcome_order):
         sub = metrics[
@@ -528,26 +647,29 @@ def _plot_exp1_granularity_panel(
             alpha = 0.55 if tokenization == "unfused" else 0.95
             color = EXP1_COLORS[granularity]
             y = base_y[o_idx] + offsets[h_idx]
-            ax.hlines(y, r["ci_lo"], r["ci_hi"], color=color, linewidth=1.45, alpha=alpha)
+            ax.hlines(y, r["ci_lo"], r["ci_hi"], color=color, linewidth=FOREST_LINE_WIDTH, alpha=alpha)
             ax.scatter(
                 r["point"],
                 y,
                 color=color,
                 marker=marker,
-                s=34,
+                s=FOREST_MARKER_SIZE,
                 edgecolor="#222222",
-                linewidth=0.45,
+                linewidth=0.25,
                 alpha=alpha,
                 zorder=4,
             )
     ax.set_yticks(base_y)
-    ax.set_yticklabels([ylab_map[o] for o in outcome_order], fontsize=14)
-    ax.set_title(panel_title)
-    ax.set_xlabel(xlabel)
-    ax.grid(axis="x", alpha=0.25)
+    ax.set_yticklabels([ylab_map[o] for o in outcome_order], fontsize=FOREST_TICK_SIZE)
+    ax.set_title(panel_title, fontsize=FOREST_TITLE_SIZE, pad=4)
+    ax.set_xlabel(xlabel, fontsize=FOREST_LABEL_SIZE)
+    ax.tick_params(axis="x", labelsize=FOREST_TICK_SIZE, length=2)
+    ax.grid(axis="x", alpha=0.20, linewidth=0.5)
     if pts:
         _xlim_from_points(ax, np.array(pts), x_lo_floor=x_lo_floor, x_hi_ceil=None)
-    ax.set_ylim(base_y.min() - 0.42, base_y.max() + 0.42)
+    ax.set_ylim(base_y.min() - FOREST_YLIM_PAD, base_y.max() + FOREST_YLIM_PAD)
+    _add_forest_outcome_banding(ax, base_y)
+    _add_forest_outcome_separators(ax, base_y)
 
 
 def _collect_exp2_source(metrics: pd.DataFrame) -> pd.DataFrame:
@@ -576,11 +698,16 @@ def _plot_handle_metric_panel(
     marker_for_handle,
     panel_title: str,
     xlabel: str,
+    x_lo_floor: float | None = None,
 ) -> None:
     n_out = len(outcome_order)
     n_h = len(handle_order)
     base_y = np.arange(n_out, dtype=float)[::-1]
-    offsets = np.linspace(-(n_h - 1) * 0.028, (n_h - 1) * 0.028, n_h) if n_h > 1 else np.array([0.0])
+    offsets = (
+        np.linspace((n_h - 1) * FOREST_HANDLE_SPREAD, -(n_h - 1) * FOREST_HANDLE_SPREAD, n_h)
+        if n_h > 1
+        else np.array([0.0])
+    )
     pts: list[float] = []
     for o_idx, outcome in enumerate(outcome_order):
         sub = source[source["outcome"] == outcome]
@@ -593,25 +720,28 @@ def _plot_handle_metric_panel(
             y = base_y[o_idx] + offsets[h_idx]
             color = handle_colors[handle]
             marker = marker_for_handle(handle)
-            ax.hlines(y, r["ci_lo"], r["ci_hi"], color=color, linewidth=1.35, alpha=0.92)
+            ax.hlines(y, r["ci_lo"], r["ci_hi"], color=color, linewidth=FOREST_LINE_WIDTH, alpha=0.92)
             ax.scatter(
                 r["point"],
                 y,
                 color=color,
                 marker=marker,
-                s=32,
+                s=FOREST_MARKER_SIZE,
                 edgecolor="#222222",
-                linewidth=0.45,
+                linewidth=0.25,
                 zorder=4,
             )
     ax.set_yticks(base_y)
-    ax.set_yticklabels([APPENDIX_OUTCOME_LABELS[o] for o in outcome_order], fontsize=14)
-    ax.set_title(panel_title)
-    ax.set_xlabel(xlabel)
-    ax.grid(axis="x", alpha=0.25)
+    ax.set_yticklabels([FOREST_OUTCOME_LABELS[o] for o in outcome_order], fontsize=FOREST_TICK_SIZE)
+    ax.set_title(panel_title, fontsize=FOREST_TITLE_SIZE, pad=4)
+    ax.set_xlabel(xlabel, fontsize=FOREST_LABEL_SIZE)
+    ax.tick_params(axis="x", labelsize=FOREST_TICK_SIZE, length=2)
+    ax.grid(axis="x", alpha=0.20, linewidth=0.5)
     if pts:
-        _xlim_from_points(ax, np.array(pts))
-    ax.set_ylim(base_y.min() - 0.4, base_y.max() + 0.4)
+        _xlim_from_points(ax, np.array(pts), x_lo_floor=x_lo_floor, x_hi_ceil=None)
+    ax.set_ylim(base_y.min() - FOREST_YLIM_PAD, base_y.max() + FOREST_YLIM_PAD)
+    _add_forest_outcome_banding(ax, base_y)
+    _add_forest_outcome_separators(ax, base_y)
 
 
 def _collect_exp3_source(metrics: pd.DataFrame) -> pd.DataFrame:
@@ -825,7 +955,7 @@ def _exp1_axis_summary_source(metrics: pd.DataFrame) -> pd.DataFrame:
         r"^(Deciles|Ventiles|Trentiles|Centiles)"
     )
     handle_meta["anchoring"] = np.where(
-        handle_meta["granularity_label"].str.contains("(clin.)", regex=False),
+        handle_meta["granularity_label"].str.contains("reference-range", regex=False),
         "Clinical bins",
         "Population bins",
     )
@@ -993,13 +1123,23 @@ def _plot_summary_bar_panel(
         display_labels.get(str(level), str(level)) if display_labels else str(level)
         for level in sub["level"]
     ]
+    lower = float(np.nanmin(ci_lo)) - 0.02
+    floor = lower if y_floor is None else min(float(y_floor), lower)
+    upper = float(np.nanmax(ci_hi))
+    pad = max(0.018, 0.12 * max(upper - floor, 0.08))
+    y_top = upper + pad
+    bar_heights = points - floor
+
+    ax.set_facecolor("#FFFFFF")
     ax.bar(
         x,
-        points,
-        width=0.68,
+        bar_heights,
+        bottom=floor,
+        width=SUMMARY_BAR_WIDTH,
         color=[color_map[str(level)] for level in sub["level"]],
-        edgecolor="#2A2A2A",
-        linewidth=0.8,
+        edgecolor=SUMMARY_BAR_EDGE_COLOR,
+        linewidth=0.7,
+        alpha=SUMMARY_BAR_ALPHA,
         zorder=3,
     )
     ax.errorbar(
@@ -1007,39 +1147,54 @@ def _plot_summary_bar_panel(
         points,
         yerr=err,
         fmt="none",
-        ecolor="#222222",
-        elinewidth=1.2,
-        capsize=3.0,
+        ecolor=SUMMARY_BAR_ERROR_COLOR,
+        elinewidth=0.9,
+        capsize=2.2,
+        capthick=0.9,
         zorder=4,
     )
-    lower = float(np.nanmin(ci_lo)) - 0.02
-    floor = lower if y_floor is None else min(float(y_floor), lower)
-    upper = float(np.nanmax(ci_hi))
-    pad = max(0.02, 0.10 * max(upper - floor, 0.08))
-    ax.set_ylim(floor, upper + pad)
+    ax.set_ylim(floor, y_top)
+    ax.set_xlim(-0.55, len(sub) - 0.45)
     ax.set_xticks(x)
-    needs_rotation = any("\n" not in label and len(label) > 10 for label in labels)
     ax.set_xticklabels(
-        labels,
-        rotation=16 if needs_rotation else 0,
-        ha="right" if needs_rotation else "center",
-        fontsize=10,
+        [
+            label if "\n" in label else "\n".join(textwrap.wrap(label, width=12, break_long_words=False))
+            for label in labels
+        ],
+        rotation=0,
+        ha="center",
+        fontsize=SUMMARY_BAR_TICK_SIZE,
+        linespacing=1.05,
     )
-    ax.set_title(title, fontsize=12.5, pad=6)
-    ax.set_ylabel(ylabel, fontsize=11)
-    ax.tick_params(axis="y", labelsize=10)
-    ax.grid(axis="y", alpha=0.18, linestyle=":", linewidth=0.8, zorder=0)
+    ax.set_title(title, fontsize=SUMMARY_BAR_TITLE_SIZE, fontweight="semibold", pad=7)
+    ax.set_ylabel(ylabel, fontsize=SUMMARY_BAR_LABEL_SIZE)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+    ax.set_axisbelow(True)
+    ax.tick_params(axis="y", labelsize=SUMMARY_BAR_TICK_SIZE, length=0)
+    ax.tick_params(axis="x", length=0, pad=4)
+    if not ylabel:
+        ax.tick_params(axis="y", labelleft=False)
+        ax.spines["left"].set_visible(False)
+    ax.xaxis.grid(False)
+    ax.grid(axis="y", color=SUMMARY_BAR_GRID_COLOR, linestyle="-", linewidth=0.6, zorder=0)
+    ax.axhline(floor, color=SUMMARY_BAR_BASELINE_COLOR, linewidth=0.7, zorder=2)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    for side in ["left", "bottom"]:
+        if ax.spines[side].get_visible():
+            ax.spines[side].set_color(SUMMARY_BAR_SPINE_COLOR)
+            ax.spines[side].set_linewidth(0.7)
     for xi, yi, hi in zip(x, points, ci_hi):
-        ax.text(
-            xi,
-            hi + 0.008,
+        ax.annotate(
             f"{yi:.3f}",
+            xy=(xi, hi),
+            xytext=(0, 4),
+            textcoords="offset points",
             ha="center",
             va="bottom",
-            fontsize=8.5,
-            color="#222222",
+            fontsize=SUMMARY_BAR_VALUE_SIZE,
+            color=SUMMARY_BAR_VALUE_COLOR,
+            clip_on=False,
         )
 
 
@@ -1051,11 +1206,32 @@ def _exp2_marker(handle: str) -> str:
     return "s"
 
 
+EXP2_VALUE_COLOR_ITEMS = [
+    ("Discrete", "#4E79A7"),
+    ("Soft discretization", "#76B7B2"),
+    ("xVal", "#F28E2B"),
+    ("xVal-affine", "#B07AA1"),
+]
+
+EXP2_TEMPORAL_MARKER_ITEMS = [
+    ("Event order only", "^", 0.95),
+    ("Time tokens", "o", 0.95),
+    ("Admission-relative\nRoPE", "s", 0.95),
+]
+
+
 EXP3_HANDLE_MARKERS = {
     "meds": "o",
     "mapped": "s",
     "randomized": "D",
     "freqmatched": "^",
+}
+
+EXP3_FOREST_LABELS = {
+    "meds": "Native source codes",
+    "mapped": "CLIF-mapped",
+    "randomized": "Randomized mapped codes",
+    "freqmatched": "Frequency-matched mapped codes",
 }
 
 
@@ -1090,7 +1266,103 @@ def _wrap_bar_tick_label(label: str) -> str:
 
 
 def _wrap_legend_label(label: str, width: int = 24) -> str:
+    if "\n" in label:
+        return label
     return "\n".join(textwrap.wrap(label, width=width, break_long_words=False))
+
+
+def _forest_color_handles(items: list[tuple[str, str]]) -> list[Line2D]:
+    return [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color=color,
+            markerfacecolor=color,
+            markeredgecolor="#222222",
+            linewidth=0,
+            markersize=4.5,
+            label=_wrap_legend_label(label, width=26),
+        )
+        for label, color in items
+    ]
+
+
+def _forest_marker_handles(items: list[tuple[str, str, float]]) -> list[Line2D]:
+    return [
+        Line2D(
+            [0],
+            [0],
+            marker=marker,
+            color="#444444",
+            markerfacecolor="#444444",
+            markeredgecolor="#222222",
+            linewidth=0,
+            markersize=4.5,
+            label=label,
+            alpha=alpha,
+        )
+        for label, marker, alpha in items
+    ]
+
+
+def _legend_handles_for_row_major_display(handles: list[Line2D], ncol: int) -> list[Line2D]:
+    if ncol <= 1:
+        return handles
+    nrows = (len(handles) + ncol - 1) // ncol
+    ordered = []
+    for col in range(ncol):
+        for row in range(nrows):
+            idx = row * ncol + col
+            if idx < len(handles):
+                ordered.append(handles[idx])
+    return ordered
+
+
+def _add_forest_knob_legends(
+    fig: plt.Figure,
+    *,
+    left_handles: list[Line2D],
+    left_title: str,
+    right_handles: list[Line2D],
+    right_title: str,
+    top_edge: float,
+    left_ncol: int,
+    right_ncol: int,
+    left_width: float = 0.62,
+) -> None:
+    right_x = 0.02 + left_width + 0.04
+    right_width = max(0.1, 0.98 - right_x)
+    fig.legend(
+        handles=_legend_handles_for_row_major_display(left_handles, left_ncol),
+        title=left_title,
+        loc="upper left",
+        bbox_to_anchor=(0.02, top_edge, left_width, FOREST_LEGEND_BOX_HEIGHT),
+        ncol=left_ncol,
+        mode="expand",
+        frameon=False,
+        fontsize=FOREST_LEGEND_SIZE,
+        title_fontsize=FOREST_LEGEND_SIZE,
+        columnspacing=FOREST_LEGEND_COLSPACING,
+        labelspacing=FOREST_LEGEND_LABELSPACING,
+        handletextpad=0.25,
+        borderpad=0.0,
+    )
+    fig.legend(
+        handles=_legend_handles_for_row_major_display(right_handles, right_ncol),
+        title=right_title,
+        loc="upper left",
+        bbox_to_anchor=(right_x, top_edge, right_width, FOREST_LEGEND_BOX_HEIGHT),
+        ncol=right_ncol,
+        mode="expand",
+        frameon=False,
+        fontsize=FOREST_LEGEND_SIZE,
+        title_fontsize=FOREST_LEGEND_SIZE,
+        columnspacing=FOREST_LEGEND_COLSPACING,
+        labelspacing=FOREST_LEGEND_LABELSPACING,
+        handletextpad=0.25,
+        borderpad=0.0,
+    )
 
 
 def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float, float]) -> plt.Figure:
@@ -1105,10 +1377,10 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
         metric="roc_auc",
         handle_order=handle_order,
         handle_map=handle_map,
-        ylab_map=APPENDIX_OUTCOME_LABELS,
+        ylab_map=FOREST_OUTCOME_LABELS,
         xlabel="AUROC",
         panel_title="Binary outcomes",
-        x_lo_floor=0.52,
+        x_lo_floor=FOREST_BINARY_AUROC_X_LO_FLOOR,
     )
     _plot_exp1_granularity_panel(
         axes[1],
@@ -1118,53 +1390,30 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
         metric="spearman_rho",
         handle_order=handle_order,
         handle_map=handle_map,
-        ylab_map=APPENDIX_OUTCOME_LABELS,
+        ylab_map=FOREST_OUTCOME_LABELS,
         xlabel=r"Spearman $\rho$",
         panel_title="Regression outcomes",
         x_lo_floor=None,
     )
-    legend_handles = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color=color,
-            markerfacecolor=color,
-            markeredgecolor="#222222",
-            linewidth=0,
-            markersize=9,
-            label=_wrap_legend_label(f"{label}, unfused", width=30),
-            alpha=0.55,
-        )
-        for label, color in EXP1_COLORS.items()
-    ] + [
-        Line2D(
-            [0],
-            [0],
-            marker="s",
-            color=color,
-            markerfacecolor=color,
-            markeredgecolor="#222222",
-            linewidth=0,
-            markersize=9,
-            label=_wrap_legend_label(f"{label}, fused", width=30),
-            alpha=0.95,
-        )
-        for label, color in EXP1_COLORS.items()
-    ]
-    top_edge = 0.94
-    fig.tight_layout(rect=[0, 0, 1, top_edge])
-    fig.legend(
-        handles=legend_handles,
-        loc="lower left",
-        bbox_to_anchor=(0.02, top_edge, 0.96, 0.12),
-        ncol=6,
-        mode="expand",
-        frameon=False,
-        fontsize=10,
-        columnspacing=1.0,
-        handletextpad=0.5,
-        borderpad=0.0,
+    color_handles = _forest_color_handles([
+        (EXP1_COLOR_LEGEND_LABELS[label], color) for label, color in EXP1_COLORS.items()
+    ])
+    marker_handles = _forest_marker_handles([
+        ("Unfused", "o", 0.55),
+        ("Fused", "s", 0.95),
+    ])
+    top_edge = FOREST_LEGEND_TOP_EDGE
+    fig.tight_layout(rect=[0, 0, 1, FOREST_EXP1_LAYOUT_TOP_EDGE])
+    _add_forest_knob_legends(
+        fig,
+        left_handles=color_handles,
+        left_title="Granularity (color)",
+        right_handles=marker_handles,
+        right_title="Tokenization (marker)",
+        top_edge=top_edge,
+        left_ncol=3,
+        right_ncol=2,
+        left_width=0.68,
     )
     return fig
 
@@ -1377,18 +1626,18 @@ def build_centile_pca_grid(out_dir: Path) -> None:
     shared_coords, shared_evr = pca_2d(shared_emb)
 
     source_rows: list[dict[str, object]] = []
-    fig = plt.figure(figsize=(20.0, 11.0))
+    fig = plt.figure(figsize=PCA_GRID_FIGSIZE)
     gs = fig.add_gridspec(
         2,
         4,
         height_ratios=[1.0, 1.0],
         width_ratios=[1.12, 1.0, 1.0, 1.0],
-        left=0.06,
+        left=0.07,
         right=0.99,
-        top=0.94,
-        bottom=0.20,
-        wspace=0.30,
-        hspace=0.30,
+        top=0.93,
+        bottom=0.22,
+        wspace=0.28,
+        hspace=0.28,
     )
     shared_ax = fig.add_subplot(gs[0:2, 0])
     fused_axes = [
@@ -1406,7 +1655,7 @@ def build_centile_pca_grid(out_dir: Path) -> None:
         shared_coords[:, 0],
         shared_coords[:, 1],
         c=shared_colors,
-        s=42,
+        s=PCA_GRID_SHARED_MARKER_SIZE,
         zorder=4,
         edgecolors="#222222",
         linewidths=0.3,
@@ -1435,16 +1684,16 @@ def build_centile_pca_grid(out_dir: Path) -> None:
             (shared_coords[idx, 0], shared_coords[idx, 1]),
             textcoords="offset points",
             xytext=(4, 2),
-            fontsize=12,
+            fontsize=PCA_GRID_ANNOT_SIZE,
         )
     shared_ax.set_title(
         "Shared centile tokens\n(one manifold for all numeric variables)",
-        fontsize=19,
+        fontsize=PCA_GRID_TITLE_SIZE,
         fontweight="bold",
     )
-    shared_ax.set_xlabel(f"PC1 ({100 * shared_evr[0]:.1f}% var)", fontsize=17)
-    shared_ax.set_ylabel(f"PC2 ({100 * shared_evr[1]:.1f}% var)", fontsize=17)
-    shared_ax.tick_params(axis="both", labelsize=14)
+    shared_ax.set_xlabel(f"PC1 ({100 * shared_evr[0]:.1f}% var)", fontsize=PCA_GRID_AXIS_LABEL_SIZE)
+    shared_ax.set_ylabel(f"PC2 ({100 * shared_evr[1]:.1f}% var)", fontsize=PCA_GRID_AXIS_LABEL_SIZE)
+    shared_ax.tick_params(axis="both", labelsize=PCA_GRID_TICK_SIZE)
     shared_ax.grid(alpha=0.22)
 
     for ax, (measurement_name, measurement_code) in zip(fused_axes, PCA_MEASUREMENTS):
@@ -1460,7 +1709,7 @@ def build_centile_pca_grid(out_dir: Path) -> None:
             fused_coords[:, 0],
             fused_coords[:, 1],
             c=colors,
-            s=32,
+            s=PCA_GRID_FUSED_MARKER_SIZE,
             zorder=4,
             edgecolors="#222222",
             linewidths=0.3,
@@ -1489,19 +1738,19 @@ def build_centile_pca_grid(out_dir: Path) -> None:
                 (fused_coords[idx, 0], fused_coords[idx, 1]),
                 textcoords="offset points",
                 xytext=(3, 2),
-                fontsize=11,
+                fontsize=PCA_GRID_ANNOT_SIZE,
             )
-        ax.set_title(measurement_name, fontsize=18, fontweight="bold")
-        ax.set_xlabel(f"PC1 ({100 * fused_evr[0]:.1f}% var)", fontsize=16)
-        ax.set_ylabel(f"PC2 ({100 * fused_evr[1]:.1f}% var)", fontsize=16)
-        ax.tick_params(axis="both", labelsize=12)
+        ax.set_title(measurement_name, fontsize=PCA_GRID_TITLE_SIZE, fontweight="bold")
+        ax.set_xlabel(f"PC1 ({100 * fused_evr[0]:.1f}% var)", fontsize=PCA_GRID_AXIS_LABEL_SIZE)
+        ax.set_ylabel(f"PC2 ({100 * fused_evr[1]:.1f}% var)", fontsize=PCA_GRID_AXIS_LABEL_SIZE)
+        ax.tick_params(axis="both", labelsize=PCA_GRID_TICK_SIZE)
         ax.grid(alpha=0.22)
         ax.text(
             0.97,
             0.05,
             f"{len(fused_bins)} realized bins",
             transform=ax.transAxes,
-            fontsize=14,
+            fontsize=PCA_GRID_PANEL_NOTE_SIZE,
             fontweight="semibold",
             va="bottom",
             ha="right",
@@ -1511,30 +1760,31 @@ def build_centile_pca_grid(out_dir: Path) -> None:
     mappable = plt.cm.ScalarMappable(norm=Normalize(vmin=0, vmax=num_bins - 1), cmap=cmap)
     cbar_ax = fig.add_axes([0.12, 0.07, 0.76, 0.032])
     cbar = fig.colorbar(mappable, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label("Centile index (quantile bin id)", fontsize=17)
-    cbar.ax.tick_params(labelsize=13)
+    cbar.set_label("Centile index (quantile bin id)", fontsize=PCA_GRID_CBAR_LABEL_SIZE)
+    cbar.ax.tick_params(labelsize=PCA_GRID_CBAR_TICK_SIZE)
     _save_source(pd.DataFrame(source_rows), out_dir / "sources" / "pca_centile_geometry_grid_source.csv")
+    fig.savefig(out_dir / "pca_centile_geometry_grid.pdf", bbox_inches="tight")
     fig.savefig(out_dir / "pca_centile_geometry_grid.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
-def build_exp1_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
+def build_exp1_outcome_forests(metrics: pd.DataFrame, out_dir: Path) -> None:
     _save_source(
         _collect_exp1_source(metrics),
-        out_dir / "sources" / "appendix_exp1_outcome_forests_source.csv",
+        out_dir / "sources" / "exp1_outcome_forests_source.csv",
     )
-    fig = _render_exp1_granularity_figure(metrics, (15.6, 9.0))
-    fig.savefig(out_dir / "appendix_exp1_outcome_forests.pdf", bbox_inches="tight")
+    fig = _render_exp1_granularity_figure(metrics, FOREST_FIGSIZE)
+    fig.savefig(out_dir / "exp1_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
-def build_exp2_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
+def build_exp2_outcome_forests(metrics: pd.DataFrame, out_dir: Path) -> None:
     source = _collect_exp2_source(metrics)
     _save_source(
         source,
-        out_dir / "sources" / "appendix_exp2_outcome_forests_source.csv",
+        out_dir / "sources" / "exp2_outcome_forests_source.csv",
     )
-    fig, axes = plt.subplots(1, 2, figsize=(15.6, 9.0), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=FOREST_FIGSIZE, sharey=False)
     bin_src = source[source["panel"] == "binary"]
     reg_src = source[source["panel"] == "regression"]
     _plot_handle_metric_panel(
@@ -1546,6 +1796,7 @@ def build_exp2_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         marker_for_handle=_exp2_marker,
         panel_title="Binary outcomes",
         xlabel="AUROC",
+        x_lo_floor=FOREST_BINARY_AUROC_X_LO_FLOOR,
     )
     _plot_handle_metric_panel(
         axes[1],
@@ -1557,35 +1808,22 @@ def build_exp2_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         panel_title="Regression outcomes",
         xlabel=r"Spearman $\rho$",
     )
-    legend_handles = [
-        Line2D(
-            [0],
-            [0],
-            marker=_exp2_marker(h),
-            color=EXP2_HANDLE_COLORS[h],
-            markerfacecolor=EXP2_HANDLE_COLORS[h],
-            markeredgecolor="#222222",
-            linewidth=0,
-            markersize=8,
-            label=_wrap_legend_label(EXP2_HANDLE_SHORT_LABELS[h], width=34),
-        )
-        for h in EXP2_HANDLE_ORDER
-    ]
-    top_edge = 0.94
-    fig.tight_layout(rect=[0, 0, 1, top_edge])
-    fig.legend(
-        handles=legend_handles,
-        loc="lower left",
-        bbox_to_anchor=(0.02, top_edge, 0.96, 0.12),
-        ncol=6,
-        mode="expand",
-        frameon=False,
-        fontsize=9.5,
-        columnspacing=1.0,
-        handletextpad=0.5,
-        borderpad=0.0,
+    marker_handles = _forest_marker_handles(EXP2_TEMPORAL_MARKER_ITEMS)
+    color_handles = _forest_color_handles(EXP2_VALUE_COLOR_ITEMS)
+    top_edge = FOREST_LEGEND_TOP_EDGE
+    fig.tight_layout(rect=[0, 0, 1, FOREST_LAYOUT_TOP_EDGE])
+    _add_forest_knob_legends(
+        fig,
+        left_handles=marker_handles,
+        left_title="Temporal encoding (marker)",
+        right_handles=color_handles,
+        right_title="Value encoder (color)",
+        top_edge=top_edge,
+        left_ncol=3,
+        right_ncol=2,
+        left_width=0.50,
     )
-    fig.savefig(out_dir / "appendix_exp2_outcome_forests.pdf", bbox_inches="tight")
+    fig.savefig(out_dir / "exp2_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -1595,7 +1833,7 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         source,
         out_dir / "sources" / "appendix_exp3_outcome_forests_source.csv",
     )
-    fig, axes = plt.subplots(1, 2, figsize=(15.6, 9.0), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=FOREST_FIGSIZE, sharey=False)
     bin_src = source[source["panel"] == "binary"]
     reg_src = source[source["panel"] == "regression"]
     _plot_handle_metric_panel(
@@ -1607,6 +1845,7 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
         marker_for_handle=_exp3_marker,
         panel_title="Binary outcomes",
         xlabel="AUROC",
+        x_lo_floor=FOREST_BINARY_AUROC_X_LO_FLOOR,
     )
     _plot_handle_metric_panel(
         axes[1],
@@ -1627,23 +1866,26 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
             markerfacecolor=EXP3_HANDLE_COLORS[h],
             markeredgecolor="#222222",
             linewidth=0,
-            markersize=8,
-            label=EXP3_HANDLE_SHORT_LABELS[h],
+            markersize=4.2,
+            label=EXP3_FOREST_LABELS[h],
         )
         for h in EXP3_HANDLE_ORDER
     ]
-    top_edge = 0.94
-    fig.tight_layout(rect=[0, 0, 1, top_edge])
+    top_edge = FOREST_LEGEND_TOP_EDGE
+    fig.tight_layout(rect=[0, 0, 1, FOREST_LAYOUT_TOP_EDGE])
     fig.legend(
         handles=legend_handles,
-        loc="lower left",
-        bbox_to_anchor=(0.02, top_edge, 0.96, 0.12),
+        title="Vocabulary arm",
+        loc="upper left",
+        bbox_to_anchor=(0.02, top_edge, 0.96, FOREST_LEGEND_BOX_HEIGHT),
         ncol=4,
         mode="expand",
         frameon=False,
-        fontsize=11,
-        columnspacing=1.0,
-        handletextpad=0.5,
+        fontsize=FOREST_LEGEND_SIZE,
+        title_fontsize=FOREST_LEGEND_SIZE,
+        columnspacing=FOREST_LEGEND_COLSPACING,
+        labelspacing=FOREST_LEGEND_LABELSPACING,
+        handletextpad=0.25,
         borderpad=0.0,
     )
     fig.savefig(out_dir / "appendix_exp3_outcome_forests.pdf", bbox_inches="tight")
@@ -1678,12 +1920,12 @@ def build_exp1_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
                 source[(source["panel"] == panel) & (source["axis"] == axis)],
                 level_order=order,
                 color_map=colors,
-                title=axis,
+                title=axis if row_idx == 0 else "",
                 ylabel=ylabel if col_idx == 0 else "",
                 y_floor=floor,
                 display_labels=display,
             )
-    fig.tight_layout()
+    fig.tight_layout(pad=1.15, h_pad=1.75, w_pad=1.35)
     fig.savefig(out_dir / "appendix_exp1_axis_summary_bars.pdf", bbox_inches="tight")
     plt.close(fig)
 
@@ -1724,12 +1966,12 @@ def build_exp2_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
                 source[(source["panel"] == panel) & (source["axis"] == axis)],
                 level_order=order,
                 color_map=colors,
-                title=axis,
+                title=axis if row_idx == 0 else "",
                 ylabel=ylabel if col_idx == 0 else "",
                 y_floor=floor,
                 display_labels=display,
             )
-    fig.tight_layout()
+    fig.tight_layout(pad=1.15, h_pad=1.75, w_pad=1.45)
     fig.savefig(out_dir / "appendix_exp2_axis_summary_bars.pdf", bbox_inches="tight")
     plt.close(fig)
 
@@ -1743,10 +1985,10 @@ def build_exp3_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
         ("regression", r"Mean Spearman $\rho$ across outcomes", 0.0),
     ]
     display = {
-        "CLIF-mapped": "CLIF-\nmapped",
-        "Native MIMIC codes": "Native\nMIMIC\ncodes",
-        "Randomized mapped codes": "Randomized\nmapped\ncodes",
-        "Frequency-matched mapped codes": "Frequency-\nmatched\nmapped codes",
+        "CLIF-mapped": "CLIF-mapped",
+        "Native MIMIC codes": "Native MIMIC",
+        "Randomized mapped codes": "Randomized",
+        "Frequency-matched mapped codes": "Freq.-matched",
     }
     for ax, (panel, ylabel, floor) in zip(axes, panel_specs):
         _plot_summary_bar_panel(
@@ -1764,12 +2006,12 @@ def build_exp3_appendix_summary_bars(metrics: pd.DataFrame, out_dir: Path) -> No
                 "Randomized mapped codes": EXP3_HANDLE_COLORS["randomized"],
                 "Frequency-matched mapped codes": EXP3_HANDLE_COLORS["freqmatched"],
             },
-            title="Vocabulary arm",
+            title="Vocabulary arm" if ax is axes[0] else "",
             ylabel=ylabel,
             y_floor=floor,
             display_labels=display,
         )
-    fig.tight_layout()
+    fig.tight_layout(pad=1.15, h_pad=1.65)
     fig.savefig(out_dir / "appendix_exp3_axis_summary_bars.pdf", bbox_inches="tight")
     plt.close(fig)
 
@@ -2143,8 +2385,8 @@ def main() -> int:
     build_exp2_regression_figure(metrics, pairwise, figures_dir, shared_vmax=shared_vmax)
     build_exp3_binary_figure(metrics, pairwise, figures_dir, shared_vmax=shared_vmax)
     build_centile_pca_grid(figures_dir)
-    build_exp1_appendix_figure(metrics, figures_dir)
-    build_exp2_appendix_figure(metrics, figures_dir)
+    build_exp1_outcome_forests(metrics, figures_dir)
+    build_exp2_outcome_forests(metrics, figures_dir)
     build_exp3_appendix_figure(metrics, figures_dir)
     build_exp1_appendix_summary_bars(metrics, figures_dir)
     build_exp2_appendix_summary_bars(metrics, figures_dir)

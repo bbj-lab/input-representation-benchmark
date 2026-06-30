@@ -307,6 +307,10 @@ def _df_to_latex(
     )
 
 
+def _sweep_row_has_na(row: pd.Series) -> bool:
+    return any(str(row[col]).strip() == "---" for col in ("Exp1", "Exp2", "Exp3"))
+
+
 def _grouped_sweep_to_latex(
     df: pd.DataFrame,
     *,
@@ -316,7 +320,7 @@ def _grouped_sweep_to_latex(
     first_col_width: str = "0.16\\textwidth",
     exp_col_width: str = "0.235\\textwidth",
     first_exp_col_width: str | None = None,
-    size_cmd: str = "\\tiny",
+    size_cmd: str = "\\scriptsize",
     tabcolsep: int = 2,
     note: str | None = None,
 ) -> str:
@@ -360,7 +364,9 @@ def _grouped_sweep_to_latex(
             ]
             lines.append("    " + " & ".join(values) + " \\\\")
             if i != last_idx:
-                lines.append("    \\cmidrule{1-4}")
+                next_row = rows_by_key[outcome_keys[i + 1]]
+                if _sweep_row_has_na(row) or _sweep_row_has_na(next_row):
+                    lines.append("    \\cmidrule{1-4}")
     lines.extend(
         [
             "    \\bottomrule",
