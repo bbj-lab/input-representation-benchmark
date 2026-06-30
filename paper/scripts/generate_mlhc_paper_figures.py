@@ -141,20 +141,25 @@ FOREST_TICK_SIZE = 6.8
 FOREST_LEGEND_SIZE = 6.3
 FOREST_MARKER_SIZE = 14
 FOREST_LINE_WIDTH = 0.8
-FOREST_HANDLE_SPREAD = 0.020
-FOREST_YLIM_PAD = 0.28
-FOREST_LEGEND_COLSPACING = 0.45
-FOREST_LEGEND_LABELSPACING = 0.25
+FOREST_HANDLE_SPREAD = 0.027
+FOREST_YLIM_PAD = 0.34
+FOREST_LEGEND_COLSPACING = 0.22
+FOREST_LEGEND_LABELSPACING = 0.12
+FOREST_LEGEND_RIGHT_X = 0.98
+FOREST_LEGEND_GROUP_GAP = 0.020
 FOREST_OUTCOME_SEPARATOR_COLOR = "#D4D4D4"
 FOREST_OUTCOME_SEPARATOR_WIDTH = 0.55
 FOREST_OUTCOME_SEPARATOR_ALPHA = 0.65
 FOREST_OUTCOME_BAND_COLOR = "#F4F4F4"
 FOREST_OUTCOME_BAND_ALPHA = 0.9
 FOREST_BINARY_AUROC_X_LO_FLOOR = 0.52
-FOREST_LEGEND_TOP_EDGE = 0.925
-FOREST_LEGEND_BOX_HEIGHT = 0.075
-FOREST_LAYOUT_TOP_EDGE = 0.955
-FOREST_EXP1_LAYOUT_TOP_EDGE = 0.935
+FOREST_LAYOUT_TOP_EDGE = 0.896
+FOREST_EXP1_LAYOUT_TOP_EDGE = 0.878
+FOREST_PANEL_TITLE_BAND = 0.022
+FOREST_LEGEND_TITLE_GAP = 0.001
+FOREST_LEGEND_TITLE_HEIGHT = 0.012
+FOREST_LEGEND_ROW_HEIGHT = 0.018
+FOREST_LEGEND_MARKER_SIZE = 4.5
 
 SUMMARY_BAR_TITLE_SIZE = 9.2
 SUMMARY_BAR_LABEL_SIZE = 8.4
@@ -1281,7 +1286,7 @@ def _forest_color_handles(items: list[tuple[str, str]]) -> list[Line2D]:
             markerfacecolor=color,
             markeredgecolor="#222222",
             linewidth=0,
-            markersize=4.5,
+            markersize=FOREST_LEGEND_MARKER_SIZE,
             label=_wrap_legend_label(label, width=26),
         )
         for label, color in items
@@ -1298,7 +1303,7 @@ def _forest_marker_handles(items: list[tuple[str, str, float]]) -> list[Line2D]:
             markerfacecolor="#444444",
             markeredgecolor="#222222",
             linewidth=0,
-            markersize=4.5,
+            markersize=FOREST_LEGEND_MARKER_SIZE,
             label=label,
             alpha=alpha,
         )
@@ -1319,6 +1324,33 @@ def _legend_handles_for_row_major_display(handles: list[Line2D], ncol: int) -> l
     return ordered
 
 
+def _legend_row_count(n_items: int, ncol: int) -> int:
+    return (n_items + ncol - 1) // ncol
+
+
+def _forest_legend_anchor_y(*, layout_top: float, legend_rows: int) -> float:
+    return (
+        layout_top
+        + FOREST_PANEL_TITLE_BAND
+        + FOREST_LEGEND_TITLE_GAP
+        + FOREST_LEGEND_TITLE_HEIGHT
+        + FOREST_LEGEND_ROW_HEIGHT * legend_rows
+    )
+
+
+def _forest_legend_kwargs(*, ncol: int) -> dict[str, object]:
+    return {
+        "ncol": ncol,
+        "frameon": False,
+        "fontsize": FOREST_LEGEND_SIZE,
+        "title_fontsize": FOREST_LEGEND_SIZE,
+        "columnspacing": FOREST_LEGEND_COLSPACING,
+        "labelspacing": FOREST_LEGEND_LABELSPACING,
+        "handletextpad": 0.18,
+        "borderpad": 0.0,
+    }
+
+
 def _add_forest_knob_legends(
     fig: plt.Figure,
     *,
@@ -1329,39 +1361,26 @@ def _add_forest_knob_legends(
     top_edge: float,
     left_ncol: int,
     right_ncol: int,
-    left_width: float = 0.62,
 ) -> None:
-    right_x = 0.02 + left_width + 0.04
-    right_width = max(0.1, 0.98 - right_x)
+    right_legend = fig.legend(
+        handles=_legend_handles_for_row_major_display(right_handles, right_ncol),
+        title=right_title,
+        loc="upper right",
+        bbox_to_anchor=(FOREST_LEGEND_RIGHT_X, top_edge),
+        **_forest_legend_kwargs(ncol=right_ncol),
+    )
+    fig.add_artist(right_legend)
+    fig.canvas.draw()
+    right_bbox = right_legend.get_window_extent(fig.canvas.get_renderer()).transformed(
+        fig.transFigure.inverted()
+    )
+    left_anchor_x = right_bbox.x0 - FOREST_LEGEND_GROUP_GAP
     fig.legend(
         handles=_legend_handles_for_row_major_display(left_handles, left_ncol),
         title=left_title,
-        loc="upper left",
-        bbox_to_anchor=(0.02, top_edge, left_width, FOREST_LEGEND_BOX_HEIGHT),
-        ncol=left_ncol,
-        mode="expand",
-        frameon=False,
-        fontsize=FOREST_LEGEND_SIZE,
-        title_fontsize=FOREST_LEGEND_SIZE,
-        columnspacing=FOREST_LEGEND_COLSPACING,
-        labelspacing=FOREST_LEGEND_LABELSPACING,
-        handletextpad=0.25,
-        borderpad=0.0,
-    )
-    fig.legend(
-        handles=_legend_handles_for_row_major_display(right_handles, right_ncol),
-        title=right_title,
-        loc="upper left",
-        bbox_to_anchor=(right_x, top_edge, right_width, FOREST_LEGEND_BOX_HEIGHT),
-        ncol=right_ncol,
-        mode="expand",
-        frameon=False,
-        fontsize=FOREST_LEGEND_SIZE,
-        title_fontsize=FOREST_LEGEND_SIZE,
-        columnspacing=FOREST_LEGEND_COLSPACING,
-        labelspacing=FOREST_LEGEND_LABELSPACING,
-        handletextpad=0.25,
-        borderpad=0.0,
+        loc="upper right",
+        bbox_to_anchor=(left_anchor_x, top_edge),
+        **_forest_legend_kwargs(ncol=left_ncol),
     )
 
 
@@ -1402,18 +1421,21 @@ def _render_exp1_granularity_figure(metrics: pd.DataFrame, figsize: tuple[float,
         ("Unfused", "o", 0.55),
         ("Fused", "s", 0.95),
     ])
-    top_edge = FOREST_LEGEND_TOP_EDGE
-    fig.tight_layout(rect=[0, 0, 1, FOREST_EXP1_LAYOUT_TOP_EDGE])
+    layout_top = FOREST_EXP1_LAYOUT_TOP_EDGE
+    fig.tight_layout(rect=[0, 0, 1, layout_top])
+    legend_rows = max(
+        _legend_row_count(len(color_handles), 3),
+        _legend_row_count(len(marker_handles), 2),
+    )
     _add_forest_knob_legends(
         fig,
         left_handles=color_handles,
         left_title="Granularity (color)",
         right_handles=marker_handles,
         right_title="Tokenization (marker)",
-        top_edge=top_edge,
+        top_edge=_forest_legend_anchor_y(layout_top=layout_top, legend_rows=legend_rows),
         left_ncol=3,
         right_ncol=2,
-        left_width=0.68,
     )
     return fig
 
@@ -1810,18 +1832,21 @@ def build_exp2_outcome_forests(metrics: pd.DataFrame, out_dir: Path) -> None:
     )
     marker_handles = _forest_marker_handles(EXP2_TEMPORAL_MARKER_ITEMS)
     color_handles = _forest_color_handles(EXP2_VALUE_COLOR_ITEMS)
-    top_edge = FOREST_LEGEND_TOP_EDGE
-    fig.tight_layout(rect=[0, 0, 1, FOREST_LAYOUT_TOP_EDGE])
+    layout_top = FOREST_LAYOUT_TOP_EDGE
+    fig.tight_layout(rect=[0, 0, 1, layout_top])
+    legend_rows = max(
+        _legend_row_count(len(marker_handles), 3),
+        _legend_row_count(len(color_handles), 2),
+    )
     _add_forest_knob_legends(
         fig,
         left_handles=marker_handles,
         left_title="Temporal encoding (marker)",
         right_handles=color_handles,
         right_title="Value encoder (color)",
-        top_edge=top_edge,
+        top_edge=_forest_legend_anchor_y(layout_top=layout_top, legend_rows=legend_rows),
         left_ncol=3,
         right_ncol=2,
-        left_width=0.50,
     )
     fig.savefig(out_dir / "exp2_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)
@@ -1866,27 +1891,25 @@ def build_exp3_appendix_figure(metrics: pd.DataFrame, out_dir: Path) -> None:
             markerfacecolor=EXP3_HANDLE_COLORS[h],
             markeredgecolor="#222222",
             linewidth=0,
-            markersize=4.2,
+            markersize=FOREST_LEGEND_MARKER_SIZE,
             label=EXP3_FOREST_LABELS[h],
         )
         for h in EXP3_HANDLE_ORDER
     ]
-    top_edge = FOREST_LEGEND_TOP_EDGE
-    fig.tight_layout(rect=[0, 0, 1, FOREST_LAYOUT_TOP_EDGE])
+    layout_top = FOREST_LAYOUT_TOP_EDGE
+    fig.tight_layout(rect=[0, 0, 1, layout_top])
     fig.legend(
         handles=legend_handles,
         title="Vocabulary arm",
-        loc="upper left",
-        bbox_to_anchor=(0.02, top_edge, 0.96, FOREST_LEGEND_BOX_HEIGHT),
-        ncol=4,
-        mode="expand",
-        frameon=False,
-        fontsize=FOREST_LEGEND_SIZE,
-        title_fontsize=FOREST_LEGEND_SIZE,
-        columnspacing=FOREST_LEGEND_COLSPACING,
-        labelspacing=FOREST_LEGEND_LABELSPACING,
-        handletextpad=0.25,
-        borderpad=0.0,
+        loc="upper right",
+        bbox_to_anchor=(
+            FOREST_LEGEND_RIGHT_X,
+            _forest_legend_anchor_y(
+                layout_top=layout_top,
+                legend_rows=_legend_row_count(len(legend_handles), 4),
+            ),
+        ),
+        **_forest_legend_kwargs(ncol=4),
     )
     fig.savefig(out_dir / "appendix_exp3_outcome_forests.pdf", bbox_inches="tight")
     plt.close(fig)

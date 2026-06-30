@@ -17,7 +17,6 @@ from generate_mlhc_paper_figures import (
     FOREST_HANDLE_SPREAD,
     FOREST_LABEL_SIZE,
     FOREST_LAYOUT_TOP_EDGE,
-    FOREST_LEGEND_TOP_EDGE,
     FOREST_LINE_WIDTH,
     FOREST_MARKER_SIZE,
     FOREST_OUTCOME_LABELS,
@@ -29,7 +28,9 @@ from generate_mlhc_paper_figures import (
     _add_forest_outcome_banding,
     _add_forest_outcome_separators,
     _forest_color_handles,
+    _forest_legend_anchor_y,
     _forest_marker_handles,
+    _legend_row_count,
     _save_source,
     _style,
     _xlim_from_points,
@@ -40,18 +41,18 @@ DEFAULT_STATS_ROOT = ROOT / "outputs" / "runs" / "statistics" / "generalizabilit
 DEFAULT_OUT_DIR = ROOT.parent / "MLHC2026" / "MLHC" / "figures"
 
 QWEN3_ORDER = [
-    ("qwen3_deciles_unfused", "0.6 billion default", "unfused"),
-    ("qwen3_deciles_fused", "0.6 billion default", "fused"),
     ("qwen3_depth8_deciles_unfused", "8-layer scaled", "unfused"),
     ("qwen3_depth8_deciles_fused", "8-layer scaled", "fused"),
     ("qwen3_depth16_deciles_unfused", "16-layer scaled", "unfused"),
     ("qwen3_depth16_deciles_fused", "16-layer scaled", "fused"),
+    ("qwen3_deciles_unfused", "0.6 billion default", "unfused"),
+    ("qwen3_deciles_fused", "0.6 billion default", "fused"),
 ]
 
 QWEN3_COLORS = {
-    "0.6 billion default": "#4E79A7",
     "8-layer scaled": "#59A14F",
     "16-layer scaled": "#E15759",
+    "0.6 billion default": "#4E79A7",
 }
 
 METRIC_FILES = [
@@ -167,18 +168,21 @@ def build_qwen3_outcome_forests(metrics: pd.DataFrame, out_dir: Path) -> None:
         ("Unfused", "o", 0.55),
         ("Fused", "s", 0.95),
     ])
-    top_edge = FOREST_LEGEND_TOP_EDGE
-    fig.tight_layout(rect=[0, 0, 1, FOREST_LAYOUT_TOP_EDGE])
+    layout_top = FOREST_LAYOUT_TOP_EDGE
+    fig.tight_layout(rect=[0, 0, 1, layout_top])
+    legend_rows = max(
+        _legend_row_count(len(color_handles), 3),
+        _legend_row_count(len(marker_handles), 2),
+    )
     _add_forest_knob_legends(
         fig,
         left_handles=color_handles,
         left_title="Model scale (color)",
         right_handles=marker_handles,
         right_title="Tokenization (marker)",
-        top_edge=top_edge,
+        top_edge=_forest_legend_anchor_y(layout_top=layout_top, legend_rows=legend_rows),
         left_ncol=3,
         right_ncol=2,
-        left_width=0.54,
     )
     fig.savefig(out_dir / "qwen3_outcome_forests.pdf", bbox_inches="tight")
     fig.savefig(out_dir / "qwen3_outcome_forests.png", dpi=600, bbox_inches="tight")
