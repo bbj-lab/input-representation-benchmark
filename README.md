@@ -14,8 +14,8 @@ conda env create -f environment.yml
 conda activate input-rep
 ```
 
-`environment.yml` installs both repos in editable mode and matches the Randi
-cluster stack (CUDA, JAX, FlashAttention).
+`environment.yml` installs the local Cocoa, FMS, and benchmark repos in
+editable mode and matches the Randi cluster stack (CUDA, JAX, FlashAttention).
 
 ## Pipeline overview
 
@@ -42,16 +42,24 @@ files.
 Per-family rebuild outputs live under
 `outputs/runs/statistics/paper_stats_run_outputs/`.
 
-**Exp3 note:** upstream arm building rewrites several code families, but the
-reported Exp3 tokenizer reads only `LAB` and `VITAL` blocks (see
-`pipeline/scripts/build_exp3_meds_semantics_arms.py` and
-`../fms-ehrs/fms_ehrs/config/mimic-meds-exp3-icu.yaml`).
+**ML4H 2026 manuscript scores** (24–48h, aggregated only):
+`outputs/runs/ml4h_2026/metrics/metrics_long.csv`,
+`outputs/runs/ml4h_2026/metrics/metrics_long_with_ci.parquet`, and
+`outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet`.
+
+**Exp3 note:** the matched H_ICU arms are native raw-MIMIC MEDS and full CLIF
+MEDS. `slurm/02_phase05_exp3_cohort_arms.sh` freezes the patient split, then
+calls the FMS-owned Cocoa adapter. The adapter permits ten declared CLIF event
+tables, records code-status boundary exclusions, and writes a provenance
+manifest before the shared full-schema tokenizer
+(`../fms-ehrs/fms_ehrs/config/mimic-meds-exp3-full.yaml`) can run.
 
 ## Where to look first
 
 | Goal | Path |
 | --- | --- |
 | Paper metrics (Exp1–3) | `outputs/runs/statistics/paper_stats_combined/all_family_metrics.csv` |
+| ML4H 2026 24–48h scores | `outputs/runs/ml4h_2026/metrics/metrics_long.csv`, `metrics_long_with_ci.parquet`, `family_effect_bootstrap/family_effect_intervals.parquet` |
 | Qwen3 additional-run stats | `outputs/runs/statistics/generalizability_tests/qwen3_0p6b_llama10ep/`, `generalizability_tests/qwen3_0p6b_fused_only/`, `generalizability_tests/qwen3_scaled/` |
 | Llama10ep additional-run stats | `outputs/runs/statistics/generalizability_tests/qwen3_0p6b_llama10ep/` (`llama10ep_*` family folders and combined CSVs) |
 | Checkpoints and training logs | `outputs/runs/models/exp*_*`, `qwen3_*`, `llama10ep_*` |
