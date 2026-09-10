@@ -175,7 +175,7 @@ def main() -> None:
     ap.add_argument("--labels", type=str, nargs="*", default=None, help="Optional explicit labels for each version panel (must match --versions count).")
     ap.add_argument("--split", type=str, default="train", choices=["train", "val", "test"])
     ap.add_argument("--out_pdf", type=Path, required=True)
-    ap.add_argument("--title", type=str, default="Token-length distributions (tokens column)")
+    ap.add_argument("--title", type=str, default="Token-length distributions")
     ap.add_argument(
         "--xmax",
         type=int,

@@ -1,9 +1,7 @@
 # Paper scripts
 
-`paper/` contains manuscript table and figure scripts.
+`paper/scripts/` holds the live ML4H figure generators (`generate_ml4h_*.py`).
 
-- `paper/scripts/generate_mlhc_appendix_tables.py`
-- `paper/scripts/generate_mlhc_appendix_outcome_descriptives.py`
-- `paper/scripts/generate_mlhc_paper_figures.py`
-
-These scripts rebuild outputs in the manuscript checkout used for the paper.
+Leftover MLHC table and forest scripts were moved to
+`Archive/mlhc/scripts/` (`generate_mlhc_*.py`, `generate_qwen3_outcome_forests.py`).
+They rebuild the archived MLHC camera-ready set, not the 24–48h traces.
