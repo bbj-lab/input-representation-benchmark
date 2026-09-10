@@ -1,0 +1,22 @@
+{
+  "aggregation": "family_outcomes_then_six_models",
+  "analysis": "ml4h_24to48h_family_effect_permutation",
+  "multiple_testing": {
+    "method": "within_table_bh",
+    "q": 0.05
+  },
+  "n_bh_significant": 88,
+  "n_column_tasks": 17,
+  "n_family_tests": 136,
+  "n_rows": 136,
+  "output": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet",
+  "paired_across": [
+    "baseline_and_comparison",
+    "eight_families_on_shared_swaps",
+    "six_models"
+  ],
+  "permutation_n": 1000,
+  "permutation_seed": 42,
+  "resampling_unit": "test_admission",
+  "temporal_contrast": "discrete_values_only"
+}
