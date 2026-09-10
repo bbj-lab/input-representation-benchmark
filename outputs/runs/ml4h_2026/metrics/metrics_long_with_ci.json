@@ -1,0 +1,31 @@
+{
+  "alpha": 0.05,
+  "analysis": "24to48h",
+  "bootstrap_n": 1000,
+  "bootstrap_seed": 42,
+  "created_at": "2026-08-21T15:31:23.770209+00:00",
+  "ece_point_outside_interval": 34,
+  "excluded_metrics": [
+    "average_precision"
+  ],
+  "generator": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/pipeline/scripts/bootstrap_ml4h_24to48h_metrics.py",
+  "interval": "equal_tailed_percentile",
+  "metrics": [
+    "roc_auc",
+    "brier",
+    "ece_15",
+    "spearman_rho",
+    "r2",
+    "mae",
+    "rmse"
+  ],
+  "n_point_outside_interval": 34,
+  "n_rows": 20400,
+  "n_runs": 156,
+  "output_parquet": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/metrics/metrics_long_with_ci.parquet",
+  "output_sha256": "e32f1f1f1f7034199daa4e4cc84066cb0fc95fc7bb536dd3d50505fc37513149",
+  "source_metrics_long": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/metrics/metrics_long.parquet",
+  "source_metrics_long_sha256": "ed56a16b35f22207e66516fca0969f4d52c6b7fe7b8c4968f52d368fc507f7df",
+  "strict_grid": true,
+  "work_root": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/bootstrap_24to48h_ci_affine_repair"
+}

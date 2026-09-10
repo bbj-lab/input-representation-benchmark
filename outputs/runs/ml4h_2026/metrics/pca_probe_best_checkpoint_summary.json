@@ -1,0 +1,78 @@
+{
+  "checkpoint_rule": "trainer_state.best_model_checkpoint",
+  "pca": {
+    "unfused_checkpoint": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/models/ml4h_llama_exp1_meds_centiles_none_fusedFalse_discrete_time_tokens-s42/checkpoint-372270",
+    "fused_checkpoint": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/models/ml4h_llama_exp1_meds_centiles_none_fusedTrue_discrete_time_tokens-s42/checkpoint-186135",
+    "realized_bins": {
+      "Potassium": 28,
+      "Hemoglobin": 72,
+      "Creatinine": 35,
+      "Glucose": 89,
+      "Sodium": 25,
+      "Heart rate": 66
+    }
+  },
+  "probe": {
+    "Deciles": {
+      "min": 0.2,
+      "max": 0.9,
+      "by_name": {
+        "Potassium": 0.9,
+        "Glucose": 0.7,
+        "Creatinine": 0.2,
+        "Hemoglobin": 0.8,
+        "Potassium (BG)": 0.7,
+        "Glucose (BG)": 0.8,
+        "Troponin T": 0.8
+      }
+    },
+    "Ventiles": {
+      "min": 0.4,
+      "max": 0.85,
+      "by_name": {
+        "Potassium": 0.85,
+        "Glucose": 0.4,
+        "Creatinine": 0.4,
+        "Hemoglobin": 0.6,
+        "Potassium (BG)": 0.7,
+        "Glucose (BG)": 0.85,
+        "Troponin T": 0.55
+      }
+    },
+    "Trentiles": {
+      "min": 0.5333333333333333,
+      "max": 0.8333333333333334,
+      "by_name": {
+        "Potassium": 0.8333333333333334,
+        "Glucose": 0.5333333333333333,
+        "Creatinine": 0.6666666666666666,
+        "Hemoglobin": 0.8,
+        "Potassium (BG)": 0.7666666666666667,
+        "Glucose (BG)": 0.8333333333333334,
+        "Troponin T": 0.6333333333333333
+      }
+    },
+    "Centiles": {
+      "min": 0.93,
+      "max": 0.97,
+      "by_name": {
+        "Potassium": 0.94,
+        "Glucose": 0.94,
+        "Creatinine": 0.94,
+        "Hemoglobin": 0.93,
+        "Potassium (BG)": 0.94,
+        "Glucose (BG)": 0.97,
+        "Troponin T": 0.94
+      }
+    }
+  },
+  "probe_checkpoints": {
+    "checkpoint_rule": "trainer_state.best_model_checkpoint",
+    "checkpoints": {
+      "Deciles": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/models/ml4h_llama_exp1_meds_deciles_none_fusedFalse_discrete_time_tokens-s42/checkpoint-372270",
+      "Ventiles": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/models/ml4h_llama_exp1_meds_ventiles_none_fusedFalse_discrete_time_tokens-s42/checkpoint-372270",
+      "Trentiles": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/models/ml4h_llama_exp1_meds_trentiles_none_fusedFalse_discrete_time_tokens-s42/checkpoint-372270",
+      "Centiles": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/models/ml4h_llama_exp1_meds_centiles_none_fusedFalse_discrete_time_tokens-s42/checkpoint-372270"
+    }
+  }
+}
