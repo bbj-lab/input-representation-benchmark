@@ -84,6 +84,21 @@ outputs/runs/statistics/generalizability_tests/*
 !outputs/runs/statistics/generalizability_tests/**/*
 !outputs/runs/statistics/generalizability_tests/**/*.csv
 !outputs/runs/statistics/generalizability_tests/**/*.md
+# ML4H 24–48h metric tables (aggregated scores only)
+!outputs/runs/ml4h_2026/
+outputs/runs/ml4h_2026/*
+!outputs/runs/ml4h_2026/metrics/
+outputs/runs/ml4h_2026/metrics/*
+!outputs/runs/ml4h_2026/metrics/**/*
+!outputs/runs/ml4h_2026/metrics/**/*.csv
+!outputs/runs/ml4h_2026/metrics/**/*.json
+!outputs/runs/ml4h_2026/metrics/**/*.md
+!outputs/runs/ml4h_2026/metrics/**/*.parquet
+# Live paired family-mean permutation products only (not shards/logs/archives).
+!outputs/runs/ml4h_2026/family_effect_bootstrap/
+outputs/runs/ml4h_2026/family_effect_bootstrap/*
+!outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet
+!outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.json
 # Camera-ready diagnostic figures and their CSV sources.
 !outputs/runs/figures/
 outputs/runs/figures/*
