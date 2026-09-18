@@ -132,7 +132,7 @@ def draw(results: dict, output: Path) -> None:
     handles, labels = ax.get_legend_handles_labels()
     if baseline_handles:
         handles.append(baseline_handles[0])
-        labels.append("Reference-status prevalence baseline")
+        labels.append("Majority-class baseline")
     ax.legend(handles, labels, fontsize=14, loc="lower right")
     ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
