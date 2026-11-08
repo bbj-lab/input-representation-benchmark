@@ -92,7 +92,6 @@ Experiment 3 labels come from the native MIMIC events for the two arms.
 | :-- | :-- |
 | Launcher | `slurm/23_build_ml4h_metric_tables.sh` (submitted by `22_*` after the probe jobs) |
 | Code | `paper/scripts/generate_ml4h_24to48h_provisional.py`, `utilities/scripts/validate_ml4h_24to48h_bundle.py` |
-| Bundle | `outputs/runs/ml4h_2026/metric_bundle/` |
 | Output | `metrics_long`, `run_registry`, `label_coverage_long`, and `outcome_coverage_summary` in `outputs/runs/ml4h_2026/metrics/` |
 
 The launcher always builds all three experiments, because it replaces the full tables in `metrics/`.

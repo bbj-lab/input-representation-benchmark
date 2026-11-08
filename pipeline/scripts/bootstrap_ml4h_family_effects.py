@@ -24,7 +24,7 @@ from sklearn import metrics as skl_metrics
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIGURE_SCRIPT_DIR = REPO_ROOT / "paper/scripts"
 sys.path.insert(0, str(FIGURE_SCRIPT_DIR))
-import generate_ml4h_submission_previews as previews
+from generate_ml4h_appendix_result_tables import OUTCOME_FAMILIES
 import ml4h_main_table_contrasts as contrasts
 
 
@@ -66,7 +66,7 @@ def select_config_ids(
     rows = metrics.loc[
         (metrics["experiment"] == experiment)
         & (metrics["task_type"] == task_type)
-        & (metrics["metric"] == previews.TASK_METRIC[task_type])
+        & (metrics["metric"] == contrasts.TASK_METRIC[task_type])
     ].copy()
     rows["schema"] = np.where(
         rows["config_id"].astype(str).str.startswith("meds_icu_"),
@@ -77,7 +77,7 @@ def select_config_ids(
             "",
         ),
     )
-    rows = previews.filter_rows(rows, filters)
+    rows = contrasts.filter_rows(rows, filters)
     configs = tuple(sorted(rows["config_id"].astype(str).unique()))
     if len(configs) != 1:
         raise ValueError(
@@ -186,7 +186,7 @@ def family_outcomes(
     )
     outcomes = tuple(
         outcome
-        for outcome, assigned_family in previews.OUTCOME_FAMILIES.items()
+        for outcome, assigned_family in OUTCOME_FAMILIES.items()
         if assigned_family == family and outcome in present
     )
     if not outcomes:

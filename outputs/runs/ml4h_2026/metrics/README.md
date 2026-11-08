@@ -21,7 +21,6 @@ The paper does not report average precision. `metrics_long` keeps it, and `metri
 | `metrics_long_with_ci.parquet`, `metrics_long_with_ci.json` | The same grid with 1,000-draw hospitalization bootstrap 95% intervals, seed 42 (20,400 rows, seven metrics) |
 | `run_registry.csv`, `run_registry.parquet` | Experiment, configuration, architecture, and seed of each run |
 | `label_coverage_long.*`, `outcome_coverage_summary.csv` | Labeled hospitalizations and positive rates for each outcome |
-| `exp1-trace-plot.csv`, `exp2-trace-plot.csv`, `exp3-trace-plot.csv` | Family-mean values for the internal trace plots |
 | `pca_centile_geometry_grid_source.csv` | Coordinates for the centile embedding PCA figure |
 | `clinical_boundary_probe_results.json`, `pca_probe_best_checkpoint_summary.json` | Boundary probe accuracies and the checkpoints used for the PCA and probe analyses |
 | `exp3_train_token_totals.json` | Training token totals for the native-MIMIC and CLIF arms of Experiment 3 |

@@ -1,8 +1,6 @@
 """Main-text table contrasts for paired family-mean Δ tests.
 
-These conditions match the five printed tables. They are independent of
-``EXPERIMENT_CONDITIONS`` in ``generate_ml4h_submission_previews``, whose
-Experiment~2 temporal contrast averages across numeric encodings.
+These conditions match the five printed tables across Experiments 1--3.
 
 Each printed family Δ is a paired permutation test of that arm versus the
 table baseline. Stars are Benjamini--Hochberg significant within the table.

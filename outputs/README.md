@@ -11,9 +11,8 @@ outputs/runs/
 │   └── meds_clif/                         CLIF 2.1.0 arm: MEDS events, timelines, features, predictions
 └── ml4h_2026/
     ├── models/                            156 trained checkpoints
-    ├── stage2*/, stage3*/                 extraction and probe jobfiles and manifests
+    ├── stage2*/, stage3_24to48h_*/        extraction and probe jobfiles and manifests
     ├── outcomes_24to48h/, probe_logs/     Stage 0.5 and Stage 3 jobfiles and logs
-    ├── metric_bundle/                     metric bundle that slurm/23_* builds
     ├── metrics/                           aggregated scores           (in git)
     ├── model_level_tests/                 six-pair t-tests            (in git)
     ├── patient_cluster_bootstrap/         patient-clustered intervals (in git)

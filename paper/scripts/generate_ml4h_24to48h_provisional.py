@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""Build the 24-to-48-hour metric bundle (metric tables and review figures)."""
+"""Build the 24-to-48-hour metric tables from Stage 3 prediction files."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import json
+import math
 import pickle
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.lines import Line2D
+from scipy import stats
+from sklearn import metrics as skl_metrics
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "../fms-ehrs"))
@@ -24,13 +25,10 @@ sys.path.insert(0, str(REPO_ROOT))
 from fms_ehrs.framework.artifacts import model_artifact_stem
 from pipeline.provisional_24to48_task_registry import (
     EXPECTED_TASK_COUNTS,
-    HORIZON_END_HOURS,
-    HORIZON_START_HOURS,
     OUTCOMES_FILENAME,
     PROVISIONAL_BINARY_TASKS,
     PROVISIONAL_EXP3_BINARY_TASKS,
     PROVISIONAL_REGRESSION_TASKS,
-    TASK_SEMANTICS,
 )
 
 
@@ -38,19 +36,85 @@ DEFAULT_RUN_ROOT = REPO_ROOT / "outputs/runs/ml4h_2026"
 DEFAULT_TOKENIZED_ROOT = (
     REPO_ROOT / "outputs/runs/tokenized/mimiciv-3.1_meds_70-10-20"
 )
-DEFAULT_OUTPUT_ROOT = REPO_ROOT / "outputs/runs/ml4h_2026/metric_bundle"
-FIGURE_SECTIONS = (
-    "00_data",
-    "01_representation_summary",
-    "02_outcome_forests",
-    "03_label_coverage",
-    "sources",
-    "metadata",
+DEFAULT_OUTPUT_ROOT = REPO_ROOT / "outputs/runs/ml4h_2026/metrics"
+
+CONFIG_ORDER = (
+    "meds_deciles_none_fusedFalse_discrete_time_tokens",
+    "meds_deciles_none_fusedTrue_discrete_time_tokens",
+    "meds_ventiles_none_fusedFalse_discrete_time_tokens",
+    "meds_ventiles_none_fusedTrue_discrete_time_tokens",
+    "meds_ventiles_5-10-5_fusedFalse_discrete_time_tokens",
+    "meds_ventiles_5-10-5_fusedTrue_discrete_time_tokens",
+    "meds_trentiles_none_fusedFalse_discrete_time_tokens",
+    "meds_trentiles_none_fusedTrue_discrete_time_tokens",
+    "meds_trentiles_10-10-10_fusedFalse_discrete_time_tokens",
+    "meds_trentiles_10-10-10_fusedTrue_discrete_time_tokens",
+    "meds_centiles_none_fusedFalse_discrete_time_tokens",
+    "meds_centiles_none_fusedTrue_discrete_time_tokens",
 )
+EXP2_CONFIG_ORDER = (
+    "meds_deciles_none_fusedFalse_discrete_event_order",
+    "meds_deciles_none_fusedFalse_discrete_time_tokens",
+    "meds_deciles_none_fusedFalse_discrete_time_rope",
+    "meds_deciles_none_fusedFalse_soft_event_order",
+    "meds_deciles_none_fusedFalse_soft_time_tokens",
+    "meds_deciles_none_fusedFalse_soft_time_rope",
+    "meds_deciles_none_fusedFalse_xval_event_order",
+    "meds_deciles_none_fusedFalse_xval_time_tokens",
+    "meds_deciles_none_fusedFalse_xval_time_rope",
+    "meds_deciles_none_fusedFalse_xval_affine_event_order",
+    "meds_deciles_none_fusedFalse_xval_affine_time_tokens",
+    "meds_deciles_none_fusedFalse_xval_affine_time_rope",
+)
+EXP3_CONFIG_ORDER = (
+    "meds_icu_deciles_none_fusedFalse_discrete_time_tokens",
+    "meds_clif_deciles_none_fusedFalse_discrete_time_tokens",
+)
+REPRESENTATIONS = ("discrete", "soft", "xval", "xval_affine")
+TEMPORAL_MODES = ("event_order", "time_tokens", "time_rope")
+
+
+@dataclass(frozen=True)
+class ExperimentSpec:
+    """Manifest contract for one study in the benchmark."""
+
+    experiment: str
+    display_name: str
+    stage3_dir: str
+    expected_runs: int
+    test_rows: int
+    config_order: tuple[str, ...]
+
+
+EXPERIMENT_SPECS = {
+    "exp1": ExperimentSpec(
+        experiment="exp1",
+        display_name="Experiment 1: numeric tokenization",
+        stage3_dir="stage3_24to48h_exp1",
+        expected_runs=72,
+        test_rows=85_057,
+        config_order=CONFIG_ORDER,
+    ),
+    "exp2": ExperimentSpec(
+        experiment="exp2",
+        display_name="Experiment 2: representation mechanics",
+        stage3_dir="stage3_24to48h_exp2",
+        expected_runs=72,
+        test_rows=85_057,
+        config_order=EXP2_CONFIG_ORDER,
+    ),
+    "exp3": ExperimentSpec(
+        experiment="exp3",
+        display_name="Experiment 3: semantic harmonization",
+        stage3_dir="stage3_24to48h_exp3",
+        expected_runs=12,
+        test_rows=16_529,
+        config_order=EXP3_CONFIG_ORDER,
+    ),
+}
 SPECS = {
-    "exp1": {"expected_runs": 72, "test_rows": 85_057},
-    "exp2": {"expected_runs": 72, "test_rows": 85_057},
-    "exp3": {"expected_runs": 12, "test_rows": 16_529},
+    name: {"expected_runs": spec.expected_runs, "test_rows": spec.test_rows}
+    for name, spec in EXPERIMENT_SPECS.items()
 }
 
 
@@ -66,14 +130,315 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_primary_renderer():
-    path = REPO_ROOT / "paper/scripts/generate_ml4h_figures.py"
-    spec = importlib.util.spec_from_file_location("ml4h_primary_renderer", path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+def config_parts(config_id: str) -> dict[str, object]:
+    parts = config_id.split("_")
+    if len(parts) < 5:
+        raise ValueError(f"Unexpected config id: {config_id}")
+    quantizer = parts[1]
+    fused_token = next(part for part in parts if part.startswith("fused"))
+    fused = fused_token == "fusedTrue"
+    anchor_parts = parts[2 : parts.index(fused_token)]
+    anchoring = "_".join(anchor_parts)
+    return {
+        "quantizer": quantizer,
+        "anchoring": anchoring,
+        "fusion": "fused" if fused else "unfused",
+        "fused": fused,
+        "representation": "discrete",
+        "temporal": "time_tokens",
+    }
+
+
+def config_label(config_id: str) -> str:
+    parts = config_parts(config_id)
+    quantizer = str(parts["quantizer"]).replace("iles", "ile").title()
+    anchor = str(parts["anchoring"])
+    anchor_label = "population" if anchor == "none" else "clinical"
+    fusion = "F" if bool(parts["fused"]) else "U"
+    return f"{quantizer} {anchor_label} ({fusion})"
+
+
+def _exp2_representation_and_temporal(config_id: str) -> tuple[str, str]:
+    for representation in sorted(REPRESENTATIONS, key=len, reverse=True):
+        marker = f"_{representation}_"
+        if marker in config_id:
+            temporal = config_id.split(marker, maxsplit=1)[1]
+            if temporal in TEMPORAL_MODES:
+                return representation, temporal
+    raise ValueError(f"Could not parse Exp2 configuration: {config_id}")
+
+
+def experiment_config_parts(
+    spec: ExperimentSpec, config_id: str, task: dict | None = None
+) -> dict[str, object]:
+    if spec.experiment == "exp1":
+        return config_parts(config_id)
+    if spec.experiment == "exp2":
+        representation, temporal = _exp2_representation_and_temporal(config_id)
+        fields = config_parts(config_id)
+        fields.update(
+            {
+                "representation": representation,
+                "temporal": temporal,
+                "fusion": "unfused",
+                "fused": False,
+            }
+        )
+        return fields
+    if spec.experiment == "exp3":
+        data_format = str(task.get("data_format")) if task else ""
+        if not data_format:
+            data_format = (
+                "meds_icu" if config_id.startswith("meds_icu_") else "meds_clif"
+            )
+        return {
+            "quantizer": "deciles",
+            "anchoring": "none",
+            "fusion": "unfused",
+            "fused": False,
+            "representation": "discrete",
+            "temporal": "time_tokens",
+            "data_format": data_format,
+            "source": (
+                "Native MIMIC" if data_format == "meds_icu" else "CLIF harmonized"
+            ),
+        }
+    raise ValueError(f"Unsupported experiment: {spec.experiment}")
+
+
+def experiment_config_label(spec: ExperimentSpec, config_id: str) -> str:
+    if spec.experiment == "exp1":
+        return config_label(config_id)
+    if spec.experiment == "exp2":
+        representation, temporal = _exp2_representation_and_temporal(config_id)
+        representation_label = {
+            "discrete": "Discrete",
+            "soft": "Soft",
+            "xval": "xVal",
+            "xval_affine": "xVal-affine",
+        }[representation]
+        temporal_label = {
+            "event_order": "Event order",
+            "time_tokens": "Time tokens",
+            "time_rope": "Time RoPE",
+        }[temporal]
+        return f"{representation_label} · {temporal_label}"
+    if spec.experiment == "exp3":
+        return (
+            "Native MIMIC"
+            if config_id.startswith("meds_icu_")
+            else "CLIF harmonized"
+        )
+    raise ValueError(f"Unsupported experiment: {spec.experiment}")
+
+
+def outcome_label(outcome: str) -> str:
+    labels = {
+        "same_admission_death": "Hospital mortality in hours 24--48",
+        "long_length_of_stay": "Still hospitalized at hour 48",
+        "icu_admission": "First ICU admission in hours 24--48",
+        "prolonged_icu_stay": "Still in ICU at hour 48",
+        "imv_event": "Invasive mechanical ventilation",
+        "hyperkalemia": "Hyperkalemia",
+        "severe_hypokalemia": "Severe hypokalemia",
+        "profound_hyponatremia": "Profound hyponatremia",
+        "severe_hypernatremia": "Severe hypernatremia",
+        "hypoglycemia": "Hypoglycemia",
+        "severe_anemia": "Severe anemia",
+        "tachycardia_hr130": "Tachycardia",
+        "severe_hypertension": "Severe hypertension",
+        "hypotension": "Hypotension",
+        "vasopressor_initiation": "Vasopressor initiation",
+        "crrt_initiation": "Continuous renal replacement",
+        "hemodialysis_initiation": "Hemodialysis initiation",
+        "length_of_stay": "Length of stay (hours)",
+        "icu_length_of_stay": "ICU length of stay (hours)",
+        "min_creatinine": "Minimum creatinine",
+        "peak_creatinine": "Peak creatinine",
+        "min_troponin": "Minimum troponin",
+        "peak_troponin": "Peak troponin",
+        "min_hemoglobin": "Minimum hemoglobin",
+        "max_hemoglobin": "Maximum hemoglobin",
+        "min_potassium": "Minimum potassium",
+        "peak_potassium": "Peak potassium",
+        "min_glucose": "Minimum glucose",
+        "max_glucose": "Maximum glucose",
+        "min_sodium": "Minimum sodium",
+        "max_sodium": "Maximum sodium",
+        "min_bnp": "Minimum NT-proBNP",
+        "peak_bnp": "Maximum NT-proBNP",
+        "min_heart_rate": "Minimum heart rate",
+        "max_heart_rate": "Maximum heart rate",
+        "min_sbp": "Minimum systolic blood pressure",
+        "max_sbp": "Maximum systolic blood pressure",
+        "min_dbp": "Minimum diastolic blood pressure",
+        "max_dbp": "Maximum diastolic blood pressure",
+    }
+    return labels.get(outcome, outcome.replace("_", " ").title())
+
+
+def artifact_stem(model_loc: str) -> str:
+    return model_artifact_stem(Path(model_loc))
+
+
+def ece(y_true: np.ndarray, y_score: np.ndarray, bins: int = 15) -> float:
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    bucket = np.clip(np.digitize(y_score, edges[1:-1]), 0, bins - 1)
+    value = 0.0
+    for index in range(bins):
+        mask = bucket == index
+        if mask.any():
+            value += mask.mean() * abs(y_true[mask].mean() - y_score[mask].mean())
+    return float(value)
+
+
+def binary_metric_rows(
+    y_true: np.ndarray, y_score: np.ndarray
+) -> list[tuple[str, float]]:
+    y_true = np.asarray(y_true, dtype=float)
+    y_score = np.asarray(y_score, dtype=float)
+    mask = np.isfinite(y_true) & np.isfinite(y_score)
+    y_true, y_score = y_true[mask], y_score[mask]
+    rows: list[tuple[str, float]] = []
+    if len(np.unique(y_true)) == 2:
+        rows.extend(
+            [
+                ("roc_auc", float(skl_metrics.roc_auc_score(y_true, y_score))),
+                (
+                    "average_precision",
+                    float(skl_metrics.average_precision_score(y_true, y_score)),
+                ),
+            ]
+        )
+    else:
+        rows.extend([("roc_auc", float("nan")), ("average_precision", float("nan"))])
+    rows.extend(
+        [
+            ("brier", float(skl_metrics.brier_score_loss(y_true, y_score))),
+            ("ece_15", ece(y_true, y_score)),
+        ]
+    )
+    return rows
+
+
+def regression_metric_rows(
+    y_true: np.ndarray, y_pred: np.ndarray
+) -> list[tuple[str, float]]:
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    mask = np.isfinite(y_true) & np.isfinite(y_pred)
+    y_true, y_pred = y_true[mask], y_pred[mask]
+    spearman = stats.spearmanr(y_true, y_pred).statistic
+    return [
+        ("spearman_rho", float(spearman)),
+        ("r2", float(skl_metrics.r2_score(y_true, y_pred))),
+        ("mae", float(skl_metrics.mean_absolute_error(y_true, y_pred))),
+        ("rmse", float(math.sqrt(skl_metrics.mean_squared_error(y_true, y_pred)))),
+    ]
+
+
+def load_prediction_metrics(
+    *,
+    task: dict,
+    kind: str,
+    spec: ExperimentSpec,
+    tokenized_root: Path,
+    preds_tag: str,
+    expected_outcomes: tuple[str, ...],
+    artifact_hashes: dict[str, str],
+) -> list[dict[str, object]]:
+    model_loc = str(task["model_loc"])
+    stem = artifact_stem(model_loc)
+    prefix = "logistic_regression" if kind == "binary" else "reg_ridge_regression"
+    data_dir = Path(task.get("data_dir", tokenized_root))
+    artifact = (
+        data_dir
+        / f"{task['data_version']}-tokenized"
+        / "test"
+        / f"{prefix}-preds-{preds_tag}-{stem}.pkl"
+    )
+    if not artifact.is_file():
+        raise FileNotFoundError(f"Missing {kind} prediction artifact: {artifact}")
+    with artifact.open("rb") as handle:
+        payload = pickle.load(handle)
+    meta = payload["metadata"]
+    observed_outcomes = tuple(meta["outcomes"])
+    if set(observed_outcomes) != set(expected_outcomes):
+        raise ValueError(
+            f"Unexpected {kind} outcome contract in {artifact}: "
+            f"expected {len(expected_outcomes)}, observed {len(observed_outcomes)}"
+        )
+    if set(payload["predictions"]) != set(expected_outcomes):
+        raise ValueError(
+            f"Incomplete {kind} artifact {artifact}: "
+            f"{len(payload['predictions'])}/{len(expected_outcomes)} outcomes"
+        )
+    if set(meta["completed_outcomes"]) != set(expected_outcomes):
+        raise ValueError(
+            f"Incomplete saved outcomes in {artifact}: "
+            f"{len(meta['completed_outcomes'])}/{len(expected_outcomes)}"
+        )
+    if meta.get("preds_tag") != preds_tag:
+        raise ValueError(
+            f"Unexpected prediction tag in {artifact}: "
+            f"{meta.get('preds_tag')!r} != {preds_tag!r}"
+        )
+
+    config = experiment_config_parts(spec, str(task["config_id"]), task)
+    artifact_key = str(artifact)
+    source_sha256 = artifact_hashes.setdefault(artifact_key, sha256(artifact))
+    rows: list[dict[str, object]] = []
+    for outcome in expected_outcomes:
+        raw_y_true = np.asarray(payload["labels"][outcome])
+        y_pred = np.asarray(payload["predictions"][outcome])
+        qualifier = np.asarray(payload["qualifiers"][outcome], dtype=bool)
+        if len(raw_y_true) != spec.test_rows:
+            raise ValueError(
+                f"Unexpected test-row count in {artifact} for {outcome}: "
+                f"{len(raw_y_true)} != {spec.test_rows}"
+            )
+        y_true = raw_y_true
+        if len(y_true) != len(y_pred):
+            if len(qualifier) != len(y_true) or qualifier.sum() != len(y_pred):
+                raise ValueError(
+                    f"Cannot align labels and predictions for {outcome} in {artifact}"
+                )
+            y_true = y_true[qualifier]
+        metric_rows = (
+            binary_metric_rows(y_true, y_pred)
+            if kind == "binary"
+            else regression_metric_rows(y_true, y_pred)
+        )
+        n = int(np.isfinite(np.asarray(y_true, dtype=float)).sum())
+        for metric, point in metric_rows:
+            rows.append(
+                {
+                    "experiment": spec.experiment,
+                    "config_id": task["config_id"],
+                    "config_label": experiment_config_label(
+                        spec, str(task["config_id"])
+                    ),
+                    "backbone": task["backbone"],
+                    "seed": int(task["seed"]),
+                    "task_type": kind,
+                    "outcome": outcome,
+                    "outcome_label": outcome_label(outcome),
+                    "metric": metric,
+                    "point": point,
+                    "n_test": n,
+                    "test_cohort_rows": spec.test_rows,
+                    "quantizer": config["quantizer"],
+                    "anchoring": config["anchoring"],
+                    "fusion": config["fusion"],
+                    "representation": config["representation"],
+                    "temporal": config["temporal"],
+                    "effective_logreg_C": 0.01 if kind == "binary" else np.nan,
+                    "effective_ridge_alpha": 100.0 if kind == "regression" else np.nan,
+                    "source_artifact": str(artifact),
+                    "source_sha256": source_sha256,
+                }
+            )
+    return rows
 
 
 def outcome_contract(experiment: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -162,13 +527,6 @@ def selected_specs(experiments: tuple[str, ...]) -> dict[str, dict[str, int]]:
     return {name: SPECS[name] for name in ordered}
 
 
-FIGURES_PER_EXPERIMENT = 4
-
-
-def expected_figure_count(experiments: tuple[str, ...]) -> int:
-    return FIGURES_PER_EXPERIMENT * len(selected_specs(experiments))
-
-
 def expected_metric_rows(experiments: tuple[str, ...]) -> int:
     return sum(
         spec["expected_runs"]
@@ -184,7 +542,6 @@ def collect(
     *,
     run_root: Path,
     shared_tokenized_root: Path,
-    renderer,
     experiments: tuple[str, ...],
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, str]]:
     registry_rows: list[dict[str, object]] = []
@@ -193,7 +550,8 @@ def collect(
     artifact_hashes: dict[str, str] = {}
 
     for experiment, contract in selected_specs(experiments).items():
-        stage_dir = run_root / f"stage3_24to48h_{experiment}"
+        spec = EXPERIMENT_SPECS[experiment]
+        stage_dir = run_root / spec.stage3_dir
         manifest_path = stage_dir / f"{experiment}_24to48h_stage3_manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         tasks = manifest["tasks"]
@@ -213,20 +571,19 @@ def collect(
             raise ValueError(f"{experiment}: wrong outcome parquet.")
 
         tags = manifest["preds_tags"]
-        spec = renderer.EXPERIMENT_SPECS[experiment]
         for task in tasks:
-            parts = renderer.experiment_config_parts(spec, str(task["config_id"]), task)
+            parts = experiment_config_parts(spec, str(task["config_id"]), task)
             registry_rows.append(
                 {
                     "experiment": experiment,
                     "config_id": task["config_id"],
-                    "config_label": renderer.experiment_config_label(
+                    "config_label": experiment_config_label(
                         spec, str(task["config_id"])
                     ),
                     "backbone": task["backbone"],
                     "seed": int(task["seed"]),
                     "model_loc": task["model_loc"],
-                    "model_stem": renderer.artifact_stem(task["model_loc"]),
+                    "model_stem": artifact_stem(task["model_loc"]),
                     "data_version": task["data_version"],
                     "test_cohort_rows": contract["test_rows"],
                     **parts,
@@ -237,7 +594,7 @@ def collect(
                 ("regression", regression_outcomes),
             ):
                 metric_rows.extend(
-                    renderer.load_prediction_metrics(
+                    load_prediction_metrics(
                         task=task,
                         kind=kind,
                         spec=spec,
@@ -263,367 +620,8 @@ def collect(
     metrics = pd.DataFrame(metric_rows)
     coverage = pd.DataFrame(label_coverage_rows)
     if registry.duplicated(["experiment", "model_loc"]).any():
-        raise ValueError("Duplicate model rows in provisional registry.")
+        raise ValueError("Duplicate model rows in run registry.")
     return registry, metrics, coverage, artifact_hashes
-
-
-def output_path(output_root: Path, section: str, stem: str, extension: str) -> Path:
-    return output_root / section / f"{stem}.{extension}"
-
-
-def write_figure(
-    *,
-    output_root: Path,
-    index: list[dict[str, object]],
-    figure: plt.Figure,
-    section: str,
-    stem: str,
-    source: pd.DataFrame,
-    description: str,
-    input_hashes: dict[str, str],
-) -> None:
-    source_path = output_path(output_root, "sources", stem, "csv")
-    metadata_path = output_path(output_root, "metadata", stem, "json")
-    pdf_path = output_path(output_root, section, stem, "pdf")
-    png_path = output_path(output_root, section, stem, "png")
-    source.to_csv(source_path, index=False)
-    source_hash = sha256(source_path)
-    metadata = {
-        "analysis": "24to48h",
-        "description": description,
-        "source": str(source_path.relative_to(output_root)),
-        "source_sha256": source_hash,
-        "input_hashes": input_hashes,
-    }
-    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
-    figure.savefig(pdf_path, bbox_inches="tight")
-    figure.savefig(png_path, bbox_inches="tight", dpi=220)
-    plt.close(figure)
-    index.append(
-        {
-            "section": section,
-            "stem": stem,
-            "description": description,
-            "pdf": str(pdf_path.relative_to(output_root)),
-            "png": str(png_path.relative_to(output_root)),
-            "source": str(source_path.relative_to(output_root)),
-            "metadata": str(metadata_path.relative_to(output_root)),
-        }
-    )
-
-
-def plot_representation_summary(
-    *,
-    experiment: str,
-    metrics: pd.DataFrame,
-    output_root: Path,
-    index: list[dict[str, object]],
-    input_hashes: dict[str, str],
-) -> None:
-    selected = metrics.loc[
-        ((metrics["task_type"] == "binary") & (metrics["metric"] == "roc_auc"))
-        | (
-            (metrics["task_type"] == "regression")
-            & (metrics["metric"] == "spearman_rho")
-        )
-    ].copy()
-    summary = (
-        selected.groupby(["config_label", "task_type", "metric"], as_index=False)["point"]
-        .mean()
-        .pivot(index="config_label", columns="metric", values="point")
-        .fillna(np.nan)
-        .sort_index()
-    )
-    fig, axes = plt.subplots(1, 2, figsize=(12, max(3.5, 0.35 * len(summary))))
-    for axis, metric, title in (
-        (axes[0], "roc_auc", "Mean AUROC across binary outcomes"),
-        (axes[1], "spearman_rho", "Mean Spearman rho across regression outcomes"),
-    ):
-        values = summary.get(metric, pd.Series(dtype=float)).sort_values()
-        axis.barh(values.index, values.values, color="#4E79A7")
-        axis.set_title(title)
-        axis.set_xlabel(metric.replace("_", " "))
-        axis.grid(axis="x", alpha=0.25)
-    fig.suptitle(f"{experiment.upper()} — representation summary, outcomes 24–48h")
-    fig.tight_layout()
-    write_figure(
-        output_root=output_root,
-        index=index,
-        figure=fig,
-        section="01_representation_summary",
-        stem=f"{experiment}_representation_summary",
-        source=selected,
-        description="Configuration-average discrimination and regression association for bounded future outcomes.",
-        input_hashes=input_hashes,
-    )
-
-
-def plot_outcome_forest(
-    *,
-    experiment: str,
-    metrics: pd.DataFrame,
-    output_root: Path,
-    index: list[dict[str, object]],
-    input_hashes: dict[str, str],
-) -> None:
-    selected = metrics.loc[
-        ((metrics["task_type"] == "binary") & (metrics["metric"] == "roc_auc"))
-        | (
-            (metrics["task_type"] == "regression")
-            & (metrics["metric"] == "spearman_rho")
-        )
-    ].copy()
-    grouped = (
-        selected.groupby(["task_type", "outcome", "outcome_label", "metric"], as_index=False)
-        .agg(mean=("point", "mean"), low=("point", "min"), high=("point", "max"))
-    )
-    fig, axes = plt.subplots(1, 2, figsize=(13, 11), sharex=False)
-    for axis, kind, metric, title in (
-        (axes[0], "binary", "roc_auc", "Binary outcome AUROC"),
-        (axes[1], "regression", "spearman_rho", "Regression outcome Spearman rho"),
-    ):
-        panel = grouped.loc[
-            (grouped["task_type"] == kind) & (grouped["metric"] == metric)
-        ].sort_values("mean")
-        y = np.arange(len(panel))
-        axis.hlines(y, panel["low"], panel["high"], color="#9ECAE1", linewidth=3)
-        axis.scatter(panel["mean"], y, color="#08519C", s=28, zorder=3)
-        axis.set_yticks(y)
-        axis.set_yticklabels(panel["outcome_label"], fontsize=7)
-        axis.set_title(title)
-        axis.grid(axis="x", alpha=0.25)
-    fig.suptitle(
-        f"{experiment.upper()} — outcome-level performance, 24–48h follow-up\n"
-        "point: mean across model runs; line: observed model-run range"
-    )
-    fig.tight_layout()
-    write_figure(
-        output_root=output_root,
-        index=index,
-        figure=fig,
-        section="02_outcome_forests",
-        stem=f"{experiment}_outcome_forest",
-        source=grouped,
-        description="Outcome-level performance across all configurations, architectures, and seeds.",
-        input_hashes=input_hashes,
-    )
-
-
-def plot_seed_interval_forests(
-    *,
-    experiment: str,
-    metrics: pd.DataFrame,
-    output_root: Path,
-    index: list[dict[str, object]],
-    input_hashes: dict[str, str],
-    renderer,
-) -> None:
-    spec = renderer.EXPERIMENT_SPECS[experiment]
-    source = renderer.generic_seed_interval_source(metrics, spec)
-    binary_order = tuple(
-        outcome
-        for outcome in renderer.ML4H_BINARY_ORDER
-        if outcome in set(source["outcome"])
-    )
-    regression_order = tuple(
-        outcome
-        for outcome in renderer.ML4H_REGRESSION_ORDER
-        if outcome in set(source["outcome"])
-    )
-    fig, axes = plt.subplots(2, 2, figsize=(15.5, 19.0))
-    for row_index, backbone in enumerate(renderer.BACKBONE_ORDER):
-        for col_index, (panel, outcome_order, xlabel, floor) in enumerate(
-            (
-                ("binary", binary_order, "AUROC", 0.52),
-                ("regression", regression_order, r"Spearman $\rho$", None),
-            )
-        ):
-            subset = source[
-                (source["backbone"] == backbone) & (source["panel"] == panel)
-            ]
-            renderer._generic_forest_panel(
-                axes[row_index, col_index],
-                subset,
-                spec=spec,
-                outcome_order=outcome_order,
-                panel_title=(
-                    f"{renderer.BACKBONE_DISPLAY[backbone]} · "
-                    f"{'Binary outcomes' if panel == 'binary' else 'Regression outcomes'}"
-                ),
-                xlabel=xlabel,
-                x_lo_floor=floor,
-            )
-    handles = [
-        Line2D(
-            [0],
-            [0],
-            marker=renderer.experiment_config_marker(spec, config),
-            color=renderer.experiment_config_color(spec, config),
-            markerfacecolor=renderer.experiment_config_color(spec, config),
-            markeredgecolor="#222222",
-            linewidth=0,
-            markersize=4.5,
-            label=renderer.experiment_config_label(spec, config),
-        )
-        for config in spec.config_order
-    ]
-    fig.tight_layout(rect=[0, 0, 1, 0.93])
-    fig.legend(
-        handles=handles,
-        title="Configuration",
-        loc="upper center",
-        bbox_to_anchor=(0.5, 0.99),
-        ncol=min(4, len(handles)),
-        fontsize=6.5,
-        title_fontsize=7,
-        frameon=False,
-    )
-    fig.suptitle(
-        f"{spec.display_name}, 24–48h follow-up. "
-        "Points are means over three training seeds; whiskers span the seed minimum to maximum.",
-        y=0.999,
-        fontsize=9.5,
-    )
-    write_figure(
-        output_root=output_root,
-        index=index,
-        figure=fig,
-        section="02_outcome_forests",
-        stem=f"{experiment}__outcome_forests",
-        source=source,
-        description=(
-            f"{spec.display_name} 24–48h outcome forest with architecture rows; "
-            "seed-mean points and seed min-max whiskers by configuration."
-        ),
-        input_hashes=input_hashes,
-    )
-
-
-def plot_label_coverage(
-    *,
-    experiment: str,
-    label_coverage: pd.DataFrame,
-    output_root: Path,
-    index: list[dict[str, object]],
-    input_hashes: dict[str, str],
-) -> None:
-    summary = (
-        label_coverage.groupby(["task_type", "outcome"], as_index=False)
-        .agg(
-            test_rows=("test_cohort_rows", "median"),
-            labeled=("n_labeled", "median"),
-            positives=("n_positive", "median"),
-        )
-    )
-    summary["labeled_fraction"] = summary["labeled"] / summary["test_rows"]
-    fig, axes = plt.subplots(1, 2, figsize=(13, 11))
-    for axis, kind, title in (
-        (axes[0], "binary", "Binary label coverage"),
-        (axes[1], "regression", "Regression label coverage"),
-    ):
-        panel = summary.loc[summary["task_type"] == kind].sort_values("labeled_fraction")
-        y = np.arange(len(panel))
-        axis.barh(y, panel["labeled_fraction"], color="#59A14F")
-        axis.set_yticks(y)
-        axis.set_yticklabels(panel["outcome"], fontsize=7)
-        axis.set_xlim(0, 1)
-        axis.set_xlabel("fraction with a finite follow-up label")
-        axis.set_title(title)
-        axis.grid(axis="x", alpha=0.25)
-    fig.suptitle(f"{experiment.upper()} — 24–48h label availability")
-    fig.tight_layout()
-    write_figure(
-        output_root=output_root,
-        index=index,
-        figure=fig,
-        section="03_label_coverage",
-        stem=f"{experiment}_label_coverage",
-        source=summary,
-        description="Per-outcome label availability; unmeasured physiology remains unlabeled.",
-        input_hashes=input_hashes,
-    )
-
-
-def write_docs(
-    *,
-    output_root: Path,
-    figure_index: pd.DataFrame,
-    metrics: pd.DataFrame,
-    label_coverage: pd.DataFrame,
-    experiments: tuple[str, ...],
-) -> None:
-    per_task = (
-        label_coverage.groupby(["experiment", "task_type", "outcome"], as_index=False)
-        .agg(
-            test_rows=("test_cohort_rows", "median"),
-            labeled=("n_labeled", "median"),
-            unlabeled=("n_unlabeled", "median"),
-            positives=("n_positive", "median"),
-        )
-    )
-    per_task.to_csv(output_root / "00_data/outcome_coverage_summary.csv", index=False)
-    semantics = "\n".join(
-        f"- `{task}`: {meaning}" for task, meaning in sorted(TASK_SEMANTICS.items())
-    )
-    figure_lines = "\n".join(
-        f"- [{row.stem}]({row.pdf}) — {row.description}"
-        for row in figure_index.itertuples(index=False)
-    )
-    metrics_rows = len(metrics)
-    (output_root / "README.md").write_text(
-        "\n".join(
-            [
-                "# ML4H provisional 24–48h evaluation",
-                "",
-                "This bundle is separate from the primary ML4H analysis and is not a replacement for `07_ML4H_ready`.",
-                "",
-                "## Outcome contract",
-                "",
-                f"- Features: model representations from the first {HORIZON_START_HOURS:g} hours.",
-                f"- Follow-up window: `(admission + {HORIZON_START_HOURS:g}h, admission + {HORIZON_END_HOURS:g}h]`.",
-                "- Recorded procedural/discrete events absent during follow-up are negative, including after early discharge.",
-                "- Lab/vital-derived binary labels and all regression labels are missing when no qualifying follow-up measurement exists; metrics use finite labels only.",
-                "- `length_of_stay` and `icu_length_of_stay` regression tasks are intentionally omitted.",
-                "- Exp1/Exp2 each contain 37 tasks; Exp3 contains 36 after excluding degenerate ICU admission.",
-                f"- Included experiments in this render: {', '.join(experiments)}.",
-                *(
-                    [
-                        "- Exp1 is omitted from this render because repaired first-24h features are not ready yet."
-                    ]
-                    if "exp1" not in experiments
-                    else []
-                ),
-                "",
-                "## Horizon-specific endpoint semantics",
-                "",
-                semantics,
-                "",
-                "## Contents",
-                "",
-                f"- {metrics_rows:,} metric rows in `00_data/metrics_long.parquet`.",
-                "- `00_data/outcome_coverage_summary.csv` reports labeled and positive counts per outcome.",
-                "- Every figure includes a source CSV and metadata file with input hashes.",
-                "",
-                "## Figure index",
-                "",
-                figure_lines,
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (output_root / "PROVISIONAL.md").write_text(
-        "\n".join(
-            [
-                "# Provisional status",
-                "",
-                "These results are exploratory bounded-horizon probes. They do not alter or supersede the primary ML4H figures.",
-                "Interpret measurement-derived targets with their outcome-specific labeled cohorts.",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
 
 
 def generate(
@@ -635,11 +633,9 @@ def generate(
     experiments: tuple[str, ...] = ("exp1", "exp2", "exp3"),
 ) -> dict[str, object]:
     specs = selected_specs(experiments)
-    renderer = load_primary_renderer()
     registry, metrics, label_coverage, input_hashes = collect(
         run_root=run_root,
         shared_tokenized_root=shared_tokenized_root,
-        renderer=renderer,
         experiments=tuple(specs),
     )
     expected_rows = expected_metric_rows(tuple(specs))
@@ -656,76 +652,34 @@ def generate(
         "outcome_counts": {
             name: EXPECTED_TASK_COUNTS[name] for name in specs
         },
-        "figure_count": expected_figure_count(tuple(specs)),
     }
     if dry_run:
         return summary
 
-    for section in FIGURE_SECTIONS:
-        (output_root / section).mkdir(parents=True, exist_ok=True)
-    registry.to_parquet(output_root / "00_data/run_registry.parquet", index=False)
-    registry.to_csv(output_root / "00_data/run_registry.csv", index=False)
-    metrics.to_parquet(output_root / "00_data/metrics_long.parquet", index=False)
-    metrics.to_csv(output_root / "00_data/metrics_long.csv", index=False)
-    label_coverage.to_parquet(output_root / "00_data/label_coverage_long.parquet", index=False)
-    label_coverage.to_csv(output_root / "00_data/label_coverage_long.csv", index=False)
+    output_root.mkdir(parents=True, exist_ok=True)
+    registry.to_parquet(output_root / "run_registry.parquet", index=False)
+    registry.to_csv(output_root / "run_registry.csv", index=False)
+    metrics.to_parquet(output_root / "metrics_long.parquet", index=False)
+    metrics.to_csv(output_root / "metrics_long.csv", index=False)
+    label_coverage.to_parquet(output_root / "label_coverage_long.parquet", index=False)
+    label_coverage.to_csv(output_root / "label_coverage_long.csv", index=False)
+
+    per_task = (
+        label_coverage.groupby(["experiment", "task_type", "outcome"], as_index=False)
+        .agg(
+            test_rows=("test_cohort_rows", "median"),
+            labeled=("n_labeled", "median"),
+            unlabeled=("n_unlabeled", "median"),
+            positives=("n_positive", "median"),
+        )
+    )
+    per_task.to_csv(output_root / "outcome_coverage_summary.csv", index=False)
 
     input_hashes[str(Path(__file__).resolve())] = sha256(Path(__file__).resolve())
-    index: list[dict[str, object]] = []
-    for experiment in specs:
-        subset_metrics = metrics.loc[metrics["experiment"] == experiment].copy()
-        subset_coverage = label_coverage.loc[
-            label_coverage["experiment"] == experiment
-        ].copy()
-        plot_representation_summary(
-            experiment=experiment,
-            metrics=subset_metrics,
-            output_root=output_root,
-            index=index,
-            input_hashes=input_hashes,
-        )
-        plot_outcome_forest(
-            experiment=experiment,
-            metrics=subset_metrics,
-            output_root=output_root,
-            index=index,
-            input_hashes=input_hashes,
-        )
-        plot_seed_interval_forests(
-            experiment=experiment,
-            metrics=subset_metrics,
-            output_root=output_root,
-            index=index,
-            input_hashes=input_hashes,
-            renderer=renderer,
-        )
-        plot_label_coverage(
-            experiment=experiment,
-            label_coverage=subset_coverage,
-            output_root=output_root,
-            index=index,
-            input_hashes=input_hashes,
-        )
-
-    if len(index) != expected_figure_count(tuple(specs)):
-        raise ValueError(
-            f"Expected {expected_figure_count(tuple(specs))} figures, wrote {len(index)}."
-        )
-    figure_index = pd.DataFrame(index)
-    figure_index.to_csv(output_root / "figure_index.csv", index=False)
-    write_docs(
-        output_root=output_root,
-        figure_index=figure_index,
-        metrics=metrics,
-        label_coverage=label_coverage,
-        experiments=tuple(specs),
-    )
     manifest = {
         "created_at": utc_now(),
         "generator": str(Path(__file__).resolve()),
         "summary": summary,
-        "figure_count": len(index),
-        "figures": index,
         "input_hashes": input_hashes,
     }
     (output_root / "manifest.json").write_text(
@@ -747,7 +701,7 @@ def main() -> int:
         nargs="+",
         choices=tuple(SPECS),
         default=list(SPECS),
-        help="Subset of experiments to render. Default is all three.",
+        help="Subset of experiments to aggregate. Default is all three.",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
