@@ -4,7 +4,8 @@
 
 ### A Practical Benchmark for Generative Medical Event Model Tokenization
 
-[![ML4H 2026](https://img.shields.io/badge/ML4H-2026-B31B1B)](#citation)
+[![arXiv](https://img.shields.io/badge/arXiv-2604.16775-B31B1B.svg)](https://arxiv.org/abs/2604.16775)
+[![ML4H 2026](https://img.shields.io/badge/ML4H%202026-PMLR%20346%20(to%20appear)-4B4B4B)](#citation)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](environment.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Models](https://img.shields.io/badge/trained%20models-156-orange)](#benchmark-design)
@@ -159,14 +160,21 @@ input-representation-benchmark/
 
 ## Citation
 
+The paper is to appear in the Proceedings of Machine Learning Research, volume 346. Until then, the preprint is [arXiv:2604.16775](https://arxiv.org/abs/2604.16775).
+
 ```bibtex
 @inproceedings{lee2026representation,
-  title     = {Representation Before Training: A Practical Benchmark for Generative Medical Event Model Tokenization},
-  author    = {Lee, Inhyeok and Solo, Luke and Burkhart, Michael C. and Ramadan, Bashar and Sethi, Sahil and Jabbour, Sarah and Parker, William F. and Beaulieu-Jones, Brett K.},
-  booktitle = {Machine Learning for Health (ML4H) 2026},
-  series    = {Proceedings of Machine Learning Research},
-  volume    = {346},
-  year      = {2026}
+  title         = {Representation Before Training: A Practical Benchmark for Generative Medical Event Model Tokenization},
+  author        = {Lee, Inhyeok and Solo, Luke and Burkhart, Michael C. and Ramadan, Bashar and Sethi, Sahil and Jabbour, Sarah and Parker, William F. and Beaulieu-Jones, Brett K.},
+  booktitle     = {Machine Learning for Health (ML4H) 2026},
+  series        = {Proceedings of Machine Learning Research},
+  volume        = {346},
+  year          = {2026},
+  note          = {To appear},
+  eprint        = {2604.16775},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url           = {https://arxiv.org/abs/2604.16775}
 }
 ```
 
