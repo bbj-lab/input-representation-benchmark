@@ -1,136 +1,106 @@
-# Benchmark Pipeline
+# Benchmark pipeline
 
-This document traces the end-to-end execution path from raw MIMIC-IV v3.1 tables to the ML4H 2026 manuscript figures and tables.
+This file traces each stage from raw MIMIC-IV v3.1 tables to the paper tables and figures. Launchers are in [`slurm/`](slurm/). Model scripts marked *fms-ehrs* are in the companion repository [`../fms-ehrs`](../fms-ehrs).
 
-## 1. Data Preparation
+```mermaid
+flowchart LR
+    R[MIMIC-IV v3.1] --> M["Stage −1<br/>MEDS extraction"]
+    C[MIMIC-IV-Ext-CLIF] --> X["Stage −0.5<br/>Exp. 3 cohorts"]
+    M --> X
+    M --> T["Stage 0<br/>tokenization"]
+    X --> T
+    T --> O["Stage 0.5<br/>24–48h outcomes"]
+    T --> P["Stage 1<br/>training"]
+    P --> E["Stage 2<br/>extraction"]
+    E --> Q["Stage 3<br/>probes"]
+    O --> Q
+    Q --> S["Statistics"]
+    S --> F["Tables and figures"]
+```
 
-### Raw MIMIC-IV to MEDS (Stage -1)
+## Stage −1 · MIMIC-IV to MEDS
 
-Run the extraction wrapper in `benchmarks/mimic-meds-extraction/` (`slurm/01_extract_mimic_meds.sh`) to build the split MEDS directories.
+| | |
+| :-- | :-- |
+| Launcher | `slurm/01_phase0_extract_meds.sh` |
+| Code | `benchmarks/mimic-meds-extraction/` (adapted from ETHOS-ARES) |
+| Input | `physionet.org/files/mimiciv/3.1/` |
+| Output | `benchmarks/mimic-meds-extraction/data/meds/data/{train,val,test}` |
 
-- `benchmarks/mimic-meds-extraction/data/meds/data/raw/train`.
-- `benchmarks/mimic-meds-extraction/data/meds/data/raw/val`.
-- `benchmarks/mimic-meds-extraction/data/meds/data/raw/test`.
+## Stage −0.5 · Experiment 3 cohorts
 
-### Experiment 3 Matched Cohorts (Stage -0.5)
+Experiment 3 uses hospitalizations of at least 24 hours with a linked `icu/icustays` record. The launcher freezes a separate patient-level split on the native data. Then it collates the CLIF 2.1.0 tables with Cocoa under that same split.
 
-Experiment 3 compares native MIMIC-IV MEDS timelines against CLIF 2.1.0 timelines on a matched ICU cohort (`83,842` admissions across `64,954` patients).
+| | |
+| :-- | :-- |
+| Launcher | `slurm/02_phase05_exp3_cohort_arms.sh` |
+| Code | `pipeline/scripts/align_cohorts.py`, `pipeline/scripts/split_meds_by_hadm_splits.py`, *fms-ehrs* `collate_clif_with_cocoa.py` |
+| Collation config | *fms-ehrs* `fms_ehrs/config/cocoa-exp3-clif-full.yaml` |
+| Output | `outputs/runs/exp3/{cohort,meds_icu,meds_clif}/` |
 
-- `pipeline/scripts/align_cohorts.py`.
-- `pipeline/scripts/split_meds_by_hadm_splits.py`.
-- `slurm/02_phase05_exp3_cohort_arms.sh`.
-- `../fms-ehrs/fms_ehrs/scripts/collate_clif_with_cocoa.py`.
+## Stage 0 · Tokenization and base outcomes
 
-The launcher freezes the native patient-level split (`70 / 10 / 20`). It then calls the Cocoa adapter to build matched CLIF 2.1.0 MEDS tables under `outputs/runs/exp3/`.
+| | |
+| :-- | :-- |
+| Launchers | `slurm/03_stage0_tokenize_and_outcomes_meds.sh` (Exp. 1–2), `slurm/04_exp3_stage0_tokenize_and_outcomes.sh` (Exp. 3) |
+| Code | *fms-ehrs* `tokenize_w_config.py`, `pipeline/scripts/extract_outcomes_meds.py` |
+| Tokenizer configs | *fms-ehrs* `mimic-meds-ed.yaml` (Exp. 1–2), `mimic-meds-exp3-full.yaml` (both Exp. 3 arms) |
+| Output | `<data_version>-tokenized/train/{vocab.gzip,numeric_stats.json}`, `<data_version>[_first_24h]-tokenized/<split>/tokens_timelines.parquet`, `tokens_timelines_outcomes.parquet` |
 
-## 2. Stage 0: Tokenization and Base Outcomes
+## Stage 0.5 · Outcomes in hours 24–48
 
-Stage 0 entrypoints.
+| | |
+| :-- | :-- |
+| Launcher | `slurm/21_submit_ml4h_24to48h_outcomes_cpu.sh` |
+| Jobfiles | `utilities/scripts/generate_ml4h_24to48h_outcome_jobfiles.py` |
+| Code | `pipeline/scripts/extract_outcomes_meds.py`, `pipeline/scripts/extract_extended_outcomes.py` |
+| Output | `tokens_timelines_outcomes_24to48h.parquet`, `tokens_timelines_extended_outcomes_24to48h.parquet` |
 
-- `slurm/03_stage0_tokenize_and_outcomes_meds.sh`.
-- `slurm/04_exp3_stage0_tokenize_and_outcomes.sh`.
-- `../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py`.
-- `pipeline/scripts/extract_outcomes_meds.py`.
+Experiment 3 labels come from the native MIMIC events for the two arms.
 
-Stage 0 outputs.
+## Stage 1 · Training
 
-- `<data_version>-tokenized/train/vocab.gzip`.
-- `<data_version>-tokenized/train/numeric_stats.json`.
-- `<data_version>-tokenized/<split>/tokens_timelines.parquet`.
-- `<data_version>_first_24h-tokenized/<split>/tokens_timelines.parquet`.
-- `<data_version>_first_24h-tokenized/<split>/tokens_timelines_outcomes_24to48h.parquet`.
+| | |
+| :-- | :-- |
+| Launcher | `slurm/10_submit_ml4h_campaign_stage1.sh` |
+| Jobfiles | `utilities/scripts/generate_ml4h_campaign.py` |
+| Code | *fms-ehrs* `tune_model.py` (Exp. 1, packed), `train_representation.py` (Exp. 2–3, windowed) |
+| Output | `outputs/runs/ml4h_2026/models/` |
 
-## 3. Stage 0.5: 24-to-48-Hour Clinical Outcomes
+## Stage 2 · Hidden-state extraction
 
-Stage 0.5 entrypoints.
+| | |
+| :-- | :-- |
+| Launchers | `slurm/11_submit_ml4h_exp{1,2,3}_stage2_opportunistic.sh` |
+| Jobfiles | `utilities/scripts/generate_ml4h_exp{1,2,3}_stage2_jobfiles.py` |
+| Code | *fms-ehrs* `extract_hidden_states.py` |
+| Output | `<data_version>_first_24h-tokenized/<split>/features-<model_stem>.npy` |
 
-- `pipeline/scripts/extract_extended_outcomes.py`.
-- `utilities/scripts/generate_ml4h_24to48h_outcome_jobfiles.py`.
-- `slurm/21_submit_ml4h_24to48h_outcomes_cpu.sh`.
+## Stage 3 · Linear probes
 
-Stage 0.5 output.
+| | |
+| :-- | :-- |
+| Launchers | `slurm/22_prepare_submit_ml4h_24to48h_probes.sh`, `slurm/22_submit_ml4h_24to48h_exp2_exp3_probes.sh` |
+| Jobfiles | `utilities/scripts/generate_ml4h_24to48h_stage3_jobfiles.py` |
+| Code | *fms-ehrs* `transfer_rep_based_preds.py` |
+| Output | `<data_version>_first_24h-tokenized/test/*-preds-*.pkl` |
 
-- `<data_version>_first_24h-tokenized/<split>/tokens_timelines_extended_outcomes_24to48h.parquet`.
+## Statistics
 
-## 4. Stage 1: Model Pretraining
+| Analysis | Code | Launcher | Output |
+| :-- | :-- | :-- | :-- |
+| Hospitalization bootstrap intervals | `pipeline/scripts/bootstrap_ml4h_24to48h_metrics.py` | `slurm/28_submit_ml4h_24to48h_bootstrap.sh` | `metrics/metrics_long_with_ci.parquet` |
+| Paired admission-swap tests | `pipeline/scripts/bootstrap_ml4h_family_effects.py` | `slurm/34_submit_ml4h_family_effect_bootstrap.sh` | `family_effect_bootstrap/` |
+| Patient-clustered bootstrap | `pipeline/scripts/bootstrap_ml4h_patient_clusters.py` | `slurm/35_submit_ml4h_patient_clusters.sh` | `patient_cluster_bootstrap/` |
+| Six-pair model-level *t*-tests | `paper/scripts/ml4h_model_level_tests.py` | — | `model_level_tests/` |
 
-Stage 1 entrypoints.
+Output paths are relative to `outputs/runs/ml4h_2026/`.
 
-- `utilities/scripts/generate_ml4h_campaign.py`.
-- `slurm/10_submit_ml4h_campaign_stage1.sh`.
-- `../fms-ehrs/fms_ehrs/scripts/tune_model.py` (Experiment 1 packed training).
-- `../fms-ehrs/fms_ehrs/scripts/train_representation.py` (Experiments 2 and 3 windowed training).
+## Tables and figures
 
-Stage 1 outputs.
+See [`paper/README.md`](paper/README.md) for the script behind each table and figure.
 
-- Checkpoints under `outputs/runs/ml4h_2026/models/`.
-- `representation_mechanics.pt` for numeric and temporal wrapper models.
-
-## 5. Stage 2: 24-Hour Hidden-State Extraction
-
-Stage 2 entrypoints.
-
-- `utilities/scripts/generate_ml4h_exp1_stage2_jobfiles.py`.
-- `utilities/scripts/generate_ml4h_exp2_stage2_jobfiles.py`.
-- `utilities/scripts/generate_ml4h_exp3_stage2_jobfiles.py`.
-- `slurm/11_submit_ml4h_exp1_stage2_opportunistic.sh`.
-- `slurm/11_submit_ml4h_exp2_stage2_opportunistic.sh`.
-- `slurm/11_submit_ml4h_exp3_stage2_opportunistic.sh`.
-- `../fms-ehrs/fms_ehrs/scripts/extract_hidden_states.py`.
-
-Stage 2 output.
-
-- `<data_version>_first_24h-tokenized/<split>/features-<model_stem>.npy`.
-
-## 6. Stage 3: Locked Linear Probes
-
-Stage 3 entrypoints.
-
-- `utilities/scripts/generate_ml4h_24to48h_stage3_jobfiles.py`.
-- `slurm/22_prepare_submit_ml4h_24to48h_probes.sh`.
-- `slurm/22_submit_ml4h_24to48h_exp2_exp3_probes.sh`.
-- `slurm/ref_qse/10_xfer_rep_based_preds.sh`.
-- `../fms-ehrs/fms_ehrs/scripts/transfer_rep_based_preds.py`.
-
-Stage 3 output.
-
-- `<data_version>_first_24h-tokenized/test/*-preds-*.pkl`.
-
-## 7. Statistical Inference and Bootstrap Evaluation
-
-Statistical entrypoints.
-
-- `pipeline/scripts/bootstrap_ml4h_24to48h_metrics.py` (`slurm/28_submit_ml4h_24to48h_bootstrap.sh`).
-- `pipeline/scripts/bootstrap_ml4h_family_effects.py` (`slurm/34_submit_ml4h_family_effect_bootstrap.sh`).
-- `pipeline/scripts/bootstrap_ml4h_patient_clusters.py` (`slurm/35_submit_ml4h_patient_clusters.sh`).
-- `paper/scripts/ml4h_model_level_tests.py`.
-
-Statistical outputs.
-
-- `outputs/runs/ml4h_2026/metrics/metrics_long.parquet` and `metrics_long_with_ci.parquet`.
-- `outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet`.
-- `outputs/runs/ml4h_2026/patient_cluster_bootstrap/patient_cluster_intervals.parquet`.
-- `outputs/runs/ml4h_2026/model_level_tests/family_tests.csv` and `outcome_tests.csv`.
-
-## 8. Manuscript Figures and Tables
-
-Paper build entrypoints.
-
-- `paper/scripts/generate_ml4h_outcome_family_traces.py`.
-- `paper/scripts/generate_ml4h_outcome_factor_traces.py`.
-- `paper/scripts/generate_ml4h_appendix_result_tables.py`.
-- `paper/scripts/generate_ml4h_boundary_probe_plot.py`.
-- `pipeline/scripts/diagnostics/rebuild_ml4h_pca_and_probe.py`.
-- `slurm/33_rebuild_ml4h_review_tables_and_compile.sh`.
-
-Paper build outputs.
-
-- `../ML4H2026/generated/*.tex`.
-- `../ML4H2026/figures/*.pdf`.
-
-## 9. Verification
-
-Run unit and dry-run CLI checks before submitting cluster jobs.
+## Checks
 
 ```bash
 pytest pipeline/tests/unit

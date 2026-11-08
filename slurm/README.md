@@ -1,22 +1,24 @@
-# Slurm Batch Launchers
+# Slurm launchers
 
-Slurm job scripts for the ML4H 2026 benchmark on the Randi cluster. Python entrypoints live in `../pipeline/`, `../paper/`, and `../utilities/`. See [`../PIPELINE.md`](../PIPELINE.md) for the stage-by-stage order.
+Batch scripts for the Randi cluster at the University of Chicago. The launchers source [`00_preamble.sh`](00_preamble.sh), which activates the `input-rep` environment and sets the repository paths and the Hugging Face scratch cache. See [`../PIPELINE.md`](../PIPELINE.md) for the stage order.
 
-## Script Prefixes
+## Launchers used for the paper
 
-| Prefix | Stage | Purpose |
-| --- | --- | --- |
-| `00_preamble.sh` | Shared | Conda environment activation, Hugging Face scratch cache setup, and path defaults |
-| `01_*` | Stage -1 | Raw MIMIC-IV v3.1 to MEDS extraction |
-| `02_*` | Stage -0.5 | Experiment 3 matched ICU cohort alignment and CLIF 2.1.0 collation |
-| `03_*`, `04_*` | Stage 0 | MEDS tokenization and base outcome extraction |
-| `09*` | Calibration | Batch geometry calibration and campaign preflight checks |
-| `10_*` | Stage 1 | 156-model pretraining campaign across `Llama-3.2` and `Qwen3` decoders |
-| `11_*` | Stage 2 | 24-hour prefix hidden-state extraction |
-| `21_*` | Stage 0.5 | 24-to-48-hour clinical outcome extraction |
-| `22_*`, `26_*` | Stage 3 | Locked L2-regularized logistic and Ridge linear probes |
-| `28_*` | Stats | Per-run admission-level bootstrap confidence intervals |
-| `31_*`, `32_*`, `33_*` | Paper | Token counts, centile PCA and boundary probes, and table and figure compilation |
-| `34_*` | Stats | Paired admission-swap permutation tests and hierarchical family-effect intervals |
-| `35_*` | Stats | Patient-cluster bootstrap sensitivity intervals |
-| `ref_qse/` | Stage 2 & 3 | Shared single-task extraction and linear probe worker wrappers |
+| Stage | Launcher | Worker |
+| :-- | :-- | :-- |
+| −1 · MEDS extraction | `01_phase0_extract_meds.sh` | `benchmarks/mimic-meds-extraction/scripts/01_extract_meds_full.sh` |
+| −0.5 · Exp. 3 cohorts | `02_phase05_exp3_cohort_arms.sh` | — |
+| 0 · Tokenization | `03_stage0_tokenize_and_outcomes_meds.sh`, `04_exp3_stage0_tokenize_and_outcomes.sh` | — |
+| 0.5 · 24–48h outcomes | `21_submit_ml4h_24to48h_outcomes_cpu.sh` | `15_run_stats_cpu_jobfile.sh` |
+| 1 · Training | `10_submit_ml4h_campaign_stage1.sh` | `06_run_stage1_gpu1_train.sh` |
+| 2 · Extraction | `11_submit_ml4h_exp{1,2,3}_stage2_opportunistic.sh` | `09_run_stage2_gpu2_extract.sh` |
+| 3 · Probes | `22_prepare_submit_ml4h_24to48h_probes.sh`, `22_submit_ml4h_24to48h_exp2_exp3_probes.sh` | `11_run_stage3_tier2q_lr.sh` |
+| Hospitalization bootstrap | `28_submit_ml4h_24to48h_bootstrap.sh` | `28_run_*`, `28_concat_*` |
+| Admission-swap tests | `34_submit_ml4h_family_effect_bootstrap.sh` | `34_run_*`, `34_concat_*` |
+| Patient-clustered bootstrap | `35_submit_ml4h_patient_clusters.sh` | `35_build_*`, `35_run_*`, `35_concat_*` |
+| Tables and boundary probe figure | `33_rebuild_ml4h_review_tables_and_compile.sh` | — |
+| Centile PCA figure | `31_rerun_ml4h_pca_probe.sh` | — |
+| Length histograms | `34_rebuild_ml4h_length_histograms.sh` | — |
+| Exp. 3 token counts | `31_count_exp3_train_tokens.sh` | — |
+
+`ref_qse/` holds the single-task extraction and probe wrappers. The other scripts in this folder are earlier launchers, calibration runs, and debug helpers.
