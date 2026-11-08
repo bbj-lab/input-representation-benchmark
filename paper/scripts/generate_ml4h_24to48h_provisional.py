@@ -10,7 +10,6 @@ import math
 import pickle
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -116,10 +115,6 @@ SPECS = {
     name: {"expected_runs": spec.expected_runs, "test_rows": spec.test_rows}
     for name, spec in EXPERIMENT_SPECS.items()
 }
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def sha256(path: Path) -> str:
@@ -633,7 +628,7 @@ def generate(
     experiments: tuple[str, ...] = ("exp1", "exp2", "exp3"),
 ) -> dict[str, object]:
     specs = selected_specs(experiments)
-    registry, metrics, label_coverage, input_hashes = collect(
+    registry, metrics, label_coverage, _ = collect(
         run_root=run_root,
         shared_tokenized_root=shared_tokenized_root,
         experiments=tuple(specs),
@@ -674,18 +669,6 @@ def generate(
         )
     )
     per_task.to_csv(output_root / "outcome_coverage_summary.csv", index=False)
-
-    input_hashes[str(Path(__file__).resolve())] = sha256(Path(__file__).resolve())
-    manifest = {
-        "created_at": utc_now(),
-        "generator": str(Path(__file__).resolve()),
-        "summary": summary,
-        "input_hashes": input_hashes,
-    }
-    (output_root / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
     return summary
 
 
