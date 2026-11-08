@@ -1,0 +1,17 @@
+{
+  "aggregation": "family_outcomes_then_six_models",
+  "analysis": "ml4h_patient_cluster_family_difference_bootstrap",
+  "bootstrap_n": 1000,
+  "bootstrap_seed": 42,
+  "n_column_tasks": 17,
+  "n_family_tests": 136,
+  "n_intervals_containing_zero": 46,
+  "output": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/patient_cluster_bootstrap/patient_cluster_intervals.parquet",
+  "paired_across": [
+    "baseline_and_comparison",
+    "eight_families",
+    "six_models"
+  ],
+  "resampling_unit": "test_patient",
+  "summary": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/ml4h_2026/patient_cluster_bootstrap/patient_cluster_intervals.txt"
+}

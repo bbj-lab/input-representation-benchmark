@@ -76,10 +76,8 @@ declare -a REFRESH_SPECS=(
   "${EXP12_EVENTS_DIR}|${EXP12_TOKEN_ROOT}/deciles_none_unfused_time_rope_first_24h-tokenized"
   "${EXP12_EVENTS_DIR}|${EXP12_TOKEN_ROOT}/deciles_none_unfused_time_tokens_numencxval_first_24h-tokenized"
   "${EXP12_EVENTS_DIR}|${EXP12_TOKEN_ROOT}/deciles_none_unfused_time_rope_numencxval_first_24h-tokenized"
-  "${EXP3_NATIVE_EVENTS_DIR}|outputs/runs/exp3/meds_icu/deciles_none_unfused_time_rope_first_24h-tokenized"
-  "${EXP3_NATIVE_EVENTS_DIR}|outputs/runs/exp3/arms/meds_mapped/deciles_none_unfused_time_rope_first_24h-tokenized"
-  "${EXP3_NATIVE_EVENTS_DIR}|outputs/runs/exp3/arms/meds_randomized/deciles_none_unfused_time_rope_first_24h-tokenized"
-  "${EXP3_NATIVE_EVENTS_DIR}|outputs/runs/exp3/arms/meds_freqmatched/deciles_none_unfused_time_rope_first_24h-tokenized"
+  "${EXP3_NATIVE_EVENTS_DIR}|outputs/runs/exp3/meds_icu/deciles_none_unfused_time_tokens_first_24h-tokenized"
+  "${EXP3_NATIVE_EVENTS_DIR}|outputs/runs/exp3/meds_clif/deciles_none_unfused_time_tokens_first_24h-tokenized"
 )
 
 done_n=0

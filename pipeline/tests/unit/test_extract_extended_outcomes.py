@@ -24,6 +24,7 @@ class TestExtractExtendedOutcomes(unittest.TestCase):
                 {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=12), "code": "LAB//50912//mg/dL", "numeric_value": 1.1},
                 {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=30), "code": "LAB//50912//mg/dL", "numeric_value": 2.3},
                 {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=40), "code": "LAB//50963//pg/mL", "numeric_value": 100.0},
+                {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=41), "code": "LAB//50964//mOsm/kg", "numeric_value": 310.0},
                 {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=8), "code": "LAB//50983//mEq/L", "numeric_value": 118.0},
                 {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=30), "code": "LAB//50983//mEq/L", "numeric_value": 122.0},
                 {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=8), "code": "VITAL//220045//bpm", "numeric_value": 131.0},
@@ -40,6 +41,7 @@ class TestExtractExtendedOutcomes(unittest.TestCase):
                 {"subject_id": 2, "hadm_id": 200, "time": t0 + timedelta(hours=30), "code": "LAB//50811//g/dL", "numeric_value": 8.0},
                 {"subject_id": 2, "hadm_id": 200, "time": t0 + timedelta(hours=30), "code": "LAB//50983//mEq/L", "numeric_value": 162.0},
                 {"subject_id": 2, "hadm_id": 200, "time": t0 + timedelta(hours=30), "code": "LAB//50971//mEq/L", "numeric_value": 2.3},
+                {"subject_id": 2, "hadm_id": 200, "time": t0 + timedelta(hours=30), "code": "LAB//50964//mOsm/kg", "numeric_value": 295.0},
                 {"subject_id": 2, "hadm_id": 200, "time": t0 + timedelta(hours=10), "code": "VITAL//220052//mmHg", "numeric_value": 70.0},
                 {"subject_id": 2, "hadm_id": 200, "time": t0 + timedelta(hours=40), "code": "VITAL//220052//mmHg", "numeric_value": 68.0},
                 {"subject_id": 2, "hadm_id": 200, "time": t0 + timedelta(hours=40), "code": "VITAL//220050//mmHg", "numeric_value": 95.0},
@@ -64,7 +66,10 @@ class TestExtractExtendedOutcomes(unittest.TestCase):
         self.assertNotIn("time_to_icu_hours", out.columns)
 
         row100 = out.filter(pl.col("hospitalization_id") == "100").row(0, named=True)
+        self.assertAlmostEqual(float(row100["min_creatinine"]), 2.3, places=6)
         self.assertAlmostEqual(float(row100["peak_creatinine"]), 2.3, places=6)
+        self.assertAlmostEqual(float(row100["min_bnp"]), 100.0, places=6)
+        self.assertAlmostEqual(float(row100["peak_bnp"]), 100.0, places=6)
         self.assertAlmostEqual(float(row100["peak_potassium"]), 5.2, places=6)
         self.assertEqual(float(row100["hyperkalemia"]), 0.0)
         self.assertTrue(row100["hyperkalemia_24h"])
@@ -74,6 +79,7 @@ class TestExtractExtendedOutcomes(unittest.TestCase):
         self.assertIsNone(row100["severe_anemia"])
         self.assertTrue(row100["severe_anemia_24h"])
         self.assertAlmostEqual(float(row100["min_glucose"]), 45.0, places=6)
+        self.assertAlmostEqual(float(row100["max_glucose"]), 45.0, places=6)
         self.assertEqual(float(row100["hypoglycemia"]), 1.0)
         self.assertFalse(row100["hypoglycemia_24h"])
         self.assertAlmostEqual(float(row100["min_sodium"]), 122.0, places=6)
@@ -82,6 +88,7 @@ class TestExtractExtendedOutcomes(unittest.TestCase):
         self.assertEqual(float(row100["severe_hypernatremia"]), 0.0)
         self.assertFalse(row100["severe_hypernatremia_24h"])
         self.assertAlmostEqual(float(row100["max_heart_rate"]), 100.0, places=6)
+        self.assertAlmostEqual(float(row100["min_heart_rate"]), 100.0, places=6)
         self.assertEqual(float(row100["tachycardia_hr130"]), 0.0)
         self.assertTrue(row100["tachycardia_hr130_24h"])
         self.assertEqual(float(row100["vasopressor_initiation"]), 0.0)
@@ -97,11 +104,14 @@ class TestExtractExtendedOutcomes(unittest.TestCase):
 
         row200 = out.filter(pl.col("hospitalization_id") == "200").row(0, named=True)
         self.assertAlmostEqual(float(row200["peak_potassium"]), 2.3, places=6)
+        self.assertIsNone(row200["min_bnp"])
+        self.assertIsNone(row200["peak_bnp"])
         self.assertEqual(float(row200["hyperkalemia"]), 0.0)
         self.assertFalse(row200["hyperkalemia_24h"])
         self.assertEqual(float(row200["severe_hypokalemia"]), 1.0)
         self.assertFalse(row200["severe_hypokalemia_24h"])
         self.assertAlmostEqual(float(row200["min_hemoglobin"]), 8.0, places=6)
+        self.assertAlmostEqual(float(row200["max_hemoglobin"]), 8.0, places=6)
         self.assertEqual(float(row200["severe_anemia"]), 0.0)
         self.assertFalse(row200["severe_anemia_24h"])
         self.assertIsNone(row200["min_glucose"])
@@ -130,6 +140,42 @@ class TestExtractExtendedOutcomes(unittest.TestCase):
         self.assertFalse(row300["hemodialysis_initiation_24h"])
         self.assertEqual(float(row300["crrt_initiation"]), 1.0)
         self.assertFalse(row300["crrt_initiation_24h"])
+
+    def test_bounded_24_to_48_hour_targets_preserve_missingness(self) -> None:
+        t0 = datetime(2020, 1, 1)
+        meds = pl.DataFrame(
+            [
+                {"subject_id": 1, "hadm_id": 100, "time": t0, "code": "HOSPITAL_ADMISSION//ED", "numeric_value": None},
+                {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=72), "code": "HOSPITAL_DISCHARGE//HOME", "numeric_value": None},
+                {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=24), "code": "LAB//50971//mEq/L", "numeric_value": 6.8},
+                {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=30), "code": "LAB//50971//mEq/L", "numeric_value": 6.6},
+                {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=49), "code": "LAB//50971//mEq/L", "numeric_value": 2.0},
+                {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=48), "code": "INFUSION_START//221906", "numeric_value": 0.1},
+                {"subject_id": 2, "hadm_id": 200, "time": t0, "code": "HOSPITAL_ADMISSION//ED", "numeric_value": None},
+                {"subject_id": 2, "hadm_id": 200, "time": t0 + timedelta(hours=30), "code": "HOSPITAL_DISCHARGE//HOME", "numeric_value": None},
+            ]
+        )
+
+        out = (
+            _compute_extended_outcomes(
+                meds.lazy(),
+                observation_hours=24.0,
+                followup_end_hours=48.0,
+            )
+            .collect()
+            .sort("hospitalization_id")
+        )
+
+        row100 = out.filter(pl.col("hospitalization_id") == "100").row(0, named=True)
+        self.assertAlmostEqual(float(row100["peak_potassium"]), 6.6, places=6)
+        self.assertEqual(float(row100["hyperkalemia"]), 1.0)
+        self.assertTrue(row100["hyperkalemia_24h"])
+        self.assertEqual(float(row100["vasopressor_initiation"]), 1.0)
+
+        row200 = out.filter(pl.col("hospitalization_id") == "200").row(0, named=True)
+        self.assertIsNone(row200["peak_potassium"])
+        self.assertIsNone(row200["hyperkalemia"])
+        self.assertEqual(float(row200["vasopressor_initiation"]), 0.0)
 
 
 if __name__ == "__main__":

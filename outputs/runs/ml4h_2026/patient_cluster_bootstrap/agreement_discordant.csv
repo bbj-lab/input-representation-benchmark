@@ -1,0 +1,22 @@
+task_index,experiment,condition,level,task_type,family,table,point,cluster_ci_low,cluster_ci_high,p_t_adj,star_t,cluster_excludes_zero
+0,exp1,granularity,Ventiles · population,binary,Hospital outcomes,exp1_quantization,0.001475726479501449,1.4838194561471988e-06,0.0030729152549678926,0.8882397210565653,False,True
+0,exp1,granularity,Ventiles · population,regression,Electrolytes,exp1_quantization,-0.006981231285012435,-0.008742388222254349,-0.005205773159832478,0.8882397210565653,False,True
+0,exp1,granularity,Ventiles · population,regression,Hematology,exp1_quantization,0.0023783032201675214,0.0008696683494624297,0.003777298388669103,0.9677286417091436,False,True
+1,exp1,granularity,Ventiles · reference,regression,Electrolytes,exp1_quantization,-0.005542360553471681,-0.007168951335025505,-0.003903903397284932,0.9024001599534864,False,True
+2,exp1,granularity,Trentiles · population,binary,Hospital outcomes,exp1_quantization,0.0018672554415423148,0.00023791382981493695,0.0035168386360451644,0.8882397210565653,False,True
+2,exp1,granularity,Trentiles · population,regression,Electrolytes,exp1_quantization,-0.009869277887703254,-0.011690436058192461,-0.00821665203922127,0.8882397210565653,False,True
+2,exp1,granularity,Trentiles · population,regression,Hematology,exp1_quantization,-0.0035480226471745757,-0.005114704390358289,-0.002093154720856044,0.9024001599534864,False,True
+3,exp1,granularity,Trentiles · reference,regression,Electrolytes,exp1_quantization,-0.0105012849049273,-0.012284584800212299,-0.008932064324218168,0.8882397210565653,False,True
+3,exp1,granularity,Trentiles · reference,regression,Hematology,exp1_quantization,-0.004204741502957909,-0.005701854461683743,-0.0027263456593718863,0.8882397210565653,False,True
+4,exp1,granularity,Centiles · population,binary,Laboratory,exp1_quantization,-0.010778662178629883,-0.021421702920416966,-0.0009279916275553179,0.3321032836946543,False,True
+4,exp1,granularity,Centiles · population,regression,Electrolytes,exp1_quantization,-0.0095065823211824,-0.011421439784785178,-0.007867159312585864,0.8882397210565653,False,True
+4,exp1,granularity,Centiles · population,regression,Biomarkers,exp1_quantization,-0.010605242863881426,-0.021377103016899844,-0.00032713949273569697,0.8882397210565653,False,True
+4,exp1,granularity,Centiles · population,regression,Hematology,exp1_quantization,-0.009733492634255936,-0.011334931839508592,-0.008162763196731773,0.4782082330020518,False,True
+5,exp1,fusion,Fused · deciles,binary,Laboratory,exp1_fusion,0.011023490251196422,0.0007903975337152874,0.021637686299719967,0.063835816756549,False,True
+11,exp2,numeric,Soft discretization,regression,Electrolytes,exp2_numeric,-0.011292874107668494,-0.012804262627956448,-0.009808854494199562,0.2726057567739159,False,True
+11,exp2,numeric,Soft discretization,regression,Hematology,exp2_numeric,-0.007384346426676958,-0.008664791790968974,-0.006210026953090436,0.2084643407550791,False,True
+11,exp2,numeric,Soft discretization,regression,Vitals,exp2_numeric,-0.0042133124120531384,-0.006430120183221124,-0.0021115668495114877,0.4632584543524973,False,True
+14,exp2,temporal,Event order,regression,Electrolytes,exp2_temporal,0.01895194675670847,0.017323416041936036,0.02048194396204664,0.0828058713596164,False,True
+14,exp2,temporal,Event order,regression,Biomarkers,exp2_temporal,0.010381291170978024,0.0005117989304443843,0.020371157058640017,0.0770049888376763,False,True
+15,exp2,temporal,Admission-relative RoPE,binary,Vitals,exp2_temporal,0.006896183630858421,0.0025799272836096146,0.01141743512143268,0.0500439742715235,False,True
+15,exp2,temporal,Admission-relative RoPE,regression,Electrolytes,exp2_temporal,0.01931340741183002,0.017723504037842747,0.020914526177686566,0.0940342729718229,False,True

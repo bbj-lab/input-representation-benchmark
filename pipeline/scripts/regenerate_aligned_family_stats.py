@@ -84,6 +84,7 @@ def main() -> int:
         help="Output directory for regenerated family summaries.",
     )
     parser.add_argument("--bootstrap_n", type=int, default=2000)
+    parser.add_argument("--pairwise_bootstrap_n", type=int, default=0)
     parser.add_argument("--permutation_n", type=int, default=2000)
     parser.add_argument("--alpha", type=float, default=0.05)
     parser.add_argument("--fdr", choices=["bh", "none"], default="bh")
@@ -158,6 +159,8 @@ def main() -> int:
                 str(family_out),
                 "--bootstrap_n",
                 str(int(args.bootstrap_n)),
+                "--pairwise_bootstrap_n",
+                str(int(args.pairwise_bootstrap_n)),
                 "--permutation_n",
                 str(int(args.permutation_n)),
                 "--alpha",

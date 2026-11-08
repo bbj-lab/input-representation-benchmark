@@ -54,7 +54,8 @@ def main(argv: list[str] | None = None) -> int:
             "representation": cfg["representation"],
             "temporal": cfg["temporal"],
             "num_bins": 10,
-            "time_rope_scaling": 60.0,
+            "time_unit": "seconds",
+            "seconds_per_position": 60.0,
             "value_encoder_state": None,  # xVal does not use a separate value encoder.
         }
         if args.dry_run:

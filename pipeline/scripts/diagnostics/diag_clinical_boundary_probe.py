@@ -23,8 +23,14 @@ import gzip
 import json
 import pathlib
 import pickle
+import sys
 
 import numpy as np
+
+_DIAG_DIR = pathlib.Path(__file__).resolve().parent
+if str(_DIAG_DIR) not in sys.path:
+    sys.path.insert(0, str(_DIAG_DIR))
+from checkpoint_selection import find_best_model_checkpoint
 
 
 # ---------------------------------------------------------------------------
@@ -72,11 +78,12 @@ MEASUREMENT_REFERENCE_RANGES = {
 
 
 # Models to probe: (label, model_dir_pattern, quantizer, n_bins)
+# ML4H Llama seed-42, unfused, discrete, time tokens.
 EXP1_MODELS = [
-    ("Deciles", "exp1_meds_deciles_none_fusedFalse_discrete_time_tokens-s42", "deciles", 10),
-    ("Ventiles", "exp1_meds_ventiles_none_fusedFalse_discrete_time_tokens-s42", "ventiles", 20),
-    ("Trentiles", "exp1_meds_trentiles_none_fusedFalse_discrete_time_tokens-s42", "trentiles", 30),
-    ("Centiles", "exp1_meds_centiles_none_fusedFalse_discrete_time_tokens-s42", "centiles", 100),
+    ("Deciles", "ml4h_llama_exp1_meds_deciles_none_fusedFalse_discrete_time_tokens-s42", "deciles", 10),
+    ("Ventiles", "ml4h_llama_exp1_meds_ventiles_none_fusedFalse_discrete_time_tokens-s42", "ventiles", 20),
+    ("Trentiles", "ml4h_llama_exp1_meds_trentiles_none_fusedFalse_discrete_time_tokens-s42", "trentiles", 30),
+    ("Centiles", "ml4h_llama_exp1_meds_centiles_none_fusedFalse_discrete_time_tokens-s42", "centiles", 100),
 ]
 
 
@@ -91,17 +98,12 @@ def load_vocab(vocab_path: pathlib.Path) -> dict:
 
 
 def find_best_checkpoint(model_dir: pathlib.Path) -> pathlib.Path:
-    """Find the best checkpoint directory within an Exp1 model directory.
+    """Return the validation-selected checkpoint under an Exp1 model directory.
 
-    Exp1 models have structure: run-0/checkpoint-NNNN/
-    Returns the first checkpoint found.
+    Reads ``best_model_checkpoint`` from ``trainer_state.json``. The function
+    name is historical; it does not return the highest training step.
     """
-    for run_dir in sorted(model_dir.iterdir()):
-        if run_dir.is_dir() and run_dir.name.startswith("run-"):
-            for ckpt_dir in sorted(run_dir.iterdir()):
-                if ckpt_dir.is_dir() and ckpt_dir.name.startswith("checkpoint-"):
-                    return ckpt_dir
-    raise FileNotFoundError(f"No checkpoint found in {model_dir}")
+    return find_best_model_checkpoint(model_dir)
 
 
 def extract_embeddings_for_measurement(
@@ -239,10 +241,10 @@ def plot_probe_results(
     """Bar chart of probe accuracy per lab test per granularity."""
     import matplotlib.pyplot as plt
 
-    granularities = list(results.keys())
+    granularities = [key for key in results.keys() if not str(key).startswith("_")]
     measurements = set()
-    for g_data in results.values():
-        measurements.update(g_data.keys())
+    for gran in granularities:
+        measurements.update(results[gran].keys())
     measurements = sorted(measurements)
 
     if not measurements:
@@ -323,6 +325,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     all_results = {}
+    checkpoint_meta = {}
 
     for model_label, model_name, quantizer, n_bins in EXP1_MODELS:
         model_dir = args.models_dir / model_name
@@ -341,6 +344,7 @@ def main():
             print(f"  [SKIP] No checkpoint found in {model_dir}")
             continue
         print(f"  Checkpoint: {ckpt_dir}")
+        checkpoint_meta[model_label] = str(ckpt_dir)
 
         # Find the matching vocab (from the tokenized data)
         # Exp1 unfused models: vocab is in the tokenized data directory or the checkpoint
@@ -356,7 +360,14 @@ def main():
 
         # Strategy: support both the current outputs/runs layout and older cache-based layouts.
         data_version = f"{quantizer}_none_unfused_time_tokens"
+        token_root = (
+            args.models_dir.parent.parent
+            / "tokenized"
+            / "mimiciv-3.1_meds_70-10-20"
+        )
         candidate_vocab_paths = [
+            token_root / f"{data_version}_first_24h-tokenized" / "train" / "vocab.gzip",
+            token_root / f"{data_version}-tokenized" / "train" / "vocab.gzip",
             args.models_dir.parent / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
             args.models_dir.parent / ".cache" / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
             args.models_dir.parent.parent / "outputs" / "runs" / "tokenized" / "mimiciv-3.1_meds_70-10-20" / f"{data_version}-tokenized" / "train" / "vocab.gzip",
@@ -424,6 +435,16 @@ def main():
     results_path = output_dir / "clinical_boundary_probe_results.json"
     with open(results_path, "w") as f:
         json.dump(all_results, f, indent=2)
+    meta_path = output_dir / "clinical_boundary_probe_checkpoints.json"
+    with open(meta_path, "w") as f:
+        json.dump(
+            {
+                "checkpoint_rule": "trainer_state.best_model_checkpoint",
+                "checkpoints": checkpoint_meta,
+            },
+            f,
+            indent=2,
+        )
     print(f"\nResults saved to {results_path}")
 
     if not args.dry_run and all_results:

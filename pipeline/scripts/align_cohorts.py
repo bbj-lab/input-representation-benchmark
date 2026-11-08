@@ -124,6 +124,7 @@ def extract_icu_cohort(
     long_stay_hadm: set[int],
     icu_patients: set[int],
     icu_hadm: set[int],
+    subject_to_hadm: dict[int, set[int]],
     min_los_hours: float = 24.0
 ) -> Tuple[Set[int], Set[int]]:
     r"""
@@ -144,13 +145,30 @@ def extract_icu_cohort(
     logger.info(f"Patients with LOS ≥{min_los_hours}h: {len(long_stay_patients):,}")
     logger.info(f"Hospitalizations with LOS ≥{min_los_hours}h: {len(long_stay_hadm):,}")
     
-    # Intersection: ICU patients with long stays
-    cohort = icu_patients & long_stay_patients
-    logger.info(f"H_ICU patient cohort (ICU stay + LOS≥{min_los_hours}h): {len(cohort):,} patients")
-    
     # H_ICU hospitalizations (hadm_id with ICU stay and LOS>=24h)
     cohort_hadm = icu_hadm & long_stay_hadm
     logger.info(f"H_ICU hospitalizations (ICU stay + LOS≥{min_los_hours}h): {len(cohort_hadm):,} hadm_id")
+
+    # A patient belongs to H_ICU only when at least one *same admission* meets
+    # both conditions. The broader patient-level intersection below can include
+    # patients whose ICU and long-stay admissions differ, leaving them with no
+    # H_ICU hospitalization to tokenize.
+    broad_patient_intersection = icu_patients & long_stay_patients
+    cohort = {
+        subject_id
+        for subject_id, hadm_ids in subject_to_hadm.items()
+        if hadm_ids & cohort_hadm
+    }
+    logger.info(
+        f"H_ICU patients linked to qualifying hospitalizations: {len(cohort):,}"
+    )
+    if len(broad_patient_intersection) != len(cohort):
+        logger.info(
+            "Excluded %s patients whose ICU and LOS>=%.1fh criteria occur on "
+            "different admissions.",
+            len(broad_patient_intersection) - len(cohort),
+            min_los_hours,
+        )
 
     return cohort, cohort_hadm
 
@@ -324,7 +342,12 @@ def main():
     
     # Extract cohort
     cohort, cohort_hadm_ids = extract_icu_cohort(
-        long_stay_patients, long_stay_hadm, icu_patients, icu_hadm, args.min_los_hours
+        long_stay_patients,
+        long_stay_hadm,
+        icu_patients,
+        icu_hadm,
+        subject_to_hadm,
+        args.min_los_hours,
     )
     
     # Split

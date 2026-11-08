@@ -24,8 +24,19 @@ export IRB_HOME
 # Activate our standard benchmark env (contains transformers/torch/etc).
 source "${IRB_HOME}/slurm/00_preamble.sh"
 
-# Match reference cache behavior
-export HF_HOME="${HF_HOME:-/gpfs/data/bbj-lab/cache/huggingface/}"
+# Concurrent extraction tasks transform the same source parquet files. Give each
+# array element its own dataset cache so mapped-cache files cannot race.
+if [[ "${IRB_ISOLATE_DATASETS_CACHE:-false}" == "true" && -n "${SLURM_ARRAY_JOB_ID:-}" ]]; then
+  _irb_datasets_cache_base="${HF_DATASETS_CACHE}"
+  export HF_DATASETS_CACHE="${_irb_datasets_cache_base}/stage2/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID:-0}"
+  export IRB_MAPPED_DATASET_CACHE_DIR="${HF_DATASETS_CACHE}/irb-mapped"
+  mkdir -p "${HF_DATASETS_CACHE}" "${IRB_MAPPED_DATASET_CACHE_DIR}"
+  unset _irb_datasets_cache_base
+fi
+
+# HF_HOME is resolved by 00_preamble.sh, which pins caches to per-user scratch.
+# Re-export only; never fall back to a /gpfs path here.
+export HF_HOME
 _irb_username() {
   # Some compute nodes do not have stable uid->username mapping.
   # Prefer non-numeric identifiers to avoid invalid /scratch/<uid> paths.

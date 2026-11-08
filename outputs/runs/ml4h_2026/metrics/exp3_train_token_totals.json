@@ -1,0 +1,83 @@
+{
+  "schema_version": 2,
+  "split": "train",
+  "counted_column": "tokens",
+  "notes": [
+    "Counts include serialized timeline and special tokens in the variable-length tokens column.",
+    "Counts exclude padding and TL_CONT markers added later by the training window loader.",
+    "Representation extraction uses one 4096-position padded or truncated input per admission.",
+    "Pretraining splits full hospitalizations into contiguous 4096-position windows; later windows begin with TL_CONT."
+  ],
+  "scopes": {
+    "first_24h_representation_extraction": {
+      "native_mimic": {
+        "n_admissions": 57690,
+        "total_tokens": 108549165,
+        "mean_tokens": 1881.5941237649506,
+        "median_tokens": 1922.0,
+        "model_input": {
+          "non_padding_tokens_after_4096_cap": 107203374,
+          "admissions_truncated_at_4096": 2607,
+          "padded_input_positions": 236298240
+        },
+        "vocab_size": 17752,
+        "path": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/exp3/meds_icu/deciles_none_unfused_time_tokens_first_24h-tokenized/train/tokens_timelines.parquet"
+      },
+      "clif_2_1_0": {
+        "n_admissions": 57690,
+        "total_tokens": 33417483,
+        "mean_tokens": 579.2595423816953,
+        "median_tokens": 586.0,
+        "model_input": {
+          "non_padding_tokens_after_4096_cap": 33415108,
+          "admissions_truncated_at_4096": 3,
+          "padded_input_positions": 236298240
+        },
+        "vocab_size": 397,
+        "path": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/exp3/meds_clif/deciles_none_unfused_time_tokens_first_24h-tokenized/train/tokens_timelines.parquet"
+      },
+      "clif_over_native": 0.3078557352329702,
+      "native_minus_clif": 75131682
+    },
+    "full_hospitalization_pretraining": {
+      "native_mimic": {
+        "n_admissions": 57690,
+        "total_tokens": 684688603,
+        "mean_tokens": 11868.410521754204,
+        "median_tokens": 5476.0,
+        "model_input": {
+          "windows_per_epoch": 195380,
+          "admissions_reaching_128_window_cap": 2,
+          "raw_tokens_retained_per_epoch": 684160348,
+          "raw_tokens_omitted_by_window_cap_per_epoch": 528255,
+          "continuation_markers_per_epoch": 137690,
+          "non_padding_tokens_per_epoch": 684298038,
+          "padded_input_positions_per_epoch": 800276480,
+          "padded_input_positions_over_five_epochs": 4001382400
+        },
+        "vocab_size": 17752,
+        "path": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/exp3/meds_icu/deciles_none_unfused_time_tokens-tokenized/train/tokens_timelines.parquet"
+      },
+      "clif_2_1_0": {
+        "n_admissions": 57690,
+        "total_tokens": 195869100,
+        "mean_tokens": 3395.2002080083203,
+        "median_tokens": 1746.0,
+        "model_input": {
+          "windows_per_epoch": 82372,
+          "admissions_reaching_128_window_cap": 0,
+          "raw_tokens_retained_per_epoch": 195869100,
+          "raw_tokens_omitted_by_window_cap_per_epoch": 0,
+          "continuation_markers_per_epoch": 24682,
+          "non_padding_tokens_per_epoch": 195893782,
+          "padded_input_positions_per_epoch": 337395712,
+          "padded_input_positions_over_five_epochs": 1686978560
+        },
+        "vocab_size": 397,
+        "path": "/gpfs/data/bbj-lab/users/daniel/input-representation-benchmark/outputs/runs/exp3/meds_clif/deciles_none_unfused_time_tokens-tokenized/train/tokens_timelines.parquet"
+      },
+      "clif_over_native": 0.28607033787591757,
+      "native_minus_clif": 488819503
+    }
+  }
+}

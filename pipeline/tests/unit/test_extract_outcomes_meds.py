@@ -7,7 +7,10 @@ from tempfile import TemporaryDirectory
 
 import polars as pl
 
-from pipeline.scripts.extract_outcomes_meds import main as extract_main
+from pipeline.scripts.extract_outcomes_meds import (
+    _compute_outcomes_from_meds,
+    main as extract_main,
+)
 
 
 class TestExtractOutcomesMeds(unittest.TestCase):
@@ -185,4 +188,84 @@ class TestExtractOutcomesMeds(unittest.TestCase):
             self.assertTrue(row300["icu_admission_24h"])
             self.assertFalse(row300["imv_event"])
             self.assertFalse(row300["prolonged_icu_stay"])
+
+            rc = extract_main(
+                [
+                    "--meds_events_dir",
+                    str(meds_events_dir),
+                    "--tokenized_dir",
+                    str(tokenized_dir),
+                    "--splits",
+                    "train",
+                    "--imv_itemids",
+                    "225792,224385",
+                    "--outcomes_only",
+                    "--output_filename",
+                    "outcomes_only.parquet",
+                ]
+            )
+            self.assertEqual(rc, 0)
+            outcomes_only = pl.read_parquet(tokenized_dir / "train" / "outcomes_only.parquet")
+            self.assertEqual(outcomes_only.height, 3)
+            self.assertIn("hospitalization_id", outcomes_only.columns)
+            self.assertNotIn("tokens", outcomes_only.columns)
+            self.assertNotIn("times", outcomes_only.columns)
+
+    def test_bounded_24_to_48_hour_contract(self) -> None:
+        t0 = datetime(2020, 1, 1)
+        meds = pl.DataFrame(
+            [
+                # Discharged exactly at the horizon: not still hospitalized.
+                {"subject_id": 1, "hadm_id": 100, "time": t0, "code": "HOSPITAL_ADMISSION//ED"},
+                {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=48), "code": "HOSPITAL_DISCHARGE//HOME"},
+                {"subject_id": 1, "hadm_id": 100, "time": t0 + timedelta(hours=30), "code": "PROCEDURE//225792"},
+                # A death recorded inside the bounded follow-up interval.
+                {"subject_id": 2, "hadm_id": 200, "time": t0, "code": "HOSPITAL_ADMISSION//ED"},
+                {"subject_id": 2, "hadm_id": 200, "time": t0 + timedelta(hours=47), "code": "HOSPITAL_DISCHARGE//DIED"},
+                {"subject_id": 2, "hadm_id": None, "time": t0 + timedelta(hours=47), "code": "MEDS_DEATH"},
+                # ICU transfer during follow-up and ICU occupancy at hour 48.
+                {"subject_id": 3, "hadm_id": 300, "time": t0, "code": "HOSPITAL_ADMISSION//ED"},
+                {"subject_id": 3, "hadm_id": 300, "time": t0 + timedelta(hours=60), "code": "HOSPITAL_DISCHARGE//HOME"},
+                {"subject_id": 3, "hadm_id": 300, "time": t0 + timedelta(hours=30), "code": "ICU_ADMISSION//MICU"},
+                {"subject_id": 3, "hadm_id": 300, "time": t0 + timedelta(hours=50), "code": "ICU_DISCHARGE//MICU"},
+                # Already in ICU at 24h: retained for the status endpoint but not a new transfer.
+                {"subject_id": 4, "hadm_id": 400, "time": t0, "code": "HOSPITAL_ADMISSION//ED"},
+                {"subject_id": 4, "hadm_id": 400, "time": t0 + timedelta(hours=60), "code": "HOSPITAL_DISCHARGE//HOME"},
+                {"subject_id": 4, "hadm_id": 400, "time": t0 + timedelta(hours=10), "code": "ICU_ADMISSION//MICU"},
+                {"subject_id": 4, "hadm_id": 400, "time": t0 + timedelta(hours=50), "code": "ICU_DISCHARGE//MICU"},
+            ]
+        )
+
+        out = (
+            _compute_outcomes_from_meds(
+                meds.lazy(),
+                imv_itemids=(225792,),
+                los_days=7,
+                observation_hours=24,
+                icu_los_hours_threshold=48,
+                followup_end_hours=48,
+            )
+            .collect()
+            .sort("hospitalization_id")
+        )
+
+        row100 = out.filter(pl.col("hospitalization_id") == "100").row(0, named=True)
+        self.assertFalse(row100["long_length_of_stay"])
+        self.assertTrue(row100["imv_event"])
+        self.assertFalse(row100["same_admission_death"])
+
+        row200 = out.filter(pl.col("hospitalization_id") == "200").row(0, named=True)
+        self.assertTrue(row200["same_admission_death"])
+        self.assertFalse(row200["long_length_of_stay"])
+
+        row300 = out.filter(pl.col("hospitalization_id") == "300").row(0, named=True)
+        self.assertTrue(row300["long_length_of_stay"])
+        self.assertTrue(row300["icu_admission"])
+        self.assertFalse(row300["icu_admission_24h"])
+        self.assertTrue(row300["prolonged_icu_stay"])
+
+        row400 = out.filter(pl.col("hospitalization_id") == "400").row(0, named=True)
+        self.assertFalse(row400["icu_admission"])
+        self.assertTrue(row400["icu_admission_24h"])
+        self.assertTrue(row400["prolonged_icu_stay"])
 

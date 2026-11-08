@@ -16,7 +16,7 @@ onto admissions and intersects with \(H_{\mathrm{ICU}}\).
 
 Inputs
 ------
-- --meds_in_dir: MEDS events directory containing {train,tuning,test}/ with parquet shards
+- --meds_in_dir: MEDS events directory containing source {train,tuning,test}/ parquet shards
 - --splits_dir: directory containing train/val/test hadm lists (from pipeline/scripts/align_cohorts.py):
     - train_hadm_ids.csv
     - val_hadm_ids.csv
@@ -29,6 +29,9 @@ containing only rows whose hadm_id is in the corresponding split list.
 
 Notes
 -----
+- We scan all source shards for every output split. The source extraction split
+  is not the frozen Exp3 patient split, so restricting a target split to its
+  same-named source directory would silently drop valid admissions.
 - We write one consolidated parquet per split (streaming) for simplicity.
 - We keep *all columns* to preserve compatibility with the existing MEDS tokenizer config.
 """
@@ -48,10 +51,16 @@ def _load_ids(csv_path: Path, col: str) -> pl.DataFrame:
     return df.select(pl.col(col).cast(pl.Int64, strict=False).alias(col)).unique()
 
 
-def _scan_split_parquets(split_dir: Path) -> pl.LazyFrame:
-    fps = sorted(split_dir.glob("*.parquet"))
+def _scan_source_parquets(meds_dir: Path, split_names: tuple[str, ...]) -> pl.LazyFrame:
+    fps = [
+        path
+        for split_name in split_names
+        for path in sorted((meds_dir / split_name).glob("*.parquet"))
+    ]
     if not fps:
-        raise FileNotFoundError(f"No parquet shards found under {split_dir}")
+        raise FileNotFoundError(
+            f"No parquet shards found in source splits {split_names} under {meds_dir}"
+        )
     return pl.scan_parquet([str(p) for p in fps])
 
 
@@ -78,8 +87,17 @@ def main(argv: list[str] | None = None) -> int:
     if not splits.exists():
         raise FileNotFoundError(f"Missing splits_dir: {splits}")
 
-    # map our tokenization expectations: output uses val, but MEDS extraction uses tuning
-    in_map = {"train": "train", "val": args.val_split_name, "test": "test"}
+    source_split_names = ("train", args.val_split_name, "test")
+    if len(set(source_split_names)) != len(source_split_names):
+        raise ValueError(f"Duplicate source split names: {source_split_names}")
+    for split_name in source_split_names:
+        if not (meds_in / split_name).is_dir():
+            raise FileNotFoundError(
+                f"Missing source MEDS split {split_name}: {meds_in / split_name}"
+            )
+    source = _scan_source_parquets(meds_in, source_split_names)
+    if "hadm_id" not in source.collect_schema().names():
+        raise ValueError(f"Expected hadm_id column in source MEDS shards under {meds_in}")
 
     for split in ["train", "val", "test"]:
         ids_csv = splits / f"{split}_hadm_ids.csv"
@@ -87,17 +105,12 @@ def main(argv: list[str] | None = None) -> int:
             raise FileNotFoundError(f"Missing {ids_csv}")
         keep = _load_ids(ids_csv, "hadm_id")
 
-        src_split = meds_in / in_map[split]
-        lf = _scan_split_parquets(src_split)
-        if "hadm_id" not in lf.collect_schema().names():
-            raise ValueError(f"Expected hadm_id column in MEDS parquet shards under {src_split}")
-
         out_dir = meds_out / split
         out_dir.mkdir(parents=True, exist_ok=True)
         out_fp = out_dir / "meds.parquet"
 
         # Semi-join by hadm_id (streaming)
-        lf = lf.join(keep.lazy(), on="hadm_id", how="semi")
+        lf = source.join(keep.lazy(), on="hadm_id", how="semi")
         lf.sink_parquet(out_fp)
 
     print(f"Wrote MEDS events filtered to Exp3 H_ICU hadm_id lists to: {meds_out}")

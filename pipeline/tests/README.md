@@ -1,6 +1,6 @@
-# Pipeline tests
+# Pipeline Tests
 
-Contract checks for every script under `pipeline/`.
+Unit and CLI contract checks for the benchmark pipeline.
 
 ```bash
 conda activate input-rep
@@ -8,6 +8,5 @@ pytest pipeline/tests/unit
 bash pipeline/tests/dryrun/run_all.sh
 ```
 
-- `unit/`: `main()` guards, dry-run wrapper coverage, manifest parity.
-- `dryrun/`: compile-only by default; set `IRB_DRYRUN_EXECUTE_MODE=1` for safe
-  execute-mode wrappers listed in `dryrun/manifest.json`.
+- `unit/`: Tests for cohort alignment, CLIF-to-MEDS conversion, 24-to-48-hour outcome extraction, batch geometry calibration, bootstrap and permutation routines, table and figure builders, and script contracts.
+- `dryrun/`: Compile-only and `--help` execution wrappers for every script listed in `dryrun/manifest.json`. Set `IRB_DRYRUN_EXECUTE_MODE=1` to run execute-mode checks.

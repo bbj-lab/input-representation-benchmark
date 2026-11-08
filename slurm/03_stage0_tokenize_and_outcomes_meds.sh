@@ -368,6 +368,14 @@ PY
   fi
 fi
 
+if [[ "${IRB_STAGE0_FORCE_RETOKENIZE:-false}" == "true" ]]; then
+  # Existing outputs are stale when the upstream MEDS cohort changes (e.g. a
+  # recovered shard); presence alone no longer implies they are current.
+  echo "[stage0] IRB_STAGE0_FORCE_RETOKENIZE=true; re-tokenizing ${DATA_VERSION_OUT}."
+  MAIN_OK=0
+  H24_OK=0
+fi
+
 if [[ "${MAIN_OK}" -eq 1 && "${H24_OK}" -eq 1 ]]; then
   echo "[stage0] Tokenization outputs already exist for ${DATA_VERSION_OUT}; skipping tokenization."
 else
@@ -465,6 +473,10 @@ fi
 OUT_OK=0
 if [[ -f "${LINK_24H}/train/tokens_timelines_outcomes.parquet" && -f "${LINK_24H}/val/tokens_timelines_outcomes.parquet" && -f "${LINK_24H}/test/tokens_timelines_outcomes.parquet" ]]; then
   OUT_OK=1
+fi
+if [[ "${IRB_STAGE0_FORCE_RETOKENIZE:-false}" == "true" ]]; then
+  # Outcomes are keyed to the timelines, so a forced re-tokenization invalidates them.
+  OUT_OK=0
 fi
 
 if [[ "${OUT_OK}" -eq 1 ]]; then

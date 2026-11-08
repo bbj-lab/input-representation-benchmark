@@ -5,7 +5,7 @@
     "method": "within_table_bh",
     "q": 0.05
   },
-  "n_bh_significant": 88,
+  "n_bh_significant": 84,
   "n_column_tasks": 17,
   "n_family_tests": 136,
   "n_rows": 136,

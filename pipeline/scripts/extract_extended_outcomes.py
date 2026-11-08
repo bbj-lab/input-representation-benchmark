@@ -11,18 +11,18 @@ threshold-based post-24h binary outcomes.
 Outputs (per hospitalization, joined onto existing outcomes parquet)
 -------------------------------------------------------------------
 Continuous regression outcomes:
-    - peak_creatinine        : max creatinine after 24h (mg/dL)
-    - peak_troponin          : max troponin T or I after 24h (ng/mL)
-    - min_hemoglobin         : min hemoglobin after 24h (g/dL)
+    - min_creatinine / peak_creatinine : creatinine extrema after 24h (mg/dL)
+    - min_troponin / peak_troponin     : troponin extrema after 24h (ng/mL)
+    - min_hemoglobin / max_hemoglobin  : hemoglobin extrema after 24h (g/dL)
     - peak_potassium         : max potassium after 24h (mEq/L)
     - min_potassium          : min potassium after 24h (mEq/L)
-    - min_glucose            : min glucose after 24h (mg/dL)
+    - min_glucose / max_glucose        : glucose extrema after 24h (mg/dL)
     - min_sodium             : min sodium after 24h (mEq/L)
     - max_sodium             : max sodium after 24h (mEq/L)
-    - peak_bnp               : max BNP or NT-proBNP after 24h (pg/mL)
-    - max_heart_rate         : max heart rate after 24h (bpm)
-    - max_sbp               : max systolic blood pressure after 24h (mmHg)
-    - max_dbp               : max diastolic blood pressure after 24h (mmHg)
+    - min_bnp / peak_bnp                : NT-proBNP extrema after 24h (pg/mL)
+    - min_heart_rate / max_heart_rate    : heart-rate extrema after 24h (bpm)
+    - min_sbp / max_sbp                  : systolic-BP extrema after 24h (mmHg)
+    - min_dbp / max_dbp                  : diastolic-BP extrema after 24h (mmHg)
 
 Post-24h binary outcomes:
     - hyperkalemia           : peak potassium after 24h >= 6.5 mEq/L
@@ -56,8 +56,7 @@ Labs (hosp/labevents → code "LAB//{itemid}//{uom}"):
     50822  : Potassium (mEq/L)       [blood gas]
     50931  : Glucose (mg/dL)         [chemistry]
     50809  : Glucose (mg/dL)         [blood gas]
-    50963  : BNP (pg/mL)
-    50964  : NT-proBNP (pg/mL)
+    50963  : NT-proBNP (pg/mL)
 
 Vitals (icu/chartevents → code "VITAL//{itemid}//{uom}"):
     220052 : Arterial Blood Pressure mean (mmHg)        [MAP]
@@ -71,8 +70,8 @@ Vasopressors (icu/inputevents → code "INFUSION_START//{itemid}"):
     221289 : Epinephrine
     222315 : Vasopressin
     221749 : Phenylephrine
-    229617 : Dopamine              [MIMIC-IV v3+]
-    221662 : Dopamine              [legacy]
+    229617 : Epinephrine
+    221662 : Dopamine
     221653 : Dobutamine
 
 Usage
@@ -85,6 +84,9 @@ python pipeline/scripts/extract_extended_outcomes.py \\
 
 The script reads the base outcomes parquet (which already has hospitalization_id +
 all columns from extract_outcomes_meds.py) and LEFT JOINs the new columns.
+
+Pass ``--followup_end_hours 48`` with the default 24-hour observation window to
+restrict all measurement and event outcomes to the bounded interval ``(24h, 48h]``.
 """
 
 from __future__ import annotations
@@ -104,7 +106,7 @@ TROPONIN_ITEMIDS = (51003, 51002)
 HEMOGLOBIN_ITEMIDS = (51222, 50811)
 POTASSIUM_ITEMIDS = (50971, 50822)
 GLUCOSE_ITEMIDS = (50931, 50809)
-BNP_ITEMIDS = (50963, 50964)
+BNP_ITEMIDS = (50963,)
 SODIUM_ITEMIDS = (50983, 50824, 52623)
 
 VASOPRESSOR_ITEMIDS = (221906, 221289, 222315, 221749, 229617, 221662, 221653)
@@ -178,13 +180,18 @@ def _with_observation_window(
     *,
     observation_hours: float,
     within_window: bool,
+    followup_end_hours: float | None = None,
 ) -> pl.LazyFrame:
     obs = pl.duration(hours=float(observation_hours))
-    cmp = (
-        pl.col("time") <= (pl.col("admission_time") + obs)
-        if within_window
-        else pl.col("time") > (pl.col("admission_time") + obs)
-    )
+    if within_window:
+        cmp = pl.col("time") <= (pl.col("admission_time") + obs)
+    else:
+        cmp = pl.col("time") > (pl.col("admission_time") + obs)
+        if followup_end_hours is not None:
+            cmp &= pl.col("time") <= (
+                pl.col("admission_time")
+                + pl.duration(hours=float(followup_end_hours))
+            )
     return (
         meds.filter(pl.col("hadm_id").is_not_null())
         .join(admissions, on="hadm_id", how="inner", maintain_order="left")
@@ -306,6 +313,7 @@ def _compute_extended_outcomes(
     meds: pl.LazyFrame,
     *,
     observation_hours: float = 24.0,
+    followup_end_hours: float | None = None,
 ) -> pl.LazyFrame:
     """
     Compute extended outcomes keyed by `hospitalization_id` (string hadm_id).
@@ -316,22 +324,38 @@ def _compute_extended_outcomes(
     meds = meds.select("subject_id", "hadm_id", "time", "code", "numeric_value")
     admissions = _admission_times(meds)
     meds_pre24h = _with_observation_window(
-        meds, admissions, observation_hours=observation_hours, within_window=True
+        meds,
+        admissions,
+        observation_hours=observation_hours,
+        within_window=True,
     )
     meds_post24h = _with_observation_window(
-        meds, admissions, observation_hours=observation_hours, within_window=False
+        meds,
+        admissions,
+        observation_hours=observation_hours,
+        within_window=False,
+        followup_end_hours=followup_end_hours,
     )
 
     # ---- Regression outcomes ----
 
+    min_creatinine = _lab_extremes(
+        meds_post24h, CREATININE_ITEMIDS, "min", "min_creatinine"
+    )
     peak_creatinine = _lab_extremes(
         meds_post24h, CREATININE_ITEMIDS, "max", "peak_creatinine"
+    )
+    min_troponin = _lab_extremes(
+        meds_post24h, TROPONIN_ITEMIDS, "min", "min_troponin"
     )
     peak_troponin = _lab_extremes(
         meds_post24h, TROPONIN_ITEMIDS, "max", "peak_troponin"
     )
     min_hemoglobin = _lab_extremes(
         meds_post24h, HEMOGLOBIN_ITEMIDS, "min", "min_hemoglobin"
+    )
+    max_hemoglobin = _lab_extremes(
+        meds_post24h, HEMOGLOBIN_ITEMIDS, "max", "max_hemoglobin"
     )
     peak_potassium = _lab_extremes(
         meds_post24h, POTASSIUM_ITEMIDS, "max", "peak_potassium"
@@ -342,13 +366,25 @@ def _compute_extended_outcomes(
     min_glucose = _lab_extremes(
         meds_post24h, GLUCOSE_ITEMIDS, "min", "min_glucose"
     )
+    max_glucose = _lab_extremes(
+        meds_post24h, GLUCOSE_ITEMIDS, "max", "max_glucose"
+    )
     min_sodium = _lab_extremes(
         meds_post24h, SODIUM_ITEMIDS, "min", "min_sodium"
     )
     max_sodium = _lab_extremes(
         meds_post24h, SODIUM_ITEMIDS, "max", "max_sodium"
     )
+    min_bnp = _lab_extremes(meds_post24h, BNP_ITEMIDS, "min", "min_bnp")
     peak_bnp = _lab_extremes(meds_post24h, BNP_ITEMIDS, "max", "peak_bnp")
+    min_heart_rate = _vital_extremes(
+        meds_post24h,
+        HEART_RATE_ITEMIDS,
+        "min",
+        "min_heart_rate",
+        min_valid=HEART_RATE_VALID_RANGE[0],
+        max_valid=HEART_RATE_VALID_RANGE[1],
+    )
     max_heart_rate = _vital_extremes(
         meds_post24h,
         HEART_RATE_ITEMIDS,
@@ -370,6 +406,14 @@ def _compute_extended_outcomes(
         DBP_ITEMIDS,
         "max",
         "max_dbp",
+        min_valid=DBP_VALID_RANGE[0],
+        max_valid=DBP_VALID_RANGE[1],
+    )
+    min_dbp = _vital_extremes(
+        meds_post24h,
+        DBP_ITEMIDS,
+        "min",
+        "min_dbp",
         min_valid=DBP_VALID_RANGE[0],
         max_valid=DBP_VALID_RANGE[1],
     )
@@ -510,18 +554,25 @@ def _compute_extended_outcomes(
 
     result = all_hadm
     for df in [
+        min_creatinine,
         peak_creatinine,
+        min_troponin,
         peak_troponin,
         min_hemoglobin,
+        max_hemoglobin,
         peak_potassium,
         min_potassium,
         min_glucose,
+        max_glucose,
         min_sodium,
         max_sodium,
+        min_bnp,
         peak_bnp,
+        min_heart_rate,
         max_heart_rate,
         max_sbp,
         max_dbp,
+        min_dbp,
         peak_potassium_24h,
         min_potassium_24h,
         min_hemoglobin_24h,
@@ -614,7 +665,6 @@ def _compute_extended_outcomes(
             "max_sbp_24h",
             "max_dbp_24h",
             "min_map",
-            "min_sbp",
             "min_map_24h",
             "min_sbp_24h",
         )
@@ -658,6 +708,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Observation window in hours used to define post-24h outcomes (default: 24).",
     )
     parser.add_argument(
+        "--followup_end_hours",
+        type=float,
+        default=None,
+        help=(
+            "Optional inclusive upper bound for the future-outcome window. "
+            "For example, 48 with --observation_hours 24 defines (24h, 48h]."
+        ),
+    )
+    parser.add_argument(
         "--base_outcomes_filename",
         type=str,
         default="tokens_timelines_outcomes.parquet",
@@ -680,6 +739,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     splits = [s.strip() for s in args.splits.split(",") if s.strip()]
     meds_events_dir = args.meds_events_dir.expanduser().resolve()
     tokenized_dir = args.tokenized_dir.expanduser().resolve()
+    if (
+        args.followup_end_hours is not None
+        and args.followup_end_hours <= args.observation_hours
+    ):
+        parser.error("--followup_end_hours must be greater than --observation_hours.")
 
     for split in splits:
         tok_split_dir = tokenized_dir / split
@@ -705,7 +769,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[extract_extended_outcomes] Processing split={split} (meds={meds_split_name})...")
 
         meds = _scan_meds_events(meds_split_dir)
-        extended = _compute_extended_outcomes(meds, observation_hours=args.observation_hours)
+        extended = _compute_extended_outcomes(
+            meds,
+            observation_hours=args.observation_hours,
+            followup_end_hours=args.followup_end_hours,
+        )
 
         # Load base outcomes and join
         base = pl.scan_parquet(base_path).with_columns(

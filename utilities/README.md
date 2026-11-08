@@ -1,8 +1,6 @@
-# Utilities Surface
+# Utilities
 
-`utilities/` contains active helper scripts that are not required for the core benchmark run chain.
+`utilities/` contains campaign jobfile generators, token counters, and data quality scripts that support the ML4H 2026 benchmark.
 
-- `scripts/`: maintenance helpers, prevalence checks, baseline analyses, and environment setup.
-- `qc/`: focused quality checks and exploratory analyses.
-
-If a utility becomes part of the mandatory run chain, move it under `pipeline/`.
+- `scripts/`: Campaign index builders, Stage 2 and Stage 3 jobfile generators, batch geometry calibration, Experiment 3 training token counters, and patient-visit distribution summaries.
+- `qc/`: Sequence length histogram plotters, vocabulary audits, and tokenization quality checks.

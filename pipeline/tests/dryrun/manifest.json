@@ -17,6 +17,38 @@
       ]
     },
     {
+      "script": "pipeline/scripts/bootstrap_ml4h_24to48h_metrics.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__bootstrap_ml4h_24to48h_metrics.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/bootstrap_ml4h_family_effects.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__bootstrap_ml4h_family_effects.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/bootstrap_ml4h_patient_clusters.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__bootstrap_ml4h_patient_clusters.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/build_exp3_meds_semantics_arms.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__build_exp3_meds_semantics_arms.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
       "script": "pipeline/scripts/build_run_output_tree.py",
       "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__build_run_output_tree.sh",
       "mode": "execute",
@@ -25,8 +57,8 @@
       ]
     },
     {
-      "script": "pipeline/scripts/build_exp3_meds_semantics_arms.py",
-      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__build_exp3_meds_semantics_arms.sh",
+      "script": "pipeline/scripts/convert_clif_to_meds.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__convert_clif_to_meds.sh",
       "mode": "execute",
       "args": [
         "--help"
@@ -46,6 +78,14 @@
         "--dry-run",
         "--repo_root",
         "$REPO_ROOT"
+      ]
+    },
+    {
+      "script": "pipeline/scripts/diagnostics/checkpoint_selection.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__diagnostics__checkpoint_selection.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
       ]
     },
     {
@@ -103,6 +143,14 @@
       ]
     },
     {
+      "script": "pipeline/scripts/diagnostics/rebuild_ml4h_pca_and_probe.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__diagnostics__rebuild_ml4h_pca_and_probe.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
       "script": "pipeline/scripts/extract_extended_outcomes.py",
       "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__extract_extended_outcomes.sh",
       "mode": "execute",
@@ -113,14 +161,6 @@
     {
       "script": "pipeline/scripts/extract_outcomes_meds.py",
       "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__extract_outcomes_meds.sh",
-      "mode": "execute",
-      "args": [
-        "--help"
-      ]
-    },
-    {
-      "script": "pipeline/scripts/llama10ep_stratified_eval_loss.py",
-      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__llama10ep_stratified_eval_loss.sh",
       "mode": "execute",
       "args": [
         "--help"
@@ -151,6 +191,14 @@
       ]
     },
     {
+      "script": "pipeline/scripts/print_task_group.py",
+      "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__print_task_group.sh",
+      "mode": "execute",
+      "args": [
+        "--help"
+      ]
+    },
+    {
       "script": "pipeline/scripts/regenerate_aligned_family_stats.py",
       "dryrun": "pipeline/tests/dryrun/run_pipeline__scripts__regenerate_aligned_family_stats.sh",
       "mode": "execute",
@@ -175,5 +223,5 @@
       ]
     }
   ],
-  "notes": "Dry-run wrappers default to compile-only mode. Set IRB_DRYRUN_EXECUTE_MODE=1 to run script-level execute mode where configured."
+  "notes": "Dry-run wrappers use compile-only mode unless IRB_DRYRUN_EXECUTE_MODE=1 is set."
 }

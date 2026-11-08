@@ -1,236 +1,88 @@
 # Input Representation Benchmark
 
-Codebase for the **MLHC 2026** input-representation benchmark: data prep,
-SLURM orchestration, statistics, and manuscript tables/figures.
+Benchmark orchestration, statistical evaluation, and figure generation codebase for *Representation Before Training: A Practical Benchmark for Generative Medical Event Model Tokenization*.
 
-Model training and extraction scripts live in the sibling repo
-[`../fms-ehrs`](../fms-ehrs). Read both README files to reproduce a run.
+Core tokenization, model training, hidden-state extraction, and linear probe entrypoints live in the companion repository [`../fms-ehrs`](../fms-ehrs).
 
-## Quick start
+## Setup
+
+Clone [`../fms-ehrs`](../fms-ehrs) next to this repository and create the shared Conda environment.
 
 ```bash
-# clone fms-ehrs next to this repo, then:
 conda env create -f environment.yml
 conda activate input-rep
 ```
 
-`environment.yml` installs the local Cocoa, FMS, and benchmark repos in
-editable mode and matches the Randi cluster stack (CUDA, JAX, FlashAttention).
+## Study Design
 
-## Pipeline overview
+We train 156 causal decoder models on full MIMIC-IV v3.1 hospitalizations across two architectures (`Llama-3.2`-style and `Qwen3`-style), three random seeds (`42`, `43`, `44`), and three experiments.
 
-Stages -1 through paper build. File-level detail: [`PIPELINE.md`](PIPELINE.md).
+- **Experiment 1 (Quantization and fusion, 72 runs):** Crosses six quantization schemes (`deciles`, `ventiles`, `5-10-5` reference-anchored ventiles, `trentiles`, `10-10-10` reference-anchored trentiles, and `centiles`) with `unfused` and `fused` code-value layouts (12 configurations).
+- **Experiment 2 (Numeric and temporal encoding, 72 runs):** Crosses four numeric encodings (`discrete`, `soft`, `xval`, `xval_affine`) with three temporal encodings (`time_tokens`, `event_order`, `time_rope`) (12 configurations).
+- **Experiment 3 (Native MIMIC versus CLIF schema, 12 runs):** Compares native MIMIC-IV MEDS against Common Longitudinal Intensive Care Unit Data Format (CLIF 2.1.0) on a matched ICU cohort (`deciles + unfused + discrete + time_tokens`, 2 configurations).
 
-| Stage | Benchmark repo | `../fms-ehrs` |
-| --- | --- | --- |
-| -1 MEDS extraction | `benchmarks/mimic-meds-extraction/`, `slurm/01_*` | — |
-| 0 tokenization + outcomes | `pipeline/run_experiments.py`, `slurm/03_*`, `slurm/04_*` | `tokenize_w_config.py` |
-| 0.5 extended outcomes | `pipeline/scripts/extract_extended_outcomes.py`, `slurm/13_*` | — |
-| 1 training | `slurm/04_*`, `slurm/07_*`, `slurm/08_*` | `tune_model.py`, `train_representation.py` |
-| 2 extraction | `slurm/09_*`, `slurm/ref_qse/09_extract_reps.sh` | `extract_hidden_states.py` |
-| 3 probes | `slurm/10_*`, `slurm/11_*`, `slurm/ref_qse/` | `transfer_rep_based_preds.py` |
-| stats | `pipeline/scripts/regenerate_aligned_family_stats.py`, `slurm/15_*` | `aggregate_version_preds.py` |
-| paper | `paper/scripts/generate_mlhc_*.py` | — |
+Each model encodes the first 24 hours of an intensive care unit (ICU) or hospital admission (`[0h, 24h]`). Locked L2-regularized logistic regression (`C = 0.01`) and Ridge regression (`alpha = 100.0`) probes predict outcomes during hours 24 to 48 (`(24h, 48h]`, 37 tasks in Experiments 1 and 2, and 36 tasks in Experiment 3) across eight outcome families (four binary families scored by AUROC and four regression families scored by Spearman correlation).
 
-Benchmark launchers set paths and submit jobs. `fms-ehrs` scripts read tokenized
-data, write checkpoints, write `features-*.npy`, and write probe prediction
-files.
+## Pipeline Stages
 
-**Paper stats root:** `outputs/runs/statistics/paper_stats_combined/`
-(`all_family_metrics.csv`, `all_family_pairwise.csv`,
-`all_family_pairwise_baseline.csv`).
-Per-family rebuild outputs live under
-`outputs/runs/statistics/paper_stats_run_outputs/`.
+Stage-by-stage file contracts and execution order are documented in [`PIPELINE.md`](PIPELINE.md).
 
-**ML4H 2026 manuscript scores** (24–48h, aggregated only):
-`outputs/runs/ml4h_2026/metrics/metrics_long.csv`,
-`outputs/runs/ml4h_2026/metrics/metrics_long_with_ci.parquet`, and
-`outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet`.
+| Stage | Benchmark Entrypoint | `fms-ehrs` Entrypoint | Purpose |
+| --- | --- | --- | --- |
+| -1 | `benchmarks/mimic-meds-extraction/`, `slurm/01_*` | — | Extract MEDS tables from raw MIMIC-IV v3.1 |
+| -0.5 | `pipeline/scripts/align_cohorts.py`, `slurm/02_*` | `collate_clif_with_cocoa.py` | Build matched native MIMIC-IV and CLIF 2.1.0 ICU cohorts |
+| 0 | `pipeline/run_experiments.py`, `slurm/03_*`, `slurm/04_*` | `tokenize_w_config.py` | Tokenize timelines and extract base outcomes |
+| 0.5 | `pipeline/scripts/extract_extended_outcomes.py`, `slurm/21_*` | — | Materialize 24-to-48-hour clinical outcomes |
+| 1 | `slurm/10_submit_ml4h_campaign_stage1.sh` | `tune_model.py`, `train_representation.py` | Pretrain 156 causal medical event models |
+| 2 | `slurm/11_submit_ml4h_exp*_stage2_opportunistic.sh` | `extract_hidden_states.py` | Extract 24-hour prefix hidden states |
+| 3 | `slurm/22_*`, `slurm/26_*`, `slurm/ref_qse/` | `transfer_rep_based_preds.py` | Fit locked linear probes on frozen features |
+| Stats | `pipeline/scripts/bootstrap_ml4h_*.py`, `slurm/28_*`, `slurm/34_*`, `slurm/35_*` | — | Run hierarchical admission-swap, patient-cluster, and model-level tests |
+| Paper | `paper/scripts/generate_ml4h_*.py`, `slurm/33_*` | — | Generate manuscript tables and figures |
 
-**Exp3 note:** the matched H_ICU arms are native raw-MIMIC MEDS and full CLIF
-MEDS. `slurm/02_phase05_exp3_cohort_arms.sh` freezes the patient split, then
-calls the FMS-owned Cocoa adapter. The adapter permits ten declared CLIF event
-tables, records code-status boundary exclusions, and writes a provenance
-manifest before the shared full-schema tokenizer
-(`../fms-ehrs/fms_ehrs/config/mimic-meds-exp3-full.yaml`) can run.
+## Primary Result Locations
 
-## Where to look first
-
-| Goal | Path |
+| Output | Path |
 | --- | --- |
-| Paper metrics (Exp1–3) | `outputs/runs/statistics/paper_stats_combined/all_family_metrics.csv` |
-| ML4H 2026 24–48h scores | `outputs/runs/ml4h_2026/metrics/metrics_long.csv`, `metrics_long_with_ci.parquet`, `family_effect_bootstrap/family_effect_intervals.parquet` |
-| Qwen3 additional-run stats | `outputs/runs/statistics/generalizability_tests/qwen3_0p6b_llama10ep/`, `generalizability_tests/qwen3_0p6b_fused_only/`, `generalizability_tests/qwen3_scaled/` |
-| Llama10ep additional-run stats | `outputs/runs/statistics/generalizability_tests/qwen3_0p6b_llama10ep/` (`llama10ep_*` family folders and combined CSVs) |
-| Checkpoints and training logs | `outputs/runs/models/exp*_*`, `qwen3_*`, `llama10ep_*` |
-| Tokenized timelines | `outputs/runs/tokenized/mimiciv-3.1_meds_70-10-20/` |
-| Extracted features | `<data_version>_first_24h-tokenized/<split>/features-*.npy` |
-| Probe outputs | `<data_version>_first_24h-tokenized/test/*-preds-*.pkl` |
-| Exp3 mapping coverage | `outputs/runs/exp3/arms/meds_mapped/mappings/meta.json` |
+| Per-run outcome metrics (`23,040` rows) | `outputs/runs/ml4h_2026/metrics/metrics_long.parquet` |
+| Patient-bootstrap 95% confidence intervals | `outputs/runs/ml4h_2026/metrics/metrics_long_with_ci.parquet` |
+| Paired admission-swap family contrasts (`136` tests) | `outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet` |
+| Patient-cluster bootstrap sensitivity intervals | `outputs/runs/ml4h_2026/patient_cluster_bootstrap/patient_cluster_intervals.parquet` |
+| Model-level paired t-tests (`df = 5`) | `outputs/runs/ml4h_2026/model_level_tests/family_tests.csv` |
+| Outcome prevalence and coverage tables | `outputs/runs/ml4h_2026/metrics/outcome_coverage_summary.csv` |
+| Pretrained model checkpoints (`156` runs) | `outputs/runs/ml4h_2026/models/` |
+| Tokenized MEDS timelines (Experiments 1 & 2) | `outputs/runs/tokenized/mimiciv-3.1_meds_70-10-20/` |
+| Experiment 3 matched cohorts and timelines | `outputs/runs/exp3/` |
 
-On-disk tree policy: [`outputs/README.md`](outputs/README.md).
+See [`outputs/README.md`](outputs/README.md) and [`outputs/runs/ml4h_2026/metrics/README.md`](outputs/runs/ml4h_2026/metrics/README.md) for table schemas.
 
-## Additional runs
+## Mechanistic Analysis Scripts
 
-These completed generalizability tests reuse the paper stage order but use
-separate jobfiles, model prefixes, and statistics roots under `generalizability_tests/`.
-Qwen3 tests stress architecture generalizability with 0.6B and scaled
-depth8/depth16 fused-vs-unfused decile RoPE runs. Llama10ep tests stress
-training-budget and seed generalizability with the scaled Llama 3.2 backbone
-trained for 10 epochs across seeds 42–46 on decile discrete RoPE and centile
-soft RoPE settings.
-
-### Additional-run paths
-
-| Item | Path |
+| Analysis | Script |
 | --- | --- |
-| Prepare/submit | `slurm/17_prepare_submit_generalizability_tests.sh` |
-| Jobfiles | `slurm/generated/generalizability_tests/` |
-| Last job IDs | `slurm/generated/generalizability_tests/submit_state.env` |
-| Serial Llama10ep runner | `slurm/18_run_gpu4_jobfile_serial.sh` |
-| Resume markers | `slurm/state/*.last_completed` (local only; not source files) |
+| Centile embedding PCA and leave-one-out boundary probe | `pipeline/scripts/diagnostics/rebuild_ml4h_pca_and_probe.py` |
+| Clinical boundary probe standalone runner | `pipeline/scripts/diagnostics/diag_clinical_boundary_probe.py` |
+| Embedding geometry analysis | `pipeline/scripts/diagnostics/diag_embedding_geometry.py` |
+| Soft versus discrete contextual cross-entropy | `pipeline/scripts/diagnostics/diag_attention_washout.py` |
+| xVal near-zero scaling analysis | `pipeline/scripts/diagnostics/diag_xval_zero_out.py` |
 
-Model prefixes under `outputs/runs/models/`: `qwen3_0p6b_exp2_*`,
-`qwen3_depth8_exp2_*`, `qwen3_depth16_exp2_*`, `llama10ep_exp2_*`.
-
-Jobfile prefixes: `00` tokenize; `01*`/`02*` train; `03*`/`04` extract;
-`05*`/`06` probes; `07*` stats.
-
-**Feature filenames:** `<split>/features-<run_dir>-model-discrete-time_rope.npy`
-(stem logic in `../fms-ehrs/fms_ehrs/scripts/extract_hidden_states.py`). Stage 3
-must use the same stem.
-
-**Llama10ep W&B checkpoints:** `slurm/07_exp2_stage1_train_representation.sh`
-saves epoch-boundary checkpoints when `IRB_LLAMA10EP_WANDB_EPOCH_UPLOADS=true`
-(default), avoiding step-based W&B uploads. Metrics still log normally.
-
-**Additional-run extraction:** four `torchrun` ranks write shards, then rank 0 merges
-to one `features-*.npy` per split.
-
-### Qwen3 output map
-
-**Models** (`outputs/runs/models/`):
-
-| Prefix | Contents |
-| --- | --- |
-| `qwen3_0p6b_exp2_*` | 0.6B unfused/fused (`gpu4`, `gpu4-r2`, `gpu4-r3`) |
-| `qwen3_depth8_exp2_*` | depth8 unfused/fused (`gpu4-r4`) |
-| `qwen3_depth16_exp2_*` | depth16 unfused/fused (`gpu4-r4`) |
-
-Each run dir has `checkpoint-*` and `model-discrete-time_rope/`. depth8/depth16
-also have local `loss_perplexity_curve.csv`; 0.6B curves were recovered from W&B
-and trainer state.
-
-**Features** (base:
-`outputs/runs/tokenized/mimiciv-3.1_meds_70-10-20/`):
-
-| Condition | Split dir | Files |
-| --- | --- | --- |
-| unfused | `deciles_none_unfused_time_rope_first_24h-tokenized/{train,val,test}/` | `features-model-discrete-time_rope.npy` (0.6B legacy name); `features-qwen3_depth8_exp2_...`; `features-qwen3_depth16_exp2_...` |
-| fused | `deciles_none_fused_time_rope_first_24h-tokenized/{train,val,test}/` | same pattern |
-
-**Probes:** in each `test/` dir above; existing prediction filenames retain
-legacy `revision-qwen3_*` tags and cover all four outcome families
-(`primary_binary`, `additional_binary`, `length_of_stay`, `extended_regression`).
-
-**Stats:**
-
-| Root | Contents |
-| --- | --- |
-| `generalizability_tests/qwen3_0p6b_llama10ep/` | 0.6B Qwen3 and Llama10ep metrics, pairwise tables, and per-family folders |
-| `generalizability_tests/qwen3_0p6b_fused_only/` | fused-only 0.6B subset |
-| `generalizability_tests/qwen3_scaled/` | scaled Qwen per-family stats |
-
-## Training stability outputs
-
-Not paper results. Loss/LR/grad-norm plots and stratified validation-loss checks.
+## Repository Layout
 
 | Path | Contents |
 | --- | --- |
-| `outputs/runs/figures/qwen_loss_curves/` | Qwen training/validation loss |
-| `outputs/runs/figures/llama10ep_loss_curves/` | Llama10ep training/validation loss |
-| `outputs/runs/figures/qwen3_training_diagnostics/` | Qwen LR and grad norm |
-| `outputs/runs/figures/llama10ep_training_diagnostics/` | Llama LR, grad norm, stratified validation loss |
+| `configs/` | Experiment configuration (`configs/experiment.yaml`) |
+| `pipeline/` | Experiment matrix, outcome extractors, bootstrap runners, and tests |
+| `paper/` | Manuscript figure and table generators |
+| `slurm/` | Slurm batch scripts for Stages -1 through paper compilation |
+| `utilities/` | Campaign jobfile generators, token counters, and quality checks |
+| `benchmarks/mimic-meds-extraction/` | MIMIC-IV to MEDS extraction submodule wrapper |
+| `outputs/runs/` | Tokenized datasets, checkpoints, and evaluation tables |
 
-Also: `loss_perplexity_curve.csv` in each model dir; W&B project
-`input-rep-benchmark-generalizability-tests`. Stratified validation script:
-`pipeline/scripts/llama10ep_stratified_eval_loss.py`.
+## Testing
 
-## Model input coverage
-
-The 28 paper transformers do not use every MEDS field.
-
-| Source table | Key columns | Exp1–2 | Exp3 |
-| --- | --- | --- | --- |
-| `hosp/admissions` | admit/discharge metadata, race, insurance, … | yes | yes |
-| `hosp/patients` | sex, age anchors | yes | yes |
-| `hosp/labevents` | labs + timestamps | yes | yes |
-| `hosp/emar` | medications | yes | no |
-| `hosp/transfers` | transfers | yes | no |
-| `icu/icustays` | ICU stay times | yes | cohort only |
-| `icu/chartevents` | vitals | yes | yes |
-| `icu/procedureevents` | procedures | yes | no |
-
-Stage 1 trains on full timelines. Stages 2–3 use `_first_24h-tokenized` dirs.
-Post-discharge billing tables are excluded to reduce leakage.
-
-## Paper compute (reported runs)
-
-| Stage | Resources |
-| --- | --- |
-| 0 tokenization | CPU, 8 cores, 300 GB |
-| 1 training | 1× A100, 4 cores, 128 GB, FlashAttention-2 |
-| 2 extraction | 1× A100, 4 cores, 32 GB |
-| 3 probes | CPU, 8 cores, 256 GB |
-
-All reported jobs were single-node.
-
-## Paper-side checks and rebuild scripts
-
-Manuscript checks: `pipeline/scripts/diagnostics/` (folder name is historical).
-
-| Check | Script |
-| --- | --- |
-| xVal near-zero suppression | `diag_xval_zero_out.py` |
-| soft vs discrete contextual CE | `diag_attention_washout.py` |
-| clinical boundary probe | `diag_clinical_boundary_probe.py` |
-| embedding geometry | `diag_embedding_geometry.py` |
-
-Rebuild entry points: `regenerate_aligned_family_stats.py`, `recompute_baseline_pairwise_view.py`,
-`generate_mlhc_*.py`, outcome extractors under `pipeline/scripts/`.
-
-Stats reruns: bootstrap `2000`, permutation `2000` when enabled; baseline handles
-`discrete_tt` (Exp2) or `meds` (Exp3). Jobfiles via `slurm/15_submit_aligned_family_stats.sh`.
-
-## Tests
+Run the unit tests and dry-run CLI contract suite from the repository root.
 
 ```bash
 conda activate input-rep
 pytest pipeline/tests/unit
 bash pipeline/tests/dryrun/run_all.sh
 ```
-
-Details: [`pipeline/tests/README.md`](pipeline/tests/README.md). Model-side tests:
-[`../fms-ehrs/fms_ehrs/tests/`](../fms-ehrs/fms_ehrs/tests/).
-
-## Directory map
-
-| Path | Role |
-| --- | --- |
-| `pipeline/` | orchestration and paper-side checks |
-| `paper/` | table and figure builders |
-| `slurm/` | launchers; `generated/` holds local jobfiles |
-| `outputs/runs/` | models, tokenized data, stats, figures |
-| `benchmarks/mimic-meds-extraction/` | MEDS wrapper |
-| `utilities/` | optional helpers outside the main chain |
-| `deprecated/` | archived material |
-
-Launcher numbering: [`slurm/README.md`](slurm/README.md).
-
-## Related docs
-
-| Doc | Contents |
-| --- | --- |
-| [`PIPELINE.md`](PIPELINE.md) | stage-by-stage walkthrough |
-| [`../fms-ehrs/README.md`](../fms-ehrs/README.md) | model scripts and output contract |
-| [`docs/layout.md`](docs/layout.md) | layout policy |

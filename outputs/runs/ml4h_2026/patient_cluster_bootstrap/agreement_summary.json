@@ -1,0 +1,59 @@
+{
+  "by_table": {
+    "exp1_fusion": {
+      "both": 38,
+      "cluster_excludes_zero": 39,
+      "cluster_only": 1,
+      "neither": 9,
+      "paired_t_only": 0,
+      "paired_t_significant": 38,
+      "tests": 48
+    },
+    "exp1_quantization": {
+      "both": 0,
+      "cluster_excludes_zero": 13,
+      "cluster_only": 13,
+      "neither": 27,
+      "paired_t_only": 0,
+      "paired_t_significant": 0,
+      "tests": 40
+    },
+    "exp2_numeric": {
+      "both": 16,
+      "cluster_excludes_zero": 19,
+      "cluster_only": 3,
+      "neither": 5,
+      "paired_t_only": 0,
+      "paired_t_significant": 16,
+      "tests": 24
+    },
+    "exp2_temporal": {
+      "both": 9,
+      "cluster_excludes_zero": 13,
+      "cluster_only": 4,
+      "neither": 3,
+      "paired_t_only": 0,
+      "paired_t_significant": 9,
+      "tests": 16
+    },
+    "exp3": {
+      "both": 6,
+      "cluster_excludes_zero": 6,
+      "cluster_only": 0,
+      "neither": 2,
+      "paired_t_only": 0,
+      "paired_t_significant": 6,
+      "tests": 8
+    }
+  },
+  "max_point_gap": 3.3024798173908465e-16,
+  "overall": {
+    "both": 69,
+    "cluster_excludes_zero": 90,
+    "cluster_only": 21,
+    "neither": 46,
+    "paired_t_only": 0,
+    "paired_t_significant": 69,
+    "tests": 136
+  }
+}

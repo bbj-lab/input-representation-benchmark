@@ -30,6 +30,8 @@ source slurm/ref_qse/preamble.sh
 : "${data_version:?Set data_version (should end with _first_24h)}"
 : "${model_loc:?Set model_loc (HF model directory)}"
 IRB_PREDS_TAG="${IRB_PREDS_TAG:-base-primary_binary}"
+IRB_STAGE3_CLASSIFIER="${IRB_STAGE3_CLASSIFIER:-logistic_regression}"
+IRB_STAGE3_TASK_TYPE="${IRB_STAGE3_TASK_TYPE:-classification}"
 
 echo "Generating representation-based predictions..."
 python3 "${FMS_EHRS_HOME}/fms_ehrs/scripts/transfer_rep_based_preds.py" \
@@ -37,8 +39,10 @@ python3 "${FMS_EHRS_HOME}/fms_ehrs/scripts/transfer_rep_based_preds.py" \
   --data_dir_new "${data_dir}" \
   --data_version "${data_version}" \
   --model_loc "${model_loc}" \
-  --classifier logistic_regression \
+  --classifier "${IRB_STAGE3_CLASSIFIER}" \
+  --task_type "${IRB_STAGE3_TASK_TYPE}" \
   --preds_tag "${IRB_PREDS_TAG}" \
   --save_preds \
+  --bootstrap_n "${IRB_STAGE3_BOOTSTRAP_N:-0}" \
   ${IRB_XFER_PRED_ARGS:-}
 

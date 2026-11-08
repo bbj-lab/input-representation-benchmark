@@ -327,6 +327,7 @@ def load_column_context(
                     run_store[outcome] = full_predictions.astype(np.float32, copy=False)
 
     assert run_keys is not None
+    assert canonical_ids is not None
     cohort_sizes = {len(values) for values in labels_by_outcome.values()}
     if len(cohort_sizes) != 1:
         raise ValueError(f"{experiment}: outcomes have different cohort rows")
@@ -335,11 +336,13 @@ def load_column_context(
         "task": task,
         "families": families,
         "n_rows": cohort_sizes.pop(),
+        "admission_ids": canonical_ids,
         "labels": labels_by_outcome,
         "valid": valid_by_outcome,
         "predictions": predictions,
         "config_ids": config_ids,
         "run_keys": tuple(sorted(run_keys)),
+        "admission_ids": canonical_ids.copy(),
     }
 
 

@@ -2,8 +2,8 @@
 """Analysis 2: xVal Zero-Out Proof — Hidden State L2 Norms vs |z|.
 
 Proves the xVal failure mechanism: when a numeric value equals the population median
-for its code, the z-score z = (v - μ) / σ ≈ 0, which scales the embedding to near-zero,
-effectively zeroing out the information at that position.
+for its code, the IQR-scale z-score z = (v - median) / scale ≈ 0, which scales the
+embedding to near-zero, effectively zeroing out the information at that position.
 
 Method:
 1. Forward pass through xVal model with hook functions at layers 0, 4, 7.
@@ -266,14 +266,10 @@ def compute_z_scores(
     # Per-code stats availability
     has_stats = xval.has_stats_by_id.to(device=device)[code_ids]
 
-    # Z-score normalization
-    values_clean = numeric_values.nan_to_num(0.0)
-    code_ids_long = code_ids.to(device=device, dtype=torch.long)
-    means = xval.means_by_id.to(device)[code_ids_long]
-    stds = xval.stds_by_id.to(device)[code_ids_long]
-
-    z = (values_clean - means) / stds
-    z = torch.clamp(z, -xval.clip_sigma, xval.clip_sigma)
+    z = xval._normalize_by_code_id(
+        values=numeric_values.nan_to_num(0.0),
+        code_ids=code_ids,
+    )
 
     # Scale factors
     scale = torch.ones_like(z)

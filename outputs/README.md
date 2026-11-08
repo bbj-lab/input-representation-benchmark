@@ -1,41 +1,36 @@
-# Run output tree
+# Run Output Tree
 
-Start with [`../README.md`](../README.md) for paper stats and additional-run output
-paths. This file describes the on-disk tree under `outputs/runs/`.
+This directory holds tokenized datasets, pretrained model checkpoints, Stage 2 and Stage 3 job manifests, and aggregated evaluation tables for the ML4H 2026 benchmark.
 
-## Active layout
+## Directory Layout
 
 ```text
 outputs/runs/
-  models/          exp1_*, exp2_*, exp3_*, qwen3_*, llama10ep_*
-  tokenized/       mimiciv-3.1_meds_70-10-20/
-  exp3/            cohort/, meds_icu/, arms/
-  statistics/
-    paper_stats_combined/
-    paper_stats_run_outputs/
-    paper_stats_exp23_discrete_none_baseline/
-    generalizability_tests/qwen3_0p6b_llama10ep/, generalizability_tests/qwen3_0p6b_fused_only/, generalizability_tests/qwen3_scaled/
-  figures/         training-loss and stability-check plots
+  tokenized/
+    mimiciv-3.1_meds_70-10-20/    Stage 0 tokenized timelines, features, and probe predictions (Exp 1 & 2)
+  exp3/
+    cohort/                       Frozen ICU patient and admission split tables
+    meds_icu/                     Native MIMIC-IV ICU MEDS events
+    arms/                         Tokenized timelines, features, and probe predictions (Exp 3)
+  ml4h_2026/
+    models/                       156 pretrained checkpoints (Llama-3.2 and Qwen3 across 3 seeds)
+    metrics/                      Aggregated 24-to-48-hour evaluation tables and trace sources
+    bootstrap_24to48h_ci/         Admission-level bootstrap shards for per-run outcome CIs
+    family_effect_bootstrap/      Paired admission-swap permutation tests and CIs (136 family contrasts)
+    patient_cluster_bootstrap/    Patient-cluster bootstrap sensitivity intervals
+    model_level_tests/            Model-level paired t-tests (df = 5) across 6 architecture-seed replicates
+    stage2*/                      Stage 2 feature extraction jobfiles and manifests
+    stage3*/                      Stage 3 linear probe jobfiles and manifests
 ```
 
-## Paper reporting files
+## Key Evaluation Files
 
-| Path | Use |
+| Path | Description |
 | --- | --- |
-| `statistics/paper_stats_combined/all_family_metrics.csv` | main metric table with 95% CIs |
-| `statistics/paper_stats_combined/all_family_pairwise_baseline.csv` | baseline pairwise comparisons |
-| `statistics/paper_stats_run_outputs/` | per-family tables that feed the combined dir |
-| `statistics/generalizability_tests/qwen3_0p6b_llama10ep/all_family_metrics.csv` | combined Qwen3 + Llama10ep additional-run metric table |
-| `statistics/generalizability_tests/qwen3_0p6b_llama10ep/llama10ep_*/` | Llama10ep five-seed per-family metric and pairwise tables |
+| `ml4h_2026/metrics/metrics_long.parquet` | Per-run outcome scores across 156 models and 37 tasks (`23,040` rows) |
+| `ml4h_2026/metrics/metrics_long_with_ci.parquet` | Outcome scores with 1,000-resample bootstrap 95% confidence intervals |
+| `ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet` | Paired admission-swap contrasts and Benjamini-Hochberg adjusted p-values |
+| `ml4h_2026/patient_cluster_bootstrap/patient_cluster_intervals.parquet` | Patient-cluster bootstrap intervals and significance agreement summary |
+| `ml4h_2026/model_level_tests/family_tests.csv` | Six-replicate paired t-test summary for all 136 printed family contrasts |
 
-## Reproducibility
-
-1. `pipeline/scripts/regenerate_aligned_family_stats.py`
-2. `paper/scripts/recompute_baseline_pairwise_view.py` (when needed)
-3. `paper/scripts/generate_mlhc_*.py`
-
-
-## Policy
-
-- Keep only active outputs here; move stale material to `deprecated/`.
-- Before any tree migration, run `pipeline/scripts/build_run_output_tree.py --dry-run`.
+See [`runs/ml4h_2026/metrics/README.md`](runs/ml4h_2026/metrics/README.md) for column-level documentation.

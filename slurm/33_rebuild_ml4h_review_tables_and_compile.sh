@@ -131,7 +131,7 @@ table_text = "".join(
         "main_exp3_family_table.tex",
     )
 )
-if r"$^{*}$}" not in table_text:
+if r"\textsuperscript{\textbf{\large *}}" not in table_text:
     raise SystemExit("ERROR: expected at least one starred Δ in the main-text tables")
 
 for line in text.splitlines():

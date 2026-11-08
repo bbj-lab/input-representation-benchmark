@@ -30,6 +30,15 @@ Outputs (per hospitalization)
 - icu_admission_24h    (ICU admission within first 24h)
 - imv_event_24h        (IMV procedure within first 24h)
 
+With ``--followup_end_hours``, this writes a bounded future-outcome contract.
+For example, ``--observation_hours 24 --followup_end_hours 48`` defines the
+follow-up window ``(24h, 48h]`` after admission:
+
+- same_admission_death: death during the window
+- long_length_of_stay: still hospitalized at hour 48
+- icu_admission / imv_event: first event during the window
+- prolonged_icu_stay: still in ICU at hour 48
+
 Benchmark counting note
 -----------------------
 At the benchmark level, `icu_admission` and `prolonged_icu_stay` are counted as
@@ -128,6 +137,7 @@ def _compute_outcomes_from_meds(
     los_days: float,
     observation_hours: float,
     icu_los_hours_threshold: float,
+    followup_end_hours: float | None = None,
 ) -> pl.LazyFrame:
     """Compute outcome labels keyed by `hospitalization_id` (string)."""
     meds = meds.select("subject_id", "hadm_id", "time", "code")
@@ -252,6 +262,11 @@ def _compute_outcomes_from_meds(
     obs = pl.duration(hours=float(observation_hours))
     los_threshold_hours = float(los_days) * 24.0
     icu_threshold_hours = float(icu_los_hours_threshold)
+    followup_end = (
+        pl.duration(hours=float(followup_end_hours))
+        if followup_end_hours is not None
+        else None
+    )
 
     discharge_is_death = (
         pl.col("discharge_loc")
@@ -269,48 +284,130 @@ def _compute_outcomes_from_meds(
         & pl.col("death_time").is_between(pl.col("admission_time"), pl.col("discharge_time"), closed="both")
     )
 
-    outcomes = (
-        base.with_columns(
-            hospitalization_id=pl.col("hadm_id").cast(pl.Int64).cast(pl.String),
-            length_of_stay=(pl.col("discharge_time") - pl.col("admission_time")).dt.total_hours(),
-            icu_length_of_stay=pl.col("icu_length_of_stay").fill_null(0.0),
-            same_admission_death=(discharge_is_death | death_between),
-            icu_admission=pl.col("icu_admission_time").is_not_null(),
-            imv_event=pl.col("imv_time").is_not_null(),
-            icu_admission_24h=pl.col("icu_admission_time").is_not_null()
-            & ((pl.col("icu_admission_time") - pl.col("admission_time")) <= obs),
-            imv_event_24h=pl.col("imv_time").is_not_null()
-            & ((pl.col("imv_time") - pl.col("admission_time")) <= obs),
+    if followup_end is None:
+        outcomes = (
+            base.with_columns(
+                hospitalization_id=pl.col("hadm_id").cast(pl.Int64).cast(pl.String),
+                length_of_stay=(pl.col("discharge_time") - pl.col("admission_time")).dt.total_hours(),
+                icu_length_of_stay=pl.col("icu_length_of_stay").fill_null(0.0),
+                same_admission_death=(discharge_is_death | death_between),
+                icu_admission=pl.col("icu_admission_time").is_not_null(),
+                imv_event=pl.col("imv_time").is_not_null(),
+                icu_admission_24h=pl.col("icu_admission_time").is_not_null()
+                & ((pl.col("icu_admission_time") - pl.col("admission_time")) <= obs),
+                imv_event_24h=pl.col("imv_time").is_not_null()
+                & ((pl.col("imv_time") - pl.col("admission_time")) <= obs),
+            )
+            .with_columns(
+                prolonged_icu_stay=pl.col("icu_admission_time").is_not_null()
+                & (pl.col("icu_length_of_stay") > icu_threshold_hours),
+            )
+            .with_columns(long_length_of_stay=pl.col("length_of_stay") > los_threshold_hours)
+            .select(
+                "hospitalization_id",
+                "length_of_stay",
+                "icu_length_of_stay",
+                "same_admission_death",
+                "long_length_of_stay",
+                "icu_admission",
+                "imv_event",
+                "prolonged_icu_stay",
+                "icu_admission_24h",
+                "imv_event_24h",
+            )
+            .with_columns(
+                # Ensure boolean columns are non-null (align with fms-ehrs expectations).
+                pl.col("same_admission_death").fill_null(False),
+                pl.col("long_length_of_stay").fill_null(False),
+                pl.col("icu_admission").fill_null(False),
+                pl.col("imv_event").fill_null(False),
+                pl.col("prolonged_icu_stay").fill_null(False),
+                pl.col("icu_admission_24h").fill_null(False),
+                pl.col("imv_event_24h").fill_null(False),
+            )
+            .sort("hospitalization_id")
         )
-        .with_columns(
-            prolonged_icu_stay=pl.col("icu_admission_time").is_not_null()
-            & (pl.col("icu_length_of_stay") > icu_threshold_hours),
+    else:
+        # A patient is in ICU at the horizon endpoint if any ICU segment spans it.
+        icu_at_followup_end = (
+            icu_segments.join(
+                admissions.select("hadm_id", "admission_time"),
+                on="hadm_id",
+                how="inner",
+                validate="m:1",
+                maintain_order="left",
+            )
+            .filter(
+                (pl.col("icu_segment_admission") <= pl.col("admission_time") + followup_end)
+                & (
+                    pl.col("icu_segment_end").is_null()
+                    | (pl.col("icu_segment_end") > pl.col("admission_time") + followup_end)
+                )
+            )
+            .select("hadm_id")
+            .unique()
+            .with_columns(in_icu_at_followup_end=pl.lit(True))
         )
-        .with_columns(long_length_of_stay=pl.col("length_of_stay") > los_threshold_hours)
-        .select(
-            "hospitalization_id",
-            "length_of_stay",
-            "icu_length_of_stay",
-            "same_admission_death",
-            "long_length_of_stay",
-            "icu_admission",
-            "imv_event",
-            "prolonged_icu_stay",
-            "icu_admission_24h",
-            "imv_event_24h",
+        bounded_base = base.join(
+            icu_at_followup_end,
+            on="hadm_id",
+            how="left",
+            validate="1:1",
+            maintain_order="left",
         )
-        .with_columns(
-            # Ensure boolean columns are non-null (align with fms-ehrs expectations).
-            pl.col("same_admission_death").fill_null(False),
-            pl.col("long_length_of_stay").fill_null(False),
-            pl.col("icu_admission").fill_null(False),
-            pl.col("imv_event").fill_null(False),
-            pl.col("prolonged_icu_stay").fill_null(False),
-            pl.col("icu_admission_24h").fill_null(False),
-            pl.col("imv_event_24h").fill_null(False),
+        death_in_window = death_between & (
+            pl.col("death_time") > pl.col("admission_time") + obs
+        ) & (pl.col("death_time") <= pl.col("admission_time") + followup_end)
+        discharge_death_in_window = discharge_is_death & (
+            pl.col("discharge_time") > pl.col("admission_time") + obs
+        ) & (pl.col("discharge_time") <= pl.col("admission_time") + followup_end)
+        icu_in_window = pl.col("icu_admission_time").is_not_null() & (
+            pl.col("icu_admission_time") > pl.col("admission_time") + obs
+        ) & (pl.col("icu_admission_time") <= pl.col("admission_time") + followup_end)
+        imv_in_window = pl.col("imv_time").is_not_null() & (
+            pl.col("imv_time") > pl.col("admission_time") + obs
+        ) & (pl.col("imv_time") <= pl.col("admission_time") + followup_end)
+        outcomes = (
+            bounded_base.with_columns(
+                hospitalization_id=pl.col("hadm_id").cast(pl.Int64).cast(pl.String),
+                length_of_stay=(pl.col("discharge_time") - pl.col("admission_time")).dt.total_hours(),
+                icu_length_of_stay=pl.col("icu_length_of_stay").fill_null(0.0),
+                same_admission_death=death_in_window | discharge_death_in_window,
+                # For the bounded contract these names retain their task-registry
+                # identity while their meaning is explicitly fixed at hour 48.
+                long_length_of_stay=pl.col("discharge_time")
+                > pl.col("admission_time") + followup_end,
+                icu_admission=icu_in_window,
+                imv_event=imv_in_window,
+                prolonged_icu_stay=pl.col("in_icu_at_followup_end").fill_null(False),
+                icu_admission_24h=pl.col("icu_admission_time").is_not_null()
+                & ((pl.col("icu_admission_time") - pl.col("admission_time")) <= obs),
+                imv_event_24h=pl.col("imv_time").is_not_null()
+                & ((pl.col("imv_time") - pl.col("admission_time")) <= obs),
+            )
+            .select(
+                "hospitalization_id",
+                "length_of_stay",
+                "icu_length_of_stay",
+                "same_admission_death",
+                "long_length_of_stay",
+                "icu_admission",
+                "imv_event",
+                "prolonged_icu_stay",
+                "icu_admission_24h",
+                "imv_event_24h",
+            )
+            .with_columns(
+                pl.col("same_admission_death").fill_null(False),
+                pl.col("long_length_of_stay").fill_null(False),
+                pl.col("icu_admission").fill_null(False),
+                pl.col("imv_event").fill_null(False),
+                pl.col("prolonged_icu_stay").fill_null(False),
+                pl.col("icu_admission_24h").fill_null(False),
+                pl.col("imv_event_24h").fill_null(False),
+            )
+            .sort("hospitalization_id")
         )
-        .sort("hospitalization_id")
-    )
 
     return outcomes
 
@@ -363,6 +460,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Observation window (hours) for *_24h flags (default: 24).",
     )
     parser.add_argument(
+        "--followup_end_hours",
+        type=float,
+        default=None,
+        help=(
+            "Optional inclusive upper bound for a bounded future-outcome window. "
+            "For example, 48 with --observation_hours 24 defines (24h, 48h]."
+        ),
+    )
+    parser.add_argument(
         "--icu_los_hours_threshold",
         type=float,
         default=48.0,
@@ -381,6 +487,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Output filename to write inside each tokenized split directory (default: tokens_timelines_outcomes.parquet).",
     )
     parser.add_argument(
+        "--outcomes_only",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Write only hospitalization_id plus outcome columns instead of copying "
+            "timeline feature columns. Use this for standalone outcome tables."
+        ),
+    )
+    parser.add_argument(
         "--strict",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -397,6 +512,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         splits = [s.strip() for s in args.splits.split(",") if s.strip()]
     imv_itemids = tuple(int(x) for x in args.imv_itemids.split(",") if x.strip())
+    if (
+        args.followup_end_hours is not None
+        and args.followup_end_hours <= args.observation_hours
+    ):
+        parser.error("--followup_end_hours must be greater than --observation_hours.")
 
     meds_events_dir = args.meds_events_dir.expanduser().resolve()
     tokenized_dir = args.tokenized_dir.expanduser().resolve()
@@ -429,18 +549,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             los_days=args.los_days,
             observation_hours=args.observation_hours,
             icu_los_hours_threshold=args.icu_los_hours_threshold,
+            followup_end_hours=args.followup_end_hours,
         )
 
         tt = pl.scan_parquet(timeline_path)
         id_col = _infer_timeline_id_col(tt.collect_schema())
 
-        # Standardize to `hospitalization_id` (string) in the output file.
-        tt_std = (
-            tt.with_columns(pl.col(id_col).cast(pl.String).alias("hospitalization_id"))
-            .drop(id_col)
-            if id_col != "hospitalization_id"
-            else tt.with_columns(pl.col("hospitalization_id").cast(pl.String))
-        )
+        # Standalone outcome tables do not need the large token/padding columns.
+        # The default preserves the historical output shape for existing callers.
+        if args.outcomes_only:
+            tt_std = tt.select(pl.col(id_col).cast(pl.String).alias("hospitalization_id"))
+        else:
+            tt_std = (
+                tt.with_columns(pl.col(id_col).cast(pl.String).alias("hospitalization_id"))
+                .drop(id_col)
+                if id_col != "hospitalization_id"
+                else tt.with_columns(pl.col("hospitalization_id").cast(pl.String))
+            )
 
         out = tt_std.join(
             outcomes,

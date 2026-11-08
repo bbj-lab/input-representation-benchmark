@@ -11,27 +11,11 @@ if [ -v SLURM_ARRAY_JOB_ID ]; then
 fi
 
 # Job identification
-job_id="${SLURM_JOB_ID:-${SLURM_JOBID:-}}"
-name=$(
-    if [[ -n "${job_id}" ]]; then
-        # NOTE: This preamble is sourced by scripts that commonly run with
-        # `set -euo pipefail`. Any non-match in grep (exit 1) would therefore
-        # abort the entire job before environment initialization. We treat all
-        # metadata extraction as best-effort and never fatal.
-        scontrol show job "${job_id}" 2>/dev/null \
-            | grep -m 1 "Command=" \
-            | cut -d "=" -f2 \
-            | xargs -I {} basename {} .sh 2>/dev/null || true
-    fi
-)
-name="${name:-unknown}"
-jname=$(
-    if [[ -n "${job_id}" ]]; then
-        scontrol show job "${job_id}" 2>/dev/null \
-            | grep -oP 'JobName=\K\S+' 2>/dev/null || true
-    fi
-)
-jname="${jname:-unknown}"
+# Do not call ``scontrol`` here: inside this cluster's job containers, the
+# client cannot read /etc/slurm/slurm.conf and retries for up to a minute.
+# Slurm already exports the requested job name.
+name="${SLURM_JOB_NAME:-unknown}"
+jname="${SLURM_JOB_NAME:-unknown}"
 parent_dir="$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")"
 export name jname parent_dir
 
@@ -110,8 +94,8 @@ export IRB_MAX_WINDOWS_PER_ADMISSION="${IRB_MAX_WINDOWS_PER_ADMISSION:-128}"
 # Stage1 (epoch budget + shared hypers)
 #
 # Rationale:
-# - Exp2/Exp3 no longer run Optuna HPO, so we use fixed hyperparameters and a
-#   fixed single-epoch budget per configuration (token-exposure fairness).
+# - All ML4H experiment families use fixed hyperparameters selected by a
+#   validation-only preflight and a five-epoch budget per configuration.
 # - We centralize defaults here so that job generation, SLURM launchers, and Python
 #   entrypoints do not silently diverge.
 #
@@ -119,27 +103,50 @@ export IRB_MAX_WINDOWS_PER_ADMISSION="${IRB_MAX_WINDOWS_PER_ADMISSION:-128}"
 # this preamble (or via `sbatch --export=...`).
 # -----------------------------------------------------------------------------
 #
-# IMPORTANT (budget accounting):
-# - Exp1 Stage1 is intentionally a *single-epoch* training per config (with a small LR sweep).
-# - Exp2/Exp3 Stage1 may use a longer budget, but should not silently inherit Exp1's setting.
-#
-# We therefore use explicit env vars per experiment family.
-export IRB_EXP1_STAGE1_EPOCHS="${IRB_EXP1_STAGE1_EPOCHS:-1}"
-export IRB_EXP23_STAGE1_EPOCHS="${IRB_EXP23_STAGE1_EPOCHS:-1}"
+# Keep explicit family variables so a deliberate future deviation is visible.
+export IRB_EXP1_STAGE1_EPOCHS="${IRB_EXP1_STAGE1_EPOCHS:-5}"
+export IRB_EXP23_STAGE1_EPOCHS="${IRB_EXP23_STAGE1_EPOCHS:-5}"
 # Backward-compat alias (older scripts referenced IRB_STAGE1_EPOCHS).
 export IRB_STAGE1_EPOCHS="${IRB_STAGE1_EPOCHS:-${IRB_EXP23_STAGE1_EPOCHS}}"
-export IRB_STAGE1_OPTIMIZER="${IRB_STAGE1_OPTIMIZER:-muon}"
+export IRB_STAGE1_OPTIMIZER="${IRB_STAGE1_OPTIMIZER:-adamw}"
 export IRB_STAGE1_LR="${IRB_STAGE1_LR:-1e-4}"
 export IRB_STAGE1_WEIGHT_DECAY="${IRB_STAGE1_WEIGHT_DECAY:-0.01}"
-# Muon-specific LR split:
-# - By default, preserve prior behavior by using the same LR for Muon and aux AdamW.
-# - Override explicitly to follow Muon recommendations (e.g., IRB_MUON_LR=0.02) while
-#   keeping aux AdamW near Exp1-tuned LR.
-export IRB_MUON_LR="${IRB_MUON_LR:-${IRB_STAGE1_LR}}"
-export IRB_AUX_ADAMW_LR="${IRB_AUX_ADAMW_LR:-${IRB_STAGE1_LR}}"
+export IRB_ADAM_BETA1="${IRB_ADAM_BETA1:-0.9}"
+export IRB_ADAM_BETA2="${IRB_ADAM_BETA2:-0.999}"
+export IRB_STAGE1_MAX_GRAD_NORM="${IRB_STAGE1_MAX_GRAD_NORM:-1.0}"
+export IRB_STAGE1_LR_SCHEDULER="${IRB_STAGE1_LR_SCHEDULER:-linear}"
+export IRB_STAGE1_WARMUP_RATIO="${IRB_STAGE1_WARMUP_RATIO:-0.01}"
+export IRB_STAGE1_LOGGING_STEPS="${IRB_STAGE1_LOGGING_STEPS:-100}"
+export IRB_PER_DEVICE_TRAIN_BATCH_SIZE="${IRB_PER_DEVICE_TRAIN_BATCH_SIZE:-4}"
+export IRB_PER_DEVICE_EVAL_BATCH_SIZE="${IRB_PER_DEVICE_EVAL_BATCH_SIZE:-4}"
+export IRB_GRADIENT_ACCUMULATION_STEPS="${IRB_GRADIENT_ACCUMULATION_STEPS:-1}"
+export IRB_STAGE1_EVALUATIONS_PER_EPOCH="${IRB_STAGE1_EVALUATIONS_PER_EPOCH:-2}"
+export IRB_STAGE1_MAX_STEPS="${IRB_STAGE1_MAX_STEPS:--1}"
+# Write a local JSONL/Slurm-log progress heartbeat each minute. This is
+# independent of W&B and works on offline compute nodes.
+export IRB_PROGRESS_INTERVAL_SECONDS="${IRB_PROGRESS_INTERVAL_SECONDS:-60}"
+export IRB_STAGE1_SAVE_STRATEGY="${IRB_STAGE1_SAVE_STRATEGY:-epoch}"
+export IRB_STAGE1_SAVE_TOTAL_LIMIT="${IRB_STAGE1_SAVE_TOTAL_LIMIT:-4}"
+export IRB_STAGE1_EVAL_STRATEGY="${IRB_STAGE1_EVAL_STRATEGY:-epoch}"
+export IRB_LOAD_BEST_MODEL_AT_END="${IRB_LOAD_BEST_MODEL_AT_END:-true}"
+# A full Trainer checkpoint is requested independently of epoch-level validation
+# and best-model selection. Opportunistic jobs can be preempted after a
+# ten-minute grace period, so force their interval to five minutes even when an
+# older submission inherited a ten-minute value through --export=ALL. Requeues
+# re-read this preamble from disk, so the override applies without resubmitting.
+_irb_checkpoint_interval_default=600
+if [[ "${SLURM_JOB_QOS:-}" == "opportunistic" ]]; then
+  export IRB_STAGE1_CHECKPOINT_INTERVAL_SECONDS="${IRB_OPPORTUNISTIC_CHECKPOINT_INTERVAL_SECONDS:-300}"
+else
+  export IRB_STAGE1_CHECKPOINT_INTERVAL_SECONDS="${IRB_STAGE1_CHECKPOINT_INTERVAL_SECONDS:-${_irb_checkpoint_interval_default}}"
+fi
+unset _irb_checkpoint_interval_default
 
 # Method-specific (Exp2/Exp3):
-export IRB_TIME_ROPE_SCALING="${IRB_TIME_ROPE_SCALING:-60.0}"
+# Position bins are expressed directly in seconds; 60 means one RoPE position
+# per minute. The preflight sweeps this alongside the backbone RoPE base.
+export IRB_SECONDS_PER_POSITION="${IRB_SECONDS_PER_POSITION:-60.0}"
+export IRB_MODEL_MAX_POSITION_EMBEDDINGS="${IRB_MODEL_MAX_POSITION_EMBEDDINGS:-4096}"
 
 # xVal reference implementation uses unit weighting (loss_total = loss_mlm + loss_num).
 export IRB_XVAL_NUMERIC_LOSS_WEIGHT="${IRB_XVAL_NUMERIC_LOSS_WEIGHT:-1.0}"
@@ -206,6 +213,12 @@ conda activate "${IRB_CONDA_ENV}"
 # read-only directories. That causes PermissionError during dataset/model loading.
 # We therefore prefer a user-writable cache and override non-writable settings.
 _hf_home_candidate="${HF_HOME:-}"
+# Reject inherited caches on the shared project filesystem. Cache traffic is
+# high-volume and ephemeral; it must not consume the /gpfs data allocation.
+if [[ "${_hf_home_candidate}" == /gpfs/* ]]; then
+    _hf_home_candidate=""
+    unset HF_HOME
+fi
 if [[ -n "${_hf_home_candidate}" ]]; then
     mkdir -p "${_hf_home_candidate}" 2>/dev/null || true
     if [[ -d "${_hf_home_candidate}" && -w "${_hf_home_candidate}" ]]; then
@@ -215,9 +228,9 @@ if [[ -n "${_hf_home_candidate}" ]]; then
     fi
 fi
 if [[ -z "${HF_HOME:-}" ]]; then
-    if [[ -d /gpfs/data/bbj-lab/cache/huggingface/ && -w /gpfs/data/bbj-lab/cache/huggingface/ ]]; then
-        HF_HOME="/gpfs/data/bbj-lab/cache/huggingface/"
-    elif [[ -d /scratch && ! "${_user}" =~ ^[0-9]+$ && "${_user}" != uid_* ]]; then
+    # Prefer per-user scratch. Cache traffic is high-volume and ephemeral, so it
+    # belongs on scratch rather than the shared /gpfs project filesystem.
+    if [[ -d /scratch && ! "${_user}" =~ ^[0-9]+$ && "${_user}" != uid_* ]]; then
         HF_HOME="/scratch/${_user}/huggingface"
     else
         HF_HOME="${HOME}/.cache/huggingface"

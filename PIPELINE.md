@@ -1,141 +1,138 @@
-# Benchmark pipeline
+# Benchmark Pipeline
 
-This file maps the current benchmark path from raw MEDS data to the paper
-files. It only covers the current workflow.
+This document traces the end-to-end execution path from raw MIMIC-IV v3.1 tables to the ML4H 2026 manuscript figures and tables.
 
-## 1. Data preparation
+## 1. Data Preparation
 
-### Raw MIMIC -> MEDS
+### Raw MIMIC-IV to MEDS (Stage -1)
 
-Use the extraction wrapper under `benchmarks/mimic-meds-extraction/` to populate:
+Run the extraction wrapper in `benchmarks/mimic-meds-extraction/` (`slurm/01_extract_mimic_meds.sh`) to build the split MEDS directories.
 
-- `benchmarks/mimic-meds-extraction/data/meds/data/raw/train`
-- `benchmarks/mimic-meds-extraction/data/meds/data/raw/val`
-- `benchmarks/mimic-meds-extraction/data/meds/data/raw/test`
+- `benchmarks/mimic-meds-extraction/data/meds/data/raw/train`.
+- `benchmarks/mimic-meds-extraction/data/meds/data/raw/val`.
+- `benchmarks/mimic-meds-extraction/data/meds/data/raw/test`.
 
-### Exp3 cohort and arms
+### Experiment 3 Matched Cohorts (Stage -0.5)
 
-Exp3 needs a fixed ICU-hospitalization cohort plus three derived comparison
-arms.
+Experiment 3 compares native MIMIC-IV MEDS timelines against CLIF 2.1.0 timelines on a matched ICU cohort (`83,842` admissions across `64,954` patients).
 
-Live scripts:
+- `pipeline/scripts/align_cohorts.py`.
+- `pipeline/scripts/split_meds_by_hadm_splits.py`.
+- `slurm/02_phase05_exp3_cohort_arms.sh`.
+- `../fms-ehrs/fms_ehrs/scripts/collate_clif_with_cocoa.py`.
 
-- `pipeline/scripts/align_cohorts.py`
-- `pipeline/scripts/split_meds_by_hadm_splits.py`
-- `pipeline/scripts/build_exp3_meds_semantics_arms.py`
+The launcher freezes the native patient-level split (`70 / 10 / 20`). It then calls the Cocoa adapter to build matched CLIF 2.1.0 MEDS tables under `outputs/runs/exp3/`.
 
-Outputs are written under `outputs/runs/exp3/`.
+## 2. Stage 0: Tokenization and Base Outcomes
 
-## 2. Stage 0: tokenization + base outcomes
+Stage 0 entrypoints.
 
-Entry points:
+- `slurm/03_stage0_tokenize_and_outcomes_meds.sh`.
+- `slurm/04_exp3_stage0_tokenize_and_outcomes.sh`.
+- `../fms-ehrs/fms_ehrs/scripts/tokenize_w_config.py`.
+- `pipeline/scripts/extract_outcomes_meds.py`.
 
-- `slurm/03_stage0_tokenize_and_outcomes_meds.sh`
-- `slurm/04_exp3_stage0_tokenize_and_outcomes.sh`
-- `fms_ehrs/scripts/tokenize_w_config.py`
-- `pipeline/scripts/extract_outcomes_meds.py`
+Stage 0 outputs.
 
-Main outputs:
+- `<data_version>-tokenized/train/vocab.gzip`.
+- `<data_version>-tokenized/train/numeric_stats.json`.
+- `<data_version>-tokenized/<split>/tokens_timelines.parquet`.
+- `<data_version>_first_24h-tokenized/<split>/tokens_timelines.parquet`.
+- `<data_version>_first_24h-tokenized/<split>/tokens_timelines_outcomes_24to48h.parquet`.
 
-- `<data_version>-tokenized/train/vocab.gzip`
-- `<data_version>-tokenized/train/numeric_stats.json`
-- `<data_version>-tokenized/<split>/tokens_timelines.parquet`
-- `<data_version>_first_24h-tokenized/<split>/tokens_timelines.parquet`
-- `<data_version>_first_24h-tokenized/<split>/tokens_timelines_outcomes.parquet`
+## 3. Stage 0.5: 24-to-48-Hour Clinical Outcomes
 
-## 3. Extended outcomes
+Stage 0.5 entrypoints.
 
-Entry points:
+- `pipeline/scripts/extract_extended_outcomes.py`.
+- `utilities/scripts/generate_ml4h_24to48h_outcome_jobfiles.py`.
+- `slurm/21_submit_ml4h_24to48h_outcomes_cpu.sh`.
 
-- `pipeline/scripts/extract_extended_outcomes.py`
-- `slurm/13_refresh_all_extended_outcomes.sh`
-- `slurm/13_refresh_exp3_extended_outcomes.sh`
+Stage 0.5 output.
 
-Main output:
+- `<data_version>_first_24h-tokenized/<split>/tokens_timelines_extended_outcomes_24to48h.parquet`.
 
-- `<data_version>_first_24h-tokenized/<split>/tokens_timelines_extended_outcomes.parquet`
+## 4. Stage 1: Model Pretraining
 
-## 4. Stage 1: training
+Stage 1 entrypoints.
 
-Entry points:
+- `utilities/scripts/generate_ml4h_campaign.py`.
+- `slurm/10_submit_ml4h_campaign_stage1.sh`.
+- `../fms-ehrs/fms_ehrs/scripts/tune_model.py` (Experiment 1 packed training).
+- `../fms-ehrs/fms_ehrs/scripts/train_representation.py` (Experiments 2 and 3 windowed training).
 
-- Exp1: `slurm/04_exp1_stage1_tune_packed.sh`
-- Exp2: `slurm/07_exp2_stage1_train_representation.sh`
-- Exp3: `slurm/08_exp3_stage1_train_representation.sh`
-- Model repo scripts: `fms_ehrs/scripts/tune_model.py`, `fms_ehrs/scripts/train_representation.py`
+Stage 1 outputs.
 
-Main outputs:
+- Checkpoints under `outputs/runs/ml4h_2026/models/`.
+- `representation_mechanics.pt` for numeric and temporal wrapper models.
 
-- checkpoints under `outputs/runs/models/`
-- `representation_mechanics.pt` for wrapper models
+## 5. Stage 2: 24-Hour Hidden-State Extraction
 
-## 5. Stage 2: hidden-state extraction
+Stage 2 entrypoints.
 
-Entry points:
+- `utilities/scripts/generate_ml4h_exp1_stage2_jobfiles.py`.
+- `utilities/scripts/generate_ml4h_exp2_stage2_jobfiles.py`.
+- `utilities/scripts/generate_ml4h_exp3_stage2_jobfiles.py`.
+- `slurm/11_submit_ml4h_exp1_stage2_opportunistic.sh`.
+- `slurm/11_submit_ml4h_exp2_stage2_opportunistic.sh`.
+- `slurm/11_submit_ml4h_exp3_stage2_opportunistic.sh`.
+- `../fms-ehrs/fms_ehrs/scripts/extract_hidden_states.py`.
 
-- `slurm/ref_qse/09_extract_reps.sh`
-- `slurm/09_run_stage2_gpu2_extract.sh`
-- `fms_ehrs/scripts/extract_hidden_states.py`
+Stage 2 output.
 
-Main output:
+- `<data_version>_first_24h-tokenized/<split>/features-<model_stem>.npy`.
 
-- `<data_version>_first_24h-tokenized/<split>/features-<model>.npy`
+## 6. Stage 3: Locked Linear Probes
 
-## 6. Stage 3: downstream probes
+Stage 3 entrypoints.
 
-Entry points:
+- `utilities/scripts/generate_ml4h_24to48h_stage3_jobfiles.py`.
+- `slurm/22_prepare_submit_ml4h_24to48h_probes.sh`.
+- `slurm/22_submit_ml4h_24to48h_exp2_exp3_probes.sh`.
+- `slurm/ref_qse/10_xfer_rep_based_preds.sh`.
+- `../fms-ehrs/fms_ehrs/scripts/transfer_rep_based_preds.py`.
 
-- `slurm/ref_qse/10_xfer_rep_based_preds.sh`
-- `slurm/11_run_stage3_tier2q_lr.sh`
-- `fms_ehrs/scripts/transfer_rep_based_preds.py`
+Stage 3 output.
 
-Main output:
+- `<data_version>_first_24h-tokenized/test/*-preds-*.pkl`.
 
-- `<data_version>_first_24h-tokenized/test/*-preds-*.pkl`
+## 7. Statistical Inference and Bootstrap Evaluation
 
-## 7. Aligned family statistics
+Statistical entrypoints.
 
-Entry points:
+- `pipeline/scripts/bootstrap_ml4h_24to48h_metrics.py` (`slurm/28_submit_ml4h_24to48h_bootstrap.sh`).
+- `pipeline/scripts/bootstrap_ml4h_family_effects.py` (`slurm/34_submit_ml4h_family_effect_bootstrap.sh`).
+- `pipeline/scripts/bootstrap_ml4h_patient_clusters.py` (`slurm/35_submit_ml4h_patient_clusters.sh`).
+- `paper/scripts/ml4h_model_level_tests.py`.
 
-- `pipeline/scripts/regenerate_aligned_family_stats.py`
-- `slurm/15_run_stats_cpu_jobfile.sh`
-- `slurm/15_submit_aligned_family_stats.sh`
-- local jobfiles written under `slurm/generated/statistics/`
+Statistical outputs.
 
-Primary stats root:
+- `outputs/runs/ml4h_2026/metrics/metrics_long.parquet` and `metrics_long_with_ci.parquet`.
+- `outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet`.
+- `outputs/runs/ml4h_2026/patient_cluster_bootstrap/patient_cluster_intervals.parquet`.
+- `outputs/runs/ml4h_2026/model_level_tests/family_tests.csv` and `outcome_tests.csv`.
 
-- `outputs/runs/statistics/paper_stats_run_outputs/`
+## 8. Manuscript Figures and Tables
 
-## 8. Table and figure build
+Paper build entrypoints.
 
-Entry points:
+- `paper/scripts/generate_ml4h_outcome_family_traces.py`.
+- `paper/scripts/generate_ml4h_outcome_factor_traces.py`.
+- `paper/scripts/generate_ml4h_appendix_result_tables.py`.
+- `paper/scripts/generate_ml4h_boundary_probe_plot.py`.
+- `pipeline/scripts/diagnostics/rebuild_ml4h_pca_and_probe.py`.
+- `slurm/33_rebuild_ml4h_review_tables_and_compile.sh`.
 
-- `paper/scripts/generate_mlhc_appendix_tables.py`
-- `paper/scripts/generate_mlhc_appendix_outcome_descriptives.py`
-- `paper/scripts/generate_mlhc_paper_figures.py`
-- manuscript file `../MLHC2026/MLHC/paper.tex`
+Paper build outputs.
 
-Outputs:
+- `../ML4H2026/generated/*.tex`.
+- `../ML4H2026/figures/*.pdf`.
 
-- `../MLHC2026/MLHC/generated/`
-- `../MLHC2026/MLHC/figures/`
-- `../MLHC2026/MLHC/figures/sources/`
+## 9. Verification
 
-## 9. Order of operations
+Run unit and dry-run CLI checks before submitting cluster jobs.
 
-1. Build or verify MEDS extraction outputs.
-2. Build the Exp3 ICU cohort and control arms if needed.
-3. Run Exp1.
-4. Materialize winner files.
-5. Run Exp2.
-6. Run Exp3.
-7. Build extended outcomes if needed.
-8. Regenerate aligned family stats.
-9. Rebuild tables, figures, and manuscript assets.
-
-## 10. Verification checks
-
-- `pipeline/tests/unit/`: unit and contract checks for pipeline scripts.
-- `pipeline/tests/dryrun/`: one dry-run wrapper per pipeline script.
-
-If this file drifts from the stage scripts or `pipeline/run_experiments.py`, update the docs and leave the code path unchanged.
+```bash
+pytest pipeline/tests/unit
+bash pipeline/tests/dryrun/run_all.sh
+```

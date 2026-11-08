@@ -52,30 +52,21 @@ MODEL_DIR="${MODEL_DIR:-${RUN_ARTIFACTS_DIR}/models}"
 MODEL_PREFIX="${CONFIG_ID}"
 if [[ "${CONFIG_ID}" == meds_icu_* ]]; then
   MODEL_PREFIX="meds_icu_native"
-elif [[ "${CONFIG_ID}" == meds_mapped_* ]]; then
-  MODEL_PREFIX="meds_mapped"
-elif [[ "${CONFIG_ID}" == meds_randomized_* ]]; then
-  MODEL_PREFIX="meds_randomized"
-elif [[ "${CONFIG_ID}" == meds_freqmatched_* ]]; then
-  MODEL_PREFIX="meds_freqmatched"
+elif [[ "${CONFIG_ID}" == meds_clif_* ]]; then
+  MODEL_PREFIX="meds_clif"
 fi
 
 JOB_NAME="exp3_${MODEL_PREFIX}_s${SEED}"
 JID="${IRB_RUN_JID:-s${SEED}}"
 
-NNODES="${SLURM_JOB_NUM_NODES:-1}"
-NODE_RANK="${SLURM_NODEID:-0}"
-
-# Benchmark contract: single-node training. We default to 1 GPU to improve queue latency,
-# but allow higher-GPU runs when available.
-# Paper: "2 × A100 for Experiments 2–3, trading longer wall-clock time for faster queue throughput."
+# Benchmark contract: one process and one GPU per configuration × seed.
 NPROC_PER_NODE="${IRB_NPROC_PER_NODE:-1}"
-if [[ "${NPROC_PER_NODE}" -ne 8 && "${NPROC_PER_NODE}" -ne 4 && "${NPROC_PER_NODE}" -ne 2 && "${NPROC_PER_NODE}" -ne 1 ]]; then
-  echo "ERROR: IRB_NPROC_PER_NODE must be 1, 2, 4, or 8 for benchmark runs (got ${NPROC_PER_NODE})." >&2
+if [[ "${NPROC_PER_NODE}" -ne 1 ]]; then
+  echo "ERROR: IRB_NPROC_PER_NODE must be 1 for ML4H runs (got ${NPROC_PER_NODE})." >&2
   exit 2
 fi
-if [[ "${NNODES}" -ne 1 ]]; then
-  echo "ERROR: This benchmark assumes single-node training (got SLURM_JOB_NUM_NODES=${NNODES})." >&2
+if [[ "${SLURM_JOB_NUM_NODES:-1}" -ne 1 ]]; then
+  echo "ERROR: This benchmark assumes one node (got SLURM_JOB_NUM_NODES=${SLURM_JOB_NUM_NODES})." >&2
   exit 2
 fi
 
@@ -85,8 +76,13 @@ MODEL_NAME="${IRB_MODEL_NAME:-meta-llama/Llama-3.2-1B}"
 MODEL_VERSION_PREFIX="${IRB_MODEL_VERSION_PREFIX:-exp3}"
 WANDB_PROJECT="${IRB_WANDB_PROJECT:-input-rep-benchmark-exp3}"
 USE_MODEL_CONFIG_OVERRIDES="${IRB_USE_MODEL_CONFIG_OVERRIDES:-true}"
+SAVE_STRATEGY="${IRB_STAGE1_SAVE_STRATEGY:-epoch}"
+EVAL_STRATEGY="${IRB_STAGE1_EVAL_STRATEGY:-epoch}"
+LOAD_BEST_MODEL_AT_END="${IRB_LOAD_BEST_MODEL_AT_END:-true}"
+ADAM_BETA1="${IRB_ADAM_BETA1:-0.9}"
+ADAM_BETA2="${IRB_ADAM_BETA2:-0.999}"
 
-if [[ "${SLURM_JOB_PARTITION:-}" == "sxmq" && "${N_EPOCHS}" =~ ^[0-9]+$ && "${N_EPOCHS}" -gt 1 ]]; then
+if [[ "${SAVE_STRATEGY}" == "steps" && "${SLURM_JOB_PARTITION:-}" == "sxmq" && "${N_EPOCHS}" =~ ^[0-9]+$ && "${N_EPOCHS}" -gt 1 ]]; then
   SXMQ_MAX_SAVE_STEPS="${IRB_SXMQ_MAX_SAVE_STEPS:-500}"
   CURRENT_SAVE_STEPS="${IRB_STAGE1_SAVE_STEPS:-2000}"
   if [[ "${SXMQ_MAX_SAVE_STEPS}" =~ ^[0-9]+$ && "${CURRENT_SAVE_STEPS}" =~ ^[0-9]+$ && "${CURRENT_SAVE_STEPS}" -gt "${SXMQ_MAX_SAVE_STEPS}" ]]; then
@@ -100,15 +96,18 @@ echo "  model_name:             ${MODEL_NAME}"
 echo "  model_version:          ${MODEL_VERSION_PREFIX}_${MODEL_PREFIX}"
 echo "  wandb_project:          ${WANDB_PROJECT}"
 echo "  n_epochs:               ${N_EPOCHS}"
-echo "  IRB_NPROC_PER_NODE:     ${NPROC_PER_NODE}"
-echo "  SLURM_JOB_NUM_NODES:    ${NNODES}"
+echo "  execution:              single process, one GPU (no DDP)"
 echo "  config_overrides:       ${USE_MODEL_CONFIG_OVERRIDES}"
 echo "  resume_from_checkpoint: ${IRB_RESUME_FROM_CHECKPOINT:-auto}"
-echo "  save_strategy:          ${IRB_STAGE1_SAVE_STRATEGY:-steps}"
+echo "  save_strategy:          ${SAVE_STRATEGY}"
 echo "  save_steps:             ${IRB_STAGE1_SAVE_STEPS:-2000}"
-echo "  save_total_limit:       ${IRB_STAGE1_SAVE_TOTAL_LIMIT:-3}"
-echo "  eval_strategy:          ${IRB_STAGE1_EVAL_STRATEGY:-epoch}"
-echo "  load_best_at_end:       ${IRB_LOAD_BEST_MODEL_AT_END:-false}"
+echo "  save_total_limit:       ${IRB_STAGE1_SAVE_TOTAL_LIMIT:-6}"
+echo "  eval_strategy:          ${EVAL_STRATEGY}"
+echo "  load_best_at_end:       ${LOAD_BEST_MODEL_AT_END}"
+echo "  learning_rate:          ${IRB_STAGE1_LR:-1e-4}"
+echo "  adam_betas:             ${ADAM_BETA1}/${ADAM_BETA2}"
+echo "  max_grad_norm:          ${IRB_STAGE1_MAX_GRAD_NORM:-1.0}"
+echo "  scheduler/warmup:       ${IRB_STAGE1_LR_SCHEDULER:-linear}/${IRB_STAGE1_WARMUP_RATIO:-0.01}"
 echo "  mapped_dataset_cache:   ${IRB_USE_MAPPED_DATASET_CACHE:-true}"
 echo "  mapped_cache_dir:       ${IRB_MAPPED_DATASET_CACHE_DIR:-${HF_DATASETS_CACHE}/irb-mapped}"
 
@@ -119,24 +118,17 @@ if [[ "${USE_MODEL_CONFIG_OVERRIDES}" == "true" || "${USE_MODEL_CONFIG_OVERRIDES
     --intermediate_size "${IRB_MODEL_INTERMEDIATE_SIZE:-2048}"
     --num_hidden_layers "${IRB_MODEL_NUM_HIDDEN_LAYERS:-8}"
     --num_attention_heads "${IRB_MODEL_NUM_ATTENTION_HEADS:-8}"
+    --max_position_embeddings "${IRB_MODEL_MAX_POSITION_EMBEDDINGS:-4096}"
   )
 fi
 
-torchrun_args=( "${FMS_EHRS_HOME}/fms_ehrs/scripts/train_representation.py" )
-if [[ "${NNODES}" -gt 1 ]]; then
-  : "${MASTER_ADDR:?MASTER_ADDR must be set for multi-node torchrun (set by runner)}"
-  : "${MASTER_PORT:?MASTER_PORT must be set for multi-node torchrun (set by runner)}"
-  torchrun_args=( --nnodes="${NNODES}" --nproc_per_node="${NPROC_PER_NODE}" --node_rank="${NODE_RANK}" --rdzv_backend=c10d --rdzv_id="${SLURM_JOB_ID}" --rdzv_endpoint="${MASTER_ADDR}:${MASTER_PORT}" "${torchrun_args[@]}" )
-else
-  torchrun_args=( --standalone --nproc_per_node="${NPROC_PER_NODE}" "${torchrun_args[@]}" )
-fi
-
-torchrun "${torchrun_args[@]}" \
+python "${FMS_EHRS_HOME}/fms_ehrs/scripts/train_representation.py" \
   --data_dir "${DATA_DIR}" \
   --data_version "${DATA_VERSION}" \
   --model_dir "${MODEL_DIR}" \
   --model_version "${MODEL_VERSION_PREFIX}_${MODEL_PREFIX}" \
   --model_name "${MODEL_NAME}" \
+  --rope_theta "${IRB_ROPE_THETA:-10000.0}" \
   --use_bf16 "${IRB_USE_BF16}" \
   --attn_implementation "${IRB_ATTN_IMPL}" \
   "${model_config_args[@]}" \
@@ -148,24 +140,29 @@ torchrun "${torchrun_args[@]}" \
   --representation "${REPRESENTATION}" \
   --temporal "${TEMPORAL}" \
   --num_bins "${NUM_BINS}" \
-  --time_rope_scaling "${IRB_TIME_ROPE_SCALING:-60.0}" \
+  --seconds_per_position "${IRB_SECONDS_PER_POSITION:-60.0}" \
   --numeric_loss_weight "${IRB_XVAL_NUMERIC_LOSS_WEIGHT:-1.0}" \
   --clip_sigma "${IRB_XVAL_CLIP_SIGMA:-5.0}" \
-  --optimizer "${IRB_STAGE1_OPTIMIZER:-muon}" \
   --learning_rate "${IRB_STAGE1_LR:-1e-4}" \
-  --muon_learning_rate "${IRB_MUON_LR:-${IRB_STAGE1_LR:-1e-4}}" \
-  --aux_adamw_learning_rate "${IRB_AUX_ADAMW_LR:-${IRB_STAGE1_LR:-1e-4}}" \
+  --adam_beta1 "${ADAM_BETA1}" \
+  --adam_beta2 "${ADAM_BETA2}" \
   --weight_decay "${IRB_STAGE1_WEIGHT_DECAY:-0.01}" \
+  --max_grad_norm "${IRB_STAGE1_MAX_GRAD_NORM:-1.0}" \
+  --lr_scheduler_type "${IRB_STAGE1_LR_SCHEDULER:-linear}" \
+  --warmup_ratio "${IRB_STAGE1_WARMUP_RATIO:-0.01}" \
+  --logging_steps "${IRB_STAGE1_LOGGING_STEPS:-100}" \
+  --evaluations_per_epoch "${IRB_STAGE1_EVALUATIONS_PER_EPOCH:-1}" \
+  --max_steps "${IRB_STAGE1_MAX_STEPS:--1}" \
   --n_epochs "${N_EPOCHS}" \
-  --per_device_train_batch_size 1 \
-  --per_device_eval_batch_size 1 \
-  --gradient_accumulation_steps 2 \
+  --per_device_train_batch_size "${IRB_PER_DEVICE_TRAIN_BATCH_SIZE:-4}" \
+  --per_device_eval_batch_size "${IRB_PER_DEVICE_EVAL_BATCH_SIZE:-4}" \
+  --gradient_accumulation_steps "${IRB_GRADIENT_ACCUMULATION_STEPS:-1}" \
   --resume_from_checkpoint "${IRB_RESUME_FROM_CHECKPOINT:-auto}" \
-  --save_strategy "${IRB_STAGE1_SAVE_STRATEGY:-steps}" \
+  --save_strategy "${SAVE_STRATEGY}" \
   --save_steps "${IRB_STAGE1_SAVE_STEPS:-2000}" \
-  --save_total_limit "${IRB_STAGE1_SAVE_TOTAL_LIMIT:-3}" \
-  --eval_strategy "${IRB_STAGE1_EVAL_STRATEGY:-epoch}" \
-  --load_best_model_at_end "${IRB_LOAD_BEST_MODEL_AT_END:-false}" \
+  --save_total_limit "${IRB_STAGE1_SAVE_TOTAL_LIMIT:-6}" \
+  --eval_strategy "${EVAL_STRATEGY}" \
+  --load_best_model_at_end "${LOAD_BEST_MODEL_AT_END}" \
   --seed "${SEED}" \
   --jid "${JID}" \
   --wandb_project "${WANDB_PROJECT}"

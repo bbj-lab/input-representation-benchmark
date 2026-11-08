@@ -105,8 +105,12 @@ def load_model_for_attention(
         extra_kwargs = {}
         if "num_bins" in rep_meta:
             extra_kwargs["num_bins"] = rep_meta["num_bins"]
-        if "time_rope_scaling" in rep_meta:
-            extra_kwargs["time_rope_scaling"] = rep_meta["time_rope_scaling"]
+        if "seconds_per_position" in rep_meta:
+            extra_kwargs["seconds_per_position"] = rep_meta["seconds_per_position"]
+        elif "time_rope_scaling" in rep_meta:
+            extra_kwargs["seconds_per_position"] = 3600.0 / float(
+                rep_meta["time_rope_scaling"]
+            )
 
         model = create_representation_model(
             base_model=base_model,

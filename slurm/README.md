@@ -1,32 +1,22 @@
-# Benchmark SLURM layout
+# Slurm Batch Launchers
 
-Live benchmark launchers. Python entrypoints live in `../pipeline/`, `../paper/`,
-and `../utilities/`. Run path: [`../README.md`](../README.md).
+Slurm job scripts for the ML4H 2026 benchmark on the Randi cluster. Python entrypoints live in `../pipeline/`, `../paper/`, and `../utilities/`. See [`../PIPELINE.md`](../PIPELINE.md) for the stage-by-stage order.
 
-## Numbered runners
+## Script Prefixes
 
-| Prefix | Role |
-| --- | --- |
-| `00_*` | shared preamble |
-| `01_*` | MEDS extraction |
-| `02_*`–`04_*` | Stage 0 |
-| `04_*`, `07_*`, `08_*` | Stage 1 |
-| `09_*` | Stage 2 array runner |
-| `10_*`, `11_*` | Stage 3 |
-| `12_*` | gated helpers |
-| `13_*` | extended outcome refresh |
-| `15_*` | stats regeneration |
-| `17_*` | additional-run jobfile generation and high-GPU helpers |
-| `18_*` | serial GPU runners and resume helpers |
-
-## Local byproducts
-
-| Path | Role |
-| --- | --- |
-| `generated/statistics/` | stats rerun jobfiles |
-| `generated/outcome_reruns/` | one-off outcome refresh jobfiles |
-| `generated/generalizability_tests/` | additional-run jobfiles |
-| `state/*.last_completed` | serial-runner resume markers |
-
-`ref_qse/` holds vendored Stage 2/3 wrappers. Retired launchers belong in
-`../deprecated/slurm/`.
+| Prefix | Stage | Purpose |
+| --- | --- | --- |
+| `00_preamble.sh` | Shared | Conda environment activation, Hugging Face scratch cache setup, and path defaults |
+| `01_*` | Stage -1 | Raw MIMIC-IV v3.1 to MEDS extraction |
+| `02_*` | Stage -0.5 | Experiment 3 matched ICU cohort alignment and CLIF 2.1.0 collation |
+| `03_*`, `04_*` | Stage 0 | MEDS tokenization and base outcome extraction |
+| `09*` | Calibration | Batch geometry calibration and campaign preflight checks |
+| `10_*` | Stage 1 | 156-model pretraining campaign across `Llama-3.2` and `Qwen3` decoders |
+| `11_*` | Stage 2 | 24-hour prefix hidden-state extraction |
+| `21_*` | Stage 0.5 | 24-to-48-hour clinical outcome extraction |
+| `22_*`, `26_*` | Stage 3 | Locked L2-regularized logistic and Ridge linear probes |
+| `28_*` | Stats | Per-run admission-level bootstrap confidence intervals |
+| `31_*`, `32_*`, `33_*` | Paper | Token counts, centile PCA and boundary probes, and table and figure compilation |
+| `34_*` | Stats | Paired admission-swap permutation tests and hierarchical family-effect intervals |
+| `35_*` | Stats | Patient-cluster bootstrap sensitivity intervals |
+| `ref_qse/` | Stage 2 & 3 | Shared single-task extraction and linear probe worker wrappers |

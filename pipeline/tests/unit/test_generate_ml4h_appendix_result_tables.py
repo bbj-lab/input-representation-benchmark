@@ -34,7 +34,9 @@ def load_module():
 def test_fmt_delta_stars_only_when_requested() -> None:
     tables = load_module()
     assert tables.fmt_delta(0.012) == "+0.012"
-    assert tables.fmt_delta(-0.012, significant=True) == "{-0.012$^{*}$}"
+    assert tables.fmt_delta(-0.012, significant=True) == (
+        r"\bfseries -0.012{\textsuperscript{\textbf{\large *}}}"
+    )
 
 
 def test_starred_delta_requires_matching_point_and_bh_flag() -> None:
@@ -62,7 +64,7 @@ def test_starred_delta_requires_matching_point_and_bh_flag() -> None:
         family="Hospital outcomes",
         value=0.01,
     )
-    assert text == "{+0.010$^{*}$}"
+    assert text == r"\bfseries +0.010{\textsuperscript{\textbf{\large *}}}"
     with pytest.raises(ValueError, match="does not match"):
         tables.starred_delta(
             intervals,

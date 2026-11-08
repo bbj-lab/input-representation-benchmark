@@ -52,15 +52,16 @@ def _pretty_version_label(version: str) -> str:
     cut = "first 24h" if "first_24h" in v else "full timeline"
 
     if "time_tokens" in v and "time_rope" not in v:
-        temporal = "time-spacing tokens"
+        temporal = "Time tokens"
     elif "time_rope" in v:
-        temporal = "no time-spacing tokens"
+        temporal = "No time tokens"
     else:
         temporal = None
 
     if temporal is not None:
-        return f"{temporal} — {cut}"
-    return f"{fused} — {cut}"
+        cut_label = "first 24 h" if cut == "first 24h" else cut
+        return f"{temporal}: {cut_label}"
+    return f"{fused}: {cut}"
 
 
 def _normalize_version_dir(base: Path, version: str) -> Path:
@@ -238,8 +239,14 @@ def main() -> None:
         )
 
         panel_letter = "ABCD"[panel_idx] if panel_idx < 4 else ""
-        label = explicit_labels[panel_idx] if explicit_labels is not None else _pretty_version_label(v)
-        ax.set_title(f"{panel_letter}. {label}", fontsize=12, loc="left")
+        raw_label = explicit_labels[panel_idx] if explicit_labels is not None else _pretty_version_label(v)
+        label = raw_label.replace("\\n", "\n")
+        title_str = f"{panel_letter}. {label}"
+        if "\n" not in title_str and len(title_str) > 38 and " (" in title_str and ") " in title_str:
+            before_paren, rest = title_str.split(" (", 1)
+            inside_paren, after_paren = rest.split(") ", 1)
+            title_str = f"{before_paren} {after_paren}\n({inside_paren})"
+        ax.set_title(title_str, fontsize=10.5, loc="left")
         ax.set_xlabel("Tokenized length (tokens per admission)")
         ax.set_ylabel("Probability mass")
         ax.grid(True, axis="y", alpha=0.25)
@@ -260,9 +267,9 @@ def main() -> None:
 
         s = summaries[v]
         overflow_mass = float(prob[bins[:-1] >= xmax].sum())
-        ax.text(
-            0.98,
-            0.98,
+        ax2.text(
+            0.97,
+            0.78,
             "\n".join(
                 [
                     f"n={s.n:,}",
@@ -274,18 +281,19 @@ def main() -> None:
                     f"max={s.max_len:,}",
                 ]
             ),
-            transform=ax.transAxes,
+            transform=ax2.transAxes,
             ha="right",
             va="top",
-            fontsize=9,
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="0.75", alpha=0.92),
+            fontsize=8.5,
+            zorder=10,
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="0.75", alpha=0.95),
         )
         ax.set_xlim(0, xmax)
 
     fig.suptitle(args.title, fontsize=14)
     out_pdf = args.out_pdf.expanduser().resolve()
     out_pdf.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_pdf)
+    fig.savefig(out_pdf, bbox_inches="tight")
     print(f"Wrote {out_pdf}")
 
 

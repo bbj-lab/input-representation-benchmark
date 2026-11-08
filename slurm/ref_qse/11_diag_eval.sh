@@ -16,6 +16,8 @@
 # Optional env vars:
 #   DIAG_CLASSIFIER     - classifier name (default: logistic_regression)
 #   DIAG_TASK_TYPE       - classification or regression (default: classification)
+#   DIAG_TASK_GROUP      - registry group: binary or regression. Mutually
+#                          exclusive with DIAG_OUTCOMES.
 #   DIAG_OUTCOMES        - space-separated outcome list (default: script default)
 #   DIAG_OUTCOMES_PARQUET - custom parquet filename (default: tokens_timelines_outcomes.parquet)
 #   DIAG_PREDS_TAG       - optional tag inserted before the model stem in the
@@ -57,6 +59,21 @@ DIAG_TASK_TYPE="${DIAG_TASK_TYPE:-classification}"
 DIAG_OUTCOMES_PARQUET="${DIAG_OUTCOMES_PARQUET:-tokens_timelines_outcomes.parquet}"
 DIAG_MLP_HIDDEN="${DIAG_MLP_HIDDEN:-256}"
 DIAG_PREDS_TAG="${DIAG_PREDS_TAG:-}"
+DIAG_TASK_GROUP="${DIAG_TASK_GROUP:-}"
+
+if [[ -n "${DIAG_TASK_GROUP}" && -n "${DIAG_OUTCOMES:-}" ]]; then
+  echo "ERROR: DIAG_TASK_GROUP and DIAG_OUTCOMES are mutually exclusive." >&2
+  exit 2
+fi
+if [[ -n "${DIAG_TASK_GROUP}" ]]; then
+  if [[ "${DIAG_TASK_GROUP}" != "${DIAG_TASK_TYPE}" ]]; then
+    echo "ERROR: DIAG_TASK_GROUP=${DIAG_TASK_GROUP} does not match DIAG_TASK_TYPE=${DIAG_TASK_TYPE}." >&2
+    exit 2
+  fi
+  DIAG_OUTCOMES="$(
+    python3 "${IRB_HOME}/pipeline/scripts/print_task_group.py" "${DIAG_TASK_GROUP}"
+  )"
+fi
 
 # Build the command
 CMD=(
@@ -69,6 +86,7 @@ CMD=(
   --task_type "${DIAG_TASK_TYPE}"
   --outcomes_parquet "${DIAG_OUTCOMES_PARQUET}"
   --save_preds
+  --bootstrap_n "${IRB_STAGE3_BOOTSTRAP_N:-0}"
 )
 
 if [[ -n "${DIAG_PREDS_TAG}" ]]; then

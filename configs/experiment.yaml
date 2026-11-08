@@ -23,7 +23,7 @@ paths:
 
 active_configs:
   meds_default: ../fms-ehrs/fms_ehrs/config/mimic-meds-ed.yaml
-  meds_exp3_icu: ../fms-ehrs/fms_ehrs/config/mimic-meds-exp3-icu.yaml
+  meds_exp3_full: ../fms-ehrs/fms_ehrs/config/mimic-meds-exp3-full.yaml
 
 notes:
   - Use pipeline/run_experiments.py to generate jobfiles.

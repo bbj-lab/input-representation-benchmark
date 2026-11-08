@@ -48,6 +48,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
 
+from fms_ehrs.framework.artifacts import assert_unique_model_stems
+
 # =============================================================================
 # Constants
 # =============================================================================
@@ -73,15 +75,26 @@ DEFAULT_PATHS = {
     "exp12_tokenized_dir": EXP12_TOKENIZED_DIR,
     "model_dir": f"{RUN_ARTIFACTS_PATH}/models",
     "meds_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/mimic-meds-ed.yaml",
-    # Exp3 arms (data outputs produced by pipeline/scripts/align_cohorts.py,
-    # pipeline/scripts/split_meds_by_hadm_splits.py,
-    # pipeline/scripts/build_exp3_meds_semantics_arms.py)
+    # Exp3 arms (data outputs produced by align_cohorts.py,
+    # split_meds_by_hadm_splits.py, and the FMS-owned Cocoa adapter)
     "exp3_meds_icu_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/meds_icu",
-    "exp3_meds_mapped_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/arms/meds_mapped",
-    "exp3_meds_randomized_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/arms/meds_randomized",
-    "exp3_meds_freqmatched_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/arms/meds_freqmatched",
-    "exp3_meds_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/mimic-meds-exp3-icu.yaml",
+    "exp3_meds_clif_data_dir": f"{RUN_ARTIFACTS_PATH}/exp3/meds_clif",
+    "exp3_meds_tokenizer_config": f"{FMS_EHRS_PATH}/fms_ehrs/config/mimic-meds-exp3-full.yaml",
 }
+
+# Fixed linear-probe contract shared by Exp1–Exp3. Explicit jobfile flags
+# complement the runtime guard in transfer_rep_based_preds.py.
+FIXED_PROBE_ARGS = (
+    "--no-tune_logreg_C --logreg_C_grid [0.01] --ridge_alpha_grid [100]"
+)
+
+# Fixed Stage-1 geometry shared by Exp2 and Exp3. These variables are emitted
+# into every generated training command rather than relying on runner defaults.
+FIXED_EXP23_BATCH_ENV = (
+    "IRB_PER_DEVICE_TRAIN_BATCH_SIZE=4 "
+    "IRB_PER_DEVICE_EVAL_BATCH_SIZE=4 "
+    "IRB_GRADIENT_ACCUMULATION_STEPS=1 "
+)
 
 # Quantizer to num_bins mapping
 QUANTIZER_BINS = {
@@ -105,14 +118,14 @@ class ExperimentConfig:
     fused: bool
     representation: str
     temporal: str
-    data_format: str  # meds | meds_icu | meds_mapped | meds_randomized | meds_freqmatched
+    data_format: str  # meds | meds_icu | meds_clif
     # Derived fields
     num_bins: int = field(init=False)
     needs_numeric_values: bool = field(init=False)
 
     def __post_init__(self):
         self.num_bins = QUANTIZER_BINS.get(self.quantizer, 20)
-        self.needs_numeric_values = self.representation in ("soft", "xval")
+        self.needs_numeric_values = self.representation in ("soft", "xval", "xval_affine")
 
     @property
     def config_id(self) -> str:
@@ -208,7 +221,7 @@ def make_exp2_configs(
     discrete_only: bool,
     include_soft: bool = True,
     include_continuous: bool = True,
-    include_affine_continuous: bool = False,
+    include_affine_continuous: bool = True,
     quantizer: str,
     clinical_anchoring: str,
     fused_discrete: bool,
@@ -217,52 +230,36 @@ def make_exp2_configs(
     if discrete_only and not include_discrete:
         raise ValueError("discrete_only=True requires include_discrete=True")
 
+    # Every value encoder is crossed with all three temporal settings so the
+    # factorial stays balanced: event order only, explicit time tokens, and
+    # admission-relative RoPE.
+    temporal_settings = ("event_order", "time_tokens", "time_rope")
+
     if include_discrete:
         configs.extend(
-            [
-                ExperimentConfig(
-                    quantizer,
-                    clinical_anchoring,
-                    fused_discrete,
-                    "discrete",
-                    "time_tokens",
-                    "meds",
-                ),
-                ExperimentConfig(
-                    quantizer,
-                    clinical_anchoring,
-                    fused_discrete,
-                    "discrete",
-                    "time_rope",
-                    "meds",
-                ),
-            ]
+            ExperimentConfig(
+                quantizer,
+                clinical_anchoring,
+                fused_discrete,
+                "discrete",
+                temporal,
+                "meds",
+            )
+            for temporal in temporal_settings
         )
     if not discrete_only:
-        if include_soft:
+        for representation, included in (
+            ("soft", include_soft),
+            ("xval", include_continuous),
+            ("xval_affine", include_affine_continuous),
+        ):
+            if not included:
+                continue
             configs.extend(
-                [
-                    ExperimentConfig(quantizer, clinical_anchoring, False, "soft", "time_tokens", "meds"),
-                    ExperimentConfig(quantizer, clinical_anchoring, False, "soft", "time_rope", "meds"),
-                ]
-            )
-        if include_continuous:
-            configs.extend(
-                [
-                    ExperimentConfig(quantizer, clinical_anchoring, False, "xval", "time_tokens", "meds"),
-                    ExperimentConfig(quantizer, clinical_anchoring, False, "xval", "time_rope", "meds"),
-                ]
-            )
-        if include_affine_continuous:
-            configs.extend(
-                [
-                    ExperimentConfig(
-                        quantizer, clinical_anchoring, False, "xval_affine", "time_tokens", "meds"
-                    ),
-                    ExperimentConfig(
-                        quantizer, clinical_anchoring, False, "xval_affine", "time_rope", "meds"
-                    ),
-                ]
+                ExperimentConfig(
+                    quantizer, clinical_anchoring, False, representation, temporal, "meds"
+                )
+                for temporal in temporal_settings
             )
     return configs
 
@@ -273,30 +270,21 @@ def make_exp2_configs(
 # admissions (hadm_id) with hospital LOS>=24h (hosp/admissions admittime/dischtime)
 # AND >=1 linked ICU stay record in icu/icustays for the same hadm_id.
 #
-# NOTE:
-# The primary Exp3 arms are MEDS-only (native + mapped + null controls) and do
-# not depend on any CLIF-side validation workflow.
-#
-# IMPORTANT:
-# Exp3 should be generated only after selecting an Exp2 winner (representation + temporal),
-# and after selecting an Exp1 winner tokenization regime (quantizer + clinical anchoring + fused/unfused).
-#
-# Therefore Exp3 configs are generated by function given the selected settings.
-def make_exp3_configs(
-    *,
-    representation: str,
-    temporal: str,
-    quantizer: str,
-    clinical_anchoring: str,
-    fused: bool,
-) -> list[ExperimentConfig]:
-    if representation in ("soft", "xval", "xval_affine") and fused:
-        raise ValueError("Exp3 soft/xval requires unfused tokenization (fused=False).")
+# The transport anchor is fixed before data materialization. Exp3 therefore
+# measures source/semantic harmonization rather than inheriting an Exp1/2 winner.
+EXP3_ANCHOR = {
+    "representation": "discrete",
+    "temporal": "time_tokens",
+    "quantizer": "deciles",
+    "clinical_anchoring": "none",
+    "fused": False,
+}
+
+
+def make_exp3_configs() -> list[ExperimentConfig]:
     return [
-        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds_icu"),
-        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds_mapped"),
-        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds_randomized"),
-        ExperimentConfig(quantizer, clinical_anchoring, fused, representation, temporal, "meds_freqmatched"),
+        ExperimentConfig(data_format="meds_icu", **EXP3_ANCHOR),
+        ExperimentConfig(data_format="meds_clif", **EXP3_ANCHOR),
 ]
 
 
@@ -305,20 +293,34 @@ def make_exp3_configs(
 # =============================================================================
 
 
+# Tokenization depends on the temporal setting only through whether spacing tokens
+# are inserted. `time_rope` and `event_order` both omit them and are byte-identical
+# on disk, so they share one tokenized dataset; they diverge only at model input,
+# where `event_order` withholds relative times and falls back to sequential
+# positions. `config_id` still carries the true temporal setting, so model
+# directories and downstream artifacts stay distinct.
+TOKENIZATION_TEMPORAL = {
+    "time_tokens": "time_tokens",
+    "time_rope": "time_rope",
+    "event_order": "time_rope",
+}
+
+
 def get_data_version(config: ExperimentConfig) -> str:
     """Generate data version string for this config."""
     fused_str = "fused" if config.fused else "unfused"
     # IMPORTANT: Tokenization differs between `time_tokens` (inserts spacing tokens)
-    # and `time_rope` (no spacing tokens; temporal info comes from relative_times).
-    # If we do not include `temporal` here, time_tokens/time_rope variants will write
-    # to the same <data_version>-tokenized directory and race/overwrite each other.
+    # and the no-spacing-token settings. If we do not distinguish them here, the
+    # variants will write to the same <data_version>-tokenized directory and
+    # race/overwrite each other.
     numeric_encoding = "_numencxval" if str(config.representation).startswith("xval") else ""
-    return f"{config.quantizer}_{config.clinical_anchoring}_{fused_str}_{config.temporal}{numeric_encoding}"
+    temporal_key = TOKENIZATION_TEMPORAL[config.temporal]
+    return f"{config.quantizer}_{config.clinical_anchoring}_{fused_str}_{temporal_key}{numeric_encoding}"
 
 
 def get_tokenizer_config(config: ExperimentConfig) -> str:
     """Get tokenizer config path for this config."""
-    if config.data_format in ("meds_icu", "meds_mapped", "meds_randomized", "meds_freqmatched"):
+    if config.data_format in ("meds_icu", "meds_clif"):
         return DEFAULT_PATHS["exp3_meds_tokenizer_config"]
     else:
         return DEFAULT_PATHS["meds_tokenizer_config"]
@@ -328,18 +330,14 @@ def get_data_dir(config: ExperimentConfig) -> str:
     """Get data directory for this config."""
     if config.data_format == "meds_icu":
         return DEFAULT_PATHS["exp3_meds_icu_data_dir"]
-    if config.data_format == "meds_mapped":
-        return DEFAULT_PATHS["exp3_meds_mapped_data_dir"]
-    if config.data_format == "meds_randomized":
-        return DEFAULT_PATHS["exp3_meds_randomized_data_dir"]
-    if config.data_format == "meds_freqmatched":
-        return DEFAULT_PATHS["exp3_meds_freqmatched_data_dir"]
+    if config.data_format == "meds_clif":
+        return DEFAULT_PATHS["exp3_meds_clif_data_dir"]
     return DEFAULT_PATHS["meds_data_dir"]
 
 
 def get_tokenized_data_dir(config: ExperimentConfig) -> str:
     """Get the main tokenized-data root for Stage1/2/3 consumption."""
-    if config.data_format in ("meds_icu", "meds_mapped", "meds_randomized", "meds_freqmatched"):
+    if config.data_format in ("meds_icu", "meds_clif"):
         return get_data_dir(config)
     return DEFAULT_PATHS["exp12_tokenized_dir"]
 
@@ -481,7 +479,7 @@ def generate_exp1_stage1_job_file(
                     + f"seed={seed} "
                     + f"IRB_TOKENIZED_DATASET_DIR={DEFAULT_PATHS['exp12_tokenized_dir']} "
                     # Do not hard-code epochs in the jobfile; allow overrides via env.
-                    + "IRB_EXP1_STAGE1_EPOCHS=${IRB_EXP1_STAGE1_EPOCHS:-1} "
+                    + "IRB_EXP1_STAGE1_EPOCHS=${IRB_EXP1_STAGE1_EPOCHS:-5} "
                     + f"MODEL_DIR=${{MODEL_DIR:-{DEFAULT_PATHS['model_dir']}}} "
                     + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
                     + "&& bash slurm/04_exp1_stage1_tune_packed.sh"
@@ -490,6 +488,21 @@ def generate_exp1_stage1_job_file(
 
     output_path.chmod(0o755)
     return len(configs) * len(training_seeds)
+
+
+def _assert_unique_artifact_stems(
+    configs: List[ExperimentConfig],
+    training_seeds: List[int],
+    model_loc_fn,
+) -> None:
+    """Refuse to emit a jobfile whose runs would share one artifact filename.
+
+    Feature and prediction files are keyed by the model location's own name, so
+    two runs mapping to the same stem would silently overwrite each other.
+    """
+    assert_unique_model_stems(
+        model_loc_fn(config, seed) for config in configs for seed in training_seeds
+    )
 
 
 def _exp1_best_model_loc(config: ExperimentConfig, seed: int) -> str:
@@ -508,12 +521,8 @@ def _exp2_model_loc(config: ExperimentConfig, seed: int) -> str:
 def _exp3_model_prefix(config: ExperimentConfig) -> str:
     if config.data_format == "meds_icu":
         return "meds_icu_native"
-    if config.data_format == "meds_mapped":
-        return "meds_mapped"
-    if config.data_format == "meds_randomized":
-        return "meds_randomized"
-    if config.data_format == "meds_freqmatched":
-        return "meds_freqmatched"
+    if config.data_format == "meds_clif":
+        return "meds_clif"
     raise ValueError(f"Unsupported Exp3 data_format: {config.data_format}")
 
 
@@ -534,6 +543,7 @@ def generate_exp1_rep_extract_job_file(
     eval_max_padded_len: int | None = None,
 ) -> int:
     """Exp1 Option-B: extract reps (1 GPU) for each trained FM (config×seed)."""
+    _assert_unique_artifact_stems(configs, training_seeds, _exp1_best_model_loc)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         f.write("# Exp1 Option-B: extract representations (1-GPU torchrun)\n")
@@ -570,6 +580,7 @@ def generate_exp1_rep_pred_job_file(
     eval_max_padded_len: int | None = None,
 ) -> int:
     """Exp1 Option-B: logistic regression on extracted reps (CPU) for each trained FM."""
+    _assert_unique_artifact_stems(configs, training_seeds, _exp1_best_model_loc)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         f.write("# Exp1 Option-B: logistic regression on extracted reps (CPU)\n")
@@ -589,6 +600,7 @@ def generate_exp1_rep_pred_job_file(
                     + f"export data_dir={data_dir} "
                     + f"data_version={dv}_first_24h "
                     + f"model_loc={_exp1_best_model_loc(config, seed)} "
+                    + f"IRB_XFER_PRED_ARGS=\\\"{FIXED_PROBE_ARGS}\\\" "
                     + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
                     + "&& bash slurm/ref_qse/10_xfer_rep_based_preds.sh"
                     + "\"\n"
@@ -605,6 +617,7 @@ def generate_exp2_rep_extract_job_file(
     mode: str,
 ) -> int:
     """Exp2 Option-B: extract reps (1 GPU) for each trained representation model."""
+    _assert_unique_artifact_stems(configs, training_seeds, _exp2_model_loc)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         f.write("# Exp2 Option-B: extract representations (1-GPU torchrun)\n")
@@ -636,6 +649,7 @@ def generate_exp2_rep_pred_job_file(
     mode: str,
 ) -> int:
     """Exp2 Option-B: logistic regression on extracted reps (CPU)."""
+    _assert_unique_artifact_stems(configs, training_seeds, _exp2_model_loc)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         f.write("# Exp2 Option-B: logistic regression on extracted reps (CPU)\n")
@@ -651,6 +665,7 @@ def generate_exp2_rep_pred_job_file(
                     + f"export data_dir={data_dir} "
                     + f"data_version={dv}_first_24h "
                     + f"model_loc={_exp2_model_loc(config, seed)} "
+                    + f"IRB_XFER_PRED_ARGS=\\\"{FIXED_PROBE_ARGS}\\\" "
                     + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
                     + "&& bash slurm/ref_qse/10_xfer_rep_based_preds.sh"
                     + "\"\n"
@@ -667,6 +682,7 @@ def generate_exp3_rep_extract_job_file(
     mode: str,
 ) -> int:
     """Exp3 Option-B: extract reps (1 GPU) for each trained model (MEDS-only arms)."""
+    _assert_unique_artifact_stems(configs, training_seeds, _exp3_model_loc)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         f.write("# Exp3 Option-B: extract representations (1-GPU torchrun)\n")
@@ -698,6 +714,7 @@ def generate_exp3_rep_pred_job_file(
     mode: str,
 ) -> int:
     """Exp3: logistic regression on extracted reps (CPU), run for each MEDS-only arm."""
+    _assert_unique_artifact_stems(configs, training_seeds, _exp3_model_loc)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         f.write("# Exp3 Option-B: logistic regression on extracted reps (CPU)\n")
@@ -717,7 +734,9 @@ def generate_exp3_rep_pred_job_file(
                     # admissions (hadm_id) with LOS>=24h AND >=1 linked ICU stay record in icu/icustays.
                     # Under this cohort restriction, `icu_admission` is typically degenerate.
                     # We evaluate an ICU-relevant replacement endpoint `prolonged_icu_stay` instead.
-                    + "IRB_XFER_PRED_ARGS=\\\"--outcomes same_admission_death long_length_of_stay prolonged_icu_stay imv_event\\\" "
+                    + "IRB_XFER_PRED_ARGS=\\\"--outcomes same_admission_death long_length_of_stay prolonged_icu_stay imv_event "
+                    + FIXED_PROBE_ARGS
+                    + "\\\" "
                     + "FMS_EHRS_HOME=${FMS_EHRS_HOME:-../fms-ehrs} "
                     + "&& bash slurm/ref_qse/10_xfer_rep_based_preds.sh"
                     + "\"\n"
@@ -805,7 +824,8 @@ def generate_exp2_stage1_job_file(
         for seed in training_seeds:
             commands.append(
                 f"IRB_TOKENIZED_DATASET_DIR={DEFAULT_PATHS['exp12_tokenized_dir']} "
-                "IRB_EXP23_STAGE1_EPOCHS=${IRB_EXP23_STAGE1_EPOCHS:-1} bash slurm/07_exp2_stage1_train_representation.sh "
+                f"{FIXED_EXP23_BATCH_ENV}"
+                "IRB_EXP23_STAGE1_EPOCHS=${IRB_EXP23_STAGE1_EPOCHS:-5} bash slurm/07_exp2_stage1_train_representation.sh "
                 f"--config_id {config.config_id} "
                 f"--data_version {data_version} "
                 f"--representation {config.representation} "
@@ -850,6 +870,11 @@ def generate_exp3_stage0_job_file(
         )
         fused_flag = "true" if config.fused else "false"
         numeric_encoding = "xval" if str(config.representation).startswith("xval") else "quantile"
+        outcomes_events_arg = (
+            f" --outcomes_meds_events_dir {DEFAULT_PATHS['exp3_meds_icu_data_dir']}"
+            if config.data_format == "meds_clif"
+            else ""
+        )
 
         cmd = (
             "bash slurm/04_exp3_stage0_tokenize_and_outcomes.sh "
@@ -864,6 +889,7 @@ def generate_exp3_stage0_job_file(
             f"--include_time_spacing_tokens {include_time_tokens} "
             f"--fused_category_values {fused_flag} "
             f"--numeric_encoding {numeric_encoding}"
+            f"{outcomes_events_arg}"
         )
         commands.append(cmd
         )
@@ -899,7 +925,8 @@ def generate_exp3_stage1_job_file(
         data_dir = get_data_dir(config)
         for seed in training_seeds:
             commands.append(
-                "IRB_EXP23_STAGE1_EPOCHS=${IRB_EXP23_STAGE1_EPOCHS:-1} bash slurm/08_exp3_stage1_train_representation.sh "
+                f"{FIXED_EXP23_BATCH_ENV}"
+                "IRB_EXP23_STAGE1_EPOCHS=${IRB_EXP23_STAGE1_EPOCHS:-5} bash slurm/08_exp3_stage1_train_representation.sh "
                 f"--config_id {config.config_id} "
                 f"--data_dir {data_dir} "
                 f"--data_version {data_version} "
@@ -990,8 +1017,8 @@ def main():
     parser.add_argument(
         "--exp2_include_xval_affine",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Include the 2 auxiliary Exp2 xVal-affine reruns used in the paper appendix (default: false).",
+        default=True,
+        help="Include Exp2 xVal-affine configs (default: true).",
     )
     parser.add_argument(
         "--exp2_from_exp1_config_id",
@@ -1026,42 +1053,42 @@ def main():
         "--exp3_representation",
         type=str,
         default=None,
-        help="(Required for Exp3) Selected Exp2 winner representation: discrete|soft|xval.",
+        help="Retired: Exp3 is fixed to the declared discrete time-token anchor.",
     )
     parser.add_argument(
         "--exp3_temporal",
         type=str,
         default=None,
-        help="(Required for Exp3) Selected Exp2 winner temporal: time_tokens|time_rope.",
+        help="Retired: Exp3 is fixed to the declared discrete time-token anchor.",
     )
     parser.add_argument(
         "--exp3_quantizer",
         type=str,
         default=None,
-        help="(Required for Exp3) Selected Exp1 winner quantizer: deciles|ventiles|trentiles|centiles.",
+        help="Retired: Exp3 is fixed to the declared discrete time-token anchor.",
     )
     parser.add_argument(
         "--exp3_clinical_anchoring",
         type=str,
         default=None,
-        help="(Required for Exp3) Selected Exp1 winner clinical anchoring: none|5-10-5|10-10-10.",
+        help="Retired: Exp3 is fixed to the declared discrete time-token anchor.",
     )
     parser.add_argument(
         "--exp3_fused",
         action="store_true",
-        help="(Optional for Exp3) Use fused tokenization in Exp3 (only valid for discrete representation).",
+        help="Retired: Exp3 is fixed to unfused tokenization.",
     )
     parser.add_argument(
         "--exp3_from_exp1_config_id",
         type=str,
         default=None,
-        help="Use Exp1 winner config_id to populate Exp3 quantizer/anchoring/fused (no placeholders).",
+        help="Retired: Exp3 does not inherit an Exp1 winner.",
     )
     parser.add_argument(
         "--exp3_from_exp2_config_id",
         type=str,
         default=None,
-        help="Use Exp2 winner config_id to populate Exp3 representation/temporal (no placeholders).",
+        help="Retired: Exp3 does not inherit an Exp2 winner.",
     )
     parser.add_argument(
         "--output-dir",
@@ -1092,28 +1119,16 @@ def main():
         ),
     )
     parser.add_argument(
-        "--exp3_meds_mapped_data_dir",
+        "--exp3_meds_clif_data_dir",
         type=str,
-        default=DEFAULT_PATHS["exp3_meds_mapped_data_dir"],
-        help="(Exp3) MEDS→CLIF mapped events directory (train/val/test).",
-    )
-    parser.add_argument(
-        "--exp3_meds_randomized_data_dir",
-        type=str,
-        default=DEFAULT_PATHS["exp3_meds_randomized_data_dir"],
-        help="(Exp3) MEDS randomized-mapping control events directory (train/val/test).",
-    )
-    parser.add_argument(
-        "--exp3_meds_freqmatched_data_dir",
-        type=str,
-        default=DEFAULT_PATHS["exp3_meds_freqmatched_data_dir"],
-        help="(Exp3) MEDS frequency-matched collapse control events directory (train/val/test).",
+        default=DEFAULT_PATHS["exp3_meds_clif_data_dir"],
+        help="(Exp3) Full CLIF-schematized MIMIC events in the same H_ICU splits.",
     )
     parser.add_argument(
         "--exp3_meds_tokenizer_config",
         type=str,
         default=DEFAULT_PATHS["exp3_meds_tokenizer_config"],
-        help="(Exp3) Tokenizer config for MEDS Exp3 ICU matched-signal subset (YAML).",
+        help="(Exp3) Shared full-schema tokenizer config for the frozen H_ICU arms.",
     )
     args = parser.parse_args()
 
@@ -1121,9 +1136,7 @@ def main():
     DEFAULT_PATHS["meds_data_dir"] = args.meds_data_dir
     DEFAULT_PATHS["meds_tokenizer_config"] = args.meds_tokenizer_config
     DEFAULT_PATHS["exp3_meds_icu_data_dir"] = args.exp3_meds_icu_data_dir
-    DEFAULT_PATHS["exp3_meds_mapped_data_dir"] = args.exp3_meds_mapped_data_dir
-    DEFAULT_PATHS["exp3_meds_randomized_data_dir"] = args.exp3_meds_randomized_data_dir
-    DEFAULT_PATHS["exp3_meds_freqmatched_data_dir"] = args.exp3_meds_freqmatched_data_dir
+    DEFAULT_PATHS["exp3_meds_clif_data_dir"] = args.exp3_meds_clif_data_dir
     DEFAULT_PATHS["exp3_meds_tokenizer_config"] = args.exp3_meds_tokenizer_config
 
     # Write generated jobfiles under a mode-specific subdirectory to avoid
@@ -1227,12 +1240,9 @@ def main():
 
             exp_name = "Experiment 2: Representation"
         else:
-            # Enforce explicit winner selection; no placeholders.
             for k in [
                 "exp3_meds_icu_data_dir",
-                "exp3_meds_mapped_data_dir",
-                "exp3_meds_randomized_data_dir",
-                "exp3_meds_freqmatched_data_dir",
+                "exp3_meds_clif_data_dir",
             ]:
                 p = _resolve_repo_path(DEFAULT_PATHS[k])
                 if not p.exists():
@@ -1240,52 +1250,41 @@ def main():
                         f"Exp3 requires {k} to exist: {p}. "
                         "Build these outputs first:\n"
                         "  - pipeline/scripts/split_meds_by_hadm_splits.py -> exp3_meds_icu_data_dir\n"
-                        "  - pipeline/scripts/build_exp3_meds_semantics_arms.py -> exp3_meds_{mapped,randomized,freqmatched}_data_dir\n"
+                        "  - fms_ehrs/scripts/collate_clif_with_cocoa.py -> exp3_meds_clif_data_dir\n"
                     )
-            if args.exp3_from_exp1_config_id is not None:
-                exp1 = _parse_config_id(args.exp3_from_exp1_config_id)
-                exp3_quantizer = exp1["quantizer"]
-                exp3_clinical_anchoring = exp1["clinical_anchoring"]
-                exp3_fused = exp1["fused"]
-            else:
-                exp3_quantizer = args.exp3_quantizer
-                exp3_clinical_anchoring = args.exp3_clinical_anchoring
-                exp3_fused = args.exp3_fused
-
-            if args.exp3_from_exp2_config_id is not None:
-                exp2 = _parse_config_id(args.exp3_from_exp2_config_id)
-                exp3_representation = exp2["representation"]
-                exp3_temporal = exp2["temporal"]
-            else:
-                exp3_representation = args.exp3_representation
-                exp3_temporal = args.exp3_temporal
-
-            missing = [
-                k
-                for k, v in {
-                    "exp3_representation": exp3_representation,
-                    "exp3_temporal": exp3_temporal,
-                    "exp3_quantizer": exp3_quantizer,
-                    "exp3_clinical_anchoring": exp3_clinical_anchoring,
-                }.items()
-                if v is None
-            ]
-            if missing:
-                raise SystemExit(
-                    "Exp3 requires explicit winner selections (no placeholders). "
-                    f"Missing: {', '.join(missing)}. "
-                    "Provide either:\n"
-                    "  - --exp3_from_exp1_config_id and --exp3_from_exp2_config_id\n"
-                    "OR:\n"
-                    "  - --exp3_representation --exp3_temporal --exp3_quantizer --exp3_clinical_anchoring"
-                )
-            configs = make_exp3_configs(
-                representation=exp3_representation,
-                temporal=exp3_temporal,
-                quantizer=exp3_quantizer,
-                clinical_anchoring=exp3_clinical_anchoring,
-                fused=exp3_fused,
+            clif_manifest = (
+                _resolve_repo_path(DEFAULT_PATHS["exp3_meds_clif_data_dir"])
+                / "cocoa_adapter_manifest.json"
             )
+            if not clif_manifest.is_file():
+                raise ValueError(
+                    f"Exp3 requires the validated Cocoa adapter manifest: {clif_manifest}"
+                )
+            frozen_manifest = (
+                IRB_HOME / RUN_ARTIFACTS_PATH / "exp3/cohort/frozen_split_manifest.json"
+            )
+            if not frozen_manifest.is_file():
+                raise ValueError(
+                    f"Exp3 requires the frozen H_ICU split manifest: {frozen_manifest}"
+                )
+            retired_exp3_options = {
+                "exp3_representation": args.exp3_representation,
+                "exp3_temporal": args.exp3_temporal,
+                "exp3_quantizer": args.exp3_quantizer,
+                "exp3_clinical_anchoring": args.exp3_clinical_anchoring,
+                "exp3_fused": args.exp3_fused,
+                "exp3_from_exp1_config_id": args.exp3_from_exp1_config_id,
+                "exp3_from_exp2_config_id": args.exp3_from_exp2_config_id,
+            }
+            used_retired = [
+                name for name, value in retired_exp3_options.items() if value
+            ]
+            if used_retired:
+                raise SystemExit(
+                    "Exp3 uses its predeclared fixed anchor and does not accept "
+                    f"winner-derived options: {', '.join(used_retired)}"
+                )
+            configs = make_exp3_configs()
             exp_name = "Experiment 3: Data Format"
 
         if exp == 1:

@@ -117,6 +117,8 @@ OUTCOME_DISPLAY_LABELS = {
     "long_length_of_stay": "Still hospitalized at hour 48",
     "icu_admission": "First ICU admission in hours 24--48",
     "prolonged_icu_stay": "Still in ICU at hour 48",
+    "min_bnp": "Minimum NT-proBNP",
+    "peak_bnp": "Maximum NT-proBNP",
 }
 FAMILY_ROWS = [
     ("binary", "Hospital outcomes", "Hospital AUROC"),
@@ -139,7 +141,11 @@ MAIN_FAMILY_LABELS = (
     "Vital signs",
 )
 POINT_COL = r"S[table-format=1.3]"
-DELTA_COL = r"S[table-format=+1.3,table-space-text-post={$^{*}$}]"
+STAR_MARK = r"{\textsuperscript{\textbf{\large *}}}"
+DELTA_COL = (
+    r"S[table-format=+1.3,"
+    r"table-space-text-post={\textsuperscript{\textbf{\large *}}}]"
+)
 MAIN_CELL_NOTE = (
     r"Each cell is the six-model family mean "
     r"(two architectures $\times$ three seeds). "
@@ -461,7 +467,7 @@ def fmt_point(value: float) -> str:
 def fmt_delta(value: float, significant: bool = False) -> str:
     text = f"{value:+.3f}"
     if significant:
-        return "{" + text + r"$^{*}$}"
+        return r"\bfseries " + text + STAR_MARK
     return text
 
 
@@ -839,13 +845,16 @@ def write_main_exp3_table(
         r"\floatconts",
         r"  {tab:exp3_family}",
         r"  {\caption{Experiment~3 native MIMIC versus CLIF~2.1.0. "
-        r"$\Delta$ is CLIF minus native. Vocabulary 17{,}752$\to$397 entries; "
-        r"aggregate first-24h tokens $1.085{\times}10^{8}\to 3.34{\times}10^{7}$ "
-        r"(30.8\%) on 57{,}690 training admissions. "
+        r"$\Delta$ is CLIF minus native. Across 57{,}690 training admissions, "
+        r"full-hospitalization training-corpus tokens were "
+        r"684.7 million$\to$195.9 million (28.6\%); untruncated first-24h "
+        r"tokens used to construct representation-extraction inputs were "
+        r"108.5 million$\to$33.4 million (30.8\%); and tokenizer vocabulary "
+        r"was 17{,}752$\to$397 entries. "
         + MAIN_CELL_NOTE
         + r" Ranges: \tableref{tab:appendix_family_means_exp3}.}}",
         r"  {\small",
-        r"  \setlength{\tabcolsep}{6pt}",
+        r"  \setlength{\tabcolsep}{4pt}",
         r"  \begin{tabular}{@{}l" + POINT_COL + POINT_COL + DELTA_COL + r"@{}}",
         r"    \toprule",
         r"    Family & {Native MIMIC} & {CLIF 2.1.0} & {$\Delta$} \\",

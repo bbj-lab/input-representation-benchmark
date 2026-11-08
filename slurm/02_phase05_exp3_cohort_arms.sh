@@ -7,7 +7,7 @@
 #SBATCH --mem=128GB
 
 # =============================================================================
-# Stage -0.5: Build Exp3 ICU cohort + semantic-control arms
+# Stage -0.5: Build matched raw-MIMIC and full-CLIF Exp3 arms
 # =============================================================================
 
 set -euo pipefail
@@ -35,10 +35,15 @@ MEDS_EVENTS_DIR="${IRB_HOME}/benchmarks/mimic-meds-extraction/data/meds/data"
 EXP3_ROOT="${IRB_HOME}/outputs/runs/exp3"
 COHORT_DIR="${EXP3_ROOT}/cohort"
 MEDS_ICU_DIR="${EXP3_ROOT}/meds_icu"
-ARMS_DIR="${EXP3_ROOT}/arms"
+CLIF_SRC_DIR="${CLIF_SRC_DIR:-${IRB_HOME}/../CLIF-SRC/mimic-2.1.0}"
+MEDS_CLIF_DIR="${EXP3_ROOT}/meds_clif"
+FMS_EHRS_HOME="${FMS_EHRS_HOME:-$(realpath "${IRB_HOME}/../fms-ehrs")}"
+COCOA_CONFIG="${FMS_EHRS_HOME}/fms_ehrs/config/cocoa-exp3-clif-full.yaml"
+FROZEN_SPLITS_MANIFEST="${COHORT_DIR}/frozen_split_manifest.json"
+COCOA_WORK_DIR="${EXP3_ROOT}/cocoa_work"
 
 echo "=============================================="
-echo "Stage -0.5: Exp3 cohort + semantic arms"
+echo "Stage -0.5: Exp3 raw-MIMIC + CLIF arms"
 echo "Host: $(hostname)"
 echo "=============================================="
 
@@ -58,19 +63,30 @@ python pipeline/scripts/split_meds_by_hadm_splits.py \
   --splits_dir "${COHORT_DIR}" \
   --meds_out_dir "${MEDS_ICU_DIR}"
 
-# Step 3: build semantic-control arms (mapped, randomized, freqmatched)
+# Step 3: freeze the verified native split, then collate full CLIF through the
+# FMS-owned Cocoa adapter. Cocoa's own chronological splitting is never used.
 echo ""
-echo "=== Step 3: build_exp3_meds_semantics_arms ==="
-python pipeline/scripts/build_exp3_meds_semantics_arms.py \
-  --meds_in_dir "${MEDS_ICU_DIR}" \
-  --out_root "${ARMS_DIR}" \
-  --clif_mimic_repo "${IRB_HOME}/../CLIF-MIMIC" \
-  --seed 42
+echo "=== Step 3a: freeze native H_ICU split ==="
+python "${FMS_EHRS_HOME}/fms_ehrs/scripts/collate_clif_with_cocoa.py" \
+  freeze-splits \
+  --cohort-dir "${COHORT_DIR}" \
+  --raw-meds-dir "${MEDS_ICU_DIR}" \
+  --output "${FROZEN_SPLITS_MANIFEST}"
+
+echo ""
+echo "=== Step 3b: Cocoa collation + FMS MEDS adaptation ==="
+python "${FMS_EHRS_HOME}/fms_ehrs/scripts/collate_clif_with_cocoa.py" \
+  materialize \
+  --raw-data-home "${CLIF_SRC_DIR}" \
+  --collation-config "${COCOA_CONFIG}" \
+  --frozen-splits-manifest "${FROZEN_SPLITS_MANIFEST}" \
+  --output-meds-dir "${MEDS_CLIF_DIR}" \
+  --work-dir "${COCOA_WORK_DIR}"
 
 echo ""
 echo "=============================================="
 echo "Stage -0.5 complete"
 echo "=============================================="
 echo "  Cohort: ${COHORT_DIR}"
-echo "  Native: ${MEDS_ICU_DIR}"
-echo "  Arms:   ${ARMS_DIR}"
+echo "  Raw MIMIC: ${MEDS_ICU_DIR}"
+echo "  Full CLIF: ${MEDS_CLIF_DIR}"
