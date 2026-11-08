@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the isolated ML4H 24-to-48-hour provisional evaluation bundle."""
+"""Build the 24-to-48-hour metric bundle (metric tables and review figures)."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ DEFAULT_RUN_ROOT = REPO_ROOT / "outputs/runs/ml4h_2026"
 DEFAULT_TOKENIZED_ROOT = (
     REPO_ROOT / "outputs/runs/tokenized/mimiciv-3.1_meds_70-10-20"
 )
-DEFAULT_OUTPUT_ROOT = REPO_ROOT.parent / "Archive/ml4h-dump/08_ML4H_provisional"
+DEFAULT_OUTPUT_ROOT = REPO_ROOT / "outputs/runs/ml4h_2026/metric_bundle"
 FIGURE_SECTIONS = (
     "00_data",
     "01_representation_summary",

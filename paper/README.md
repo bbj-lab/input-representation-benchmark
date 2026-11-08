@@ -25,7 +25,7 @@ These scripts are not paper outputs. Other scripts import them, or they build th
 
 | Script | Role |
 | :-- | :-- |
-| `generate_ml4h_24to48h_provisional.py` | Builds the 24–48h metric bundle from Stage 3 prediction files |
+| `generate_ml4h_24to48h_provisional.py` | Builds the 24–48h metric bundle from Stage 3 prediction files (run by `slurm/23_build_ml4h_metric_tables.sh`) |
 | `generate_ml4h_figures.py` | Shared figure helpers |
 | `generate_ml4h_outcome_factor_traces.py`, `generate_ml4h_outcome_family_traces.py` | Outcome and family trace plots for internal review |
 | `generate_ml4h_spider_charts.py`, `generate_ml4h_provisional_visual_alternatives.py`, `generate_ml4h_submission_previews.py` | Plot constants and condition definitions that the trace and bootstrap scripts import |

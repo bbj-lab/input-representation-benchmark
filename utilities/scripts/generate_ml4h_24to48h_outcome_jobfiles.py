@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
         "--exp1-stage2-manifest",
         type=Path,
         default=Path(
-            "outputs/runs/ml4h_2026/stage2_repaired_test/exp1_extract_manifest.json"
+            "outputs/runs/ml4h_2026/stage2/exp1_extract_manifest.json"
         ),
     )
     parser.add_argument(
@@ -68,7 +68,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("outputs/runs/ml4h_2026/provisional_24to48h"),
+        default=Path("outputs/runs/ml4h_2026/outcomes_24to48h"),
     )
     return parser.parse_args()
 

@@ -32,7 +32,7 @@ Tokenization decides what clinical information enters a generative medical event
 
 We train **156 models** (Llama-3.2-style and Qwen3-style decoders, three seeds) on full MIMIC-IV hospitalizations. Linear probes then read frozen 24-hour representations and predict outcomes in hours 24–48 across eight clinician-defined outcome families.
 
-This repository holds the benchmark: cohort and outcome construction, Slurm orchestration, statistics, and the manuscript tables and figures. The model code (tokenizer, training, extraction, and probes) is in the companion repository [**fms-ehrs**](https://github.com/bbj-lab/fms-ehrs/tree/dev-input-rep).
+This repository holds the benchmark: cohort and outcome construction, Slurm orchestration, statistics, and the manuscript tables and figures. The model code (tokenizer, training, extraction, and probes) is in the companion repository [**fms-ehrs**](https://github.com/bbj-lab/fms-ehrs/tree/ml4h-2026). The tag `ml4h-2026` marks the fms-ehrs version used for the paper.
 
 ## Main results
 
@@ -82,7 +82,7 @@ Parameter counts are for unfused deciles.
 
 ```bash
 git clone https://github.com/bbj-lab/input-representation-benchmark.git
-git clone -b dev-input-rep https://github.com/bbj-lab/fms-ehrs.git
+git clone -b ml4h-2026 https://github.com/bbj-lab/fms-ehrs.git
 git clone https://github.com/bbj-lab/cocoa.git
 git -C cocoa checkout 03f3f33f6e2ae8d2df2593966cc50bd500e57696
 ```
@@ -121,9 +121,12 @@ The launchers in [`slurm/`](slurm/) target the Randi cluster at the University o
 | 0.5 | Outcomes in hours 24–48 | `21_submit_ml4h_24to48h_outcomes_cpu.sh` | `extract_extended_outcomes.py` |
 | 1 | Train 156 models | `10_submit_ml4h_campaign_stage1.sh` | fms-ehrs `tune_model.py`, `train_representation.py` |
 | 2 | Extract 24-hour hidden states | `11_submit_ml4h_exp{1,2,3}_stage2_opportunistic.sh` | fms-ehrs `extract_hidden_states.py` |
-| 3 | Fit linear probes | `22_*` | fms-ehrs `transfer_rep_based_preds.py` |
+| 3 | Fit linear probes | `22_submit_ml4h_24to48h_probes.sh` | fms-ehrs `transfer_rep_based_preds.py` |
+| Metrics | Build the metric tables | `23_build_ml4h_metric_tables.sh` | `generate_ml4h_24to48h_provisional.py` |
 | Stats | Model-level tests and bootstrap intervals | `28_*`, `34_*`, `35_*` | `bootstrap_ml4h_*.py`, `ml4h_model_level_tests.py` |
 | Paper | Tables and figures | `31_rerun_ml4h_pca_probe.sh`, `33_*`, `34_rebuild_ml4h_length_histograms.sh` | `paper/scripts/` |
+
+Stages 0.5, 3, and Metrics run as one chain. `21_*` submits `22_*` after the outcome jobs complete, and `22_*` submits `23_*` after the probe jobs complete.
 
 ## Result files
 
@@ -145,7 +148,6 @@ All paths are relative to `outputs/runs/ml4h_2026/`. Column notes are in [`metri
 ```text
 input-representation-benchmark/
 ├── benchmarks/mimic-meds-extraction/   MIMIC-IV to MEDS extraction (adapted from ETHOS-ARES)
-├── configs/                            experiment configuration
 ├── pipeline/
 │   ├── run_experiments.py              experiment grid and jobfile generation
 │   ├── task_registry.py                outcome task lists

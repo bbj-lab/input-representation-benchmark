@@ -86,10 +86,9 @@ CONFIG_COLORS = {
 }
 BACKBONE_COLORS = {"llama": "#3B6FB6", "qwen": "#C85A5A"}
 
-# MLHC manuscript figure grammar: color encodes the granularity/anchoring regime
-# and marker encodes fusion. Reused so ML4H-ready panels stay visually
-# comparable with the existing manuscript figures.
-MLHC_REGIME_COLORS = {
+# Exp1 figure colors: color encodes the bin granularity and anchoring, and
+# the marker encodes fusion.
+EXP1_GRAIN_COLORS = {
     "Deciles (population)": "#4E79A7",
     "Ventiles (population)": "#76B7B2",
     "Ventiles (reference-range)": "#59A14F",
@@ -97,7 +96,7 @@ MLHC_REGIME_COLORS = {
     "Trentiles (reference-range)": "#B07AA1",
     "Centiles (population)": "#F28E2B",
 }
-MLHC_REGIME_BY_CONFIG = {
+EXP1_GRAIN_BY_CONFIG = {
     "meds_deciles_none_fusedFalse_discrete_time_tokens": "Deciles (population)",
     "meds_deciles_none_fusedTrue_discrete_time_tokens": "Deciles (population)",
     "meds_ventiles_none_fusedFalse_discrete_time_tokens": "Ventiles (population)",
@@ -1485,7 +1484,7 @@ def seed_interval_source(metrics: pd.DataFrame) -> pd.DataFrame:
     )
     if not (grouped["n_seeds"] == 3).all():
         raise ValueError("Every ML4H-ready point must aggregate exactly three seeds")
-    grouped["regime"] = grouped["config_id"].map(MLHC_REGIME_BY_CONFIG)
+    grouped["regime"] = grouped["config_id"].map(EXP1_GRAIN_BY_CONFIG)
     grouped["fusion"] = np.where(
         grouped["config_id"].str.contains("fusedTrue"), "Fused", "Unfused"
     )
@@ -1538,7 +1537,7 @@ def _plot_ml4h_forest_panel(
             if row.empty:
                 continue
             record = row.iloc[0]
-            color = MLHC_REGIME_COLORS[record["regime"]]
+            color = EXP1_GRAIN_COLORS[record["regime"]]
             fused = record["fusion"] == "Fused"
             y = base_y[outcome_index] + offsets[handle_index]
             points.extend([float(record["lo"]), float(record["hi"])])
@@ -1614,7 +1613,7 @@ def build_ml4h_ready_outcome_forests(source: pd.DataFrame, writer: FigureWriter)
             markersize=4.5,
             label=label,
         )
-        for label, color in MLHC_REGIME_COLORS.items()
+        for label, color in EXP1_GRAIN_COLORS.items()
     ]
     marker_handles = [
         Line2D(
@@ -1664,7 +1663,7 @@ def build_ml4h_ready_outcome_forests(source: pd.DataFrame, writer: FigureWriter)
         stem="exp1_outcome_forests",
         source=source,
         description=(
-            "MLHC-style Exp1 outcome forest with architecture rows; seed mean point "
+            "Exp1 outcome forest with architecture rows; seed mean point "
             "and seed min-max whisker across all 39 outcomes."
         ),
     )
@@ -1766,7 +1765,7 @@ def build_ml4h_ready_axis_summary_bars(
         stem="exp1_axis_summary_bars",
         source=summary,
         description=(
-            "MLHC-style Exp1 axis summary bars for fusion, granularity, and anchoring, "
+            "Exp1 axis summary bars for fusion, granularity, and anchoring, "
             "grouped by architecture."
         ),
     )
@@ -1776,7 +1775,7 @@ def build_ml4h_ready_training_curves(
     training: pd.DataFrame, writer: FigureWriter
 ) -> None:
     evaluations = training.loc[training["eval_loss"].notna()].copy()
-    evaluations["regime"] = evaluations["config_id"].map(MLHC_REGIME_BY_CONFIG)
+    evaluations["regime"] = evaluations["config_id"].map(EXP1_GRAIN_BY_CONFIG)
     evaluations["fusion"] = np.where(
         evaluations["config_id"].str.contains("fusedTrue"), "Fused", "Unfused"
     )
@@ -1790,7 +1789,7 @@ def build_ml4h_ready_training_curves(
             grouped = config_rows.groupby("progress_fraction")["eval_loss"].agg(
                 ["mean", "min", "max"]
             )
-            color = MLHC_REGIME_COLORS[MLHC_REGIME_BY_CONFIG[config_id]]
+            color = EXP1_GRAIN_COLORS[EXP1_GRAIN_BY_CONFIG[config_id]]
             fused = "fusedTrue" in config_id
             ax.fill_between(
                 grouped.index,
@@ -1815,7 +1814,7 @@ def build_ml4h_ready_training_curves(
     axes[0].set_ylabel("Validation loss", fontsize=8.4)
     legend_handles = [
         Line2D([0], [0], color=color, linewidth=1.4, label=label)
-        for label, color in MLHC_REGIME_COLORS.items()
+        for label, color in EXP1_GRAIN_COLORS.items()
     ] + [
         Line2D([0], [0], color="#4B5563", linewidth=1.4, linestyle="--", label="Unfused"),
         Line2D([0], [0], color="#4B5563", linewidth=1.4, linestyle="-", label="Fused"),
@@ -1840,7 +1839,7 @@ def build_ml4h_ready_training_curves(
         stem="exp1_training_validation_loss",
         source=evaluations,
         description=(
-            "MLHC-style validation-loss curves faceted by architecture with seed-range bands."
+            "Validation-loss curves faceted by architecture with seed-range bands."
         ),
     )
 

@@ -12,7 +12,8 @@ Batch scripts for the Randi cluster at the University of Chicago. The launchers 
 | 0.5 · 24–48h outcomes | `21_submit_ml4h_24to48h_outcomes_cpu.sh` | `15_run_stats_cpu_jobfile.sh` |
 | 1 · Training | `10_submit_ml4h_campaign_stage1.sh` | `06_run_stage1_gpu1_train.sh` |
 | 2 · Extraction | `11_submit_ml4h_exp{1,2,3}_stage2_opportunistic.sh` | `09_run_stage2_gpu2_extract.sh` |
-| 3 · Probes | `22_prepare_submit_ml4h_24to48h_probes.sh`, `22_submit_ml4h_24to48h_exp2_exp3_probes.sh` | `11_run_stage3_tier2q_lr.sh` |
+| 3 · Probes | `22_submit_ml4h_24to48h_probes.sh` | `11_run_stage3_tier2q_lr.sh` |
+| Metric tables | `23_build_ml4h_metric_tables.sh` | — |
 | Hospitalization bootstrap | `28_submit_ml4h_24to48h_bootstrap.sh` | `28_run_*`, `28_concat_*` |
 | Admission-swap tests | `34_submit_ml4h_family_effect_bootstrap.sh` | `34_run_*`, `34_concat_*` |
 | Patient-clustered bootstrap | `35_submit_ml4h_patient_clusters.sh` | `35_build_*`, `35_run_*`, `35_concat_*` |
@@ -21,4 +22,4 @@ Batch scripts for the Randi cluster at the University of Chicago. The launchers 
 | Length histograms | `34_rebuild_ml4h_length_histograms.sh` | — |
 | Exp. 3 token counts | `31_count_exp3_train_tokens.sh` | — |
 
-`ref_qse/` holds the single-task extraction and probe wrappers. The other scripts in this folder are earlier launchers, calibration runs, and debug helpers.
+`ref_qse/` holds the single-task extraction and probe wrappers. `21_*` submits `22_*` after the outcome jobs complete, and `22_*` submits `23_*` after the probe jobs complete. The other scripts in this folder are earlier launchers, calibration runs, and debug helpers.

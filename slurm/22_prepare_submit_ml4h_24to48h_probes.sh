@@ -150,7 +150,7 @@ figure_sbatch=(sbatch --parsable)
 if [[ -n "${afterok_jobs}" ]]; then
   figure_sbatch+=(--dependency="afterok:${afterok_jobs}")
 fi
-figure_job="$("${figure_sbatch[@]}" slurm/23_generate_ml4h_24to48h_provisional.sh)"
-printf 'bundle\tfigures\t%s\t9\tslurm/23_generate_ml4h_24to48h_provisional.sh\n' "${figure_job}" \
+figure_job="$("${figure_sbatch[@]}" slurm/23_build_ml4h_metric_tables.sh)"
+printf 'bundle\tmetrics\t%s\t9\tslurm/23_build_ml4h_metric_tables.sh\n' "${figure_job}" \
   | tee -a "${LAUNCH_STATE}"
-echo "Submitted provisional bundle build: ${figure_job}"
+echo "Submitted metric table build: ${figure_job}"

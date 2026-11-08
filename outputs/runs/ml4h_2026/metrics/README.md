@@ -8,8 +8,10 @@ Each model encodes the first 24 hours of a hospitalization. Fixed linear probes 
 
 | Task type | Metrics |
 | :-- | :-- |
-| Binary | AUROC, Brier score, 15-bin expected calibration error |
+| Binary | AUROC, Brier score, 15-bin expected calibration error, average precision |
 | Regression | Spearman ρ, R², mean absolute error, root mean squared error |
+
+The paper does not report average precision. `metrics_long` keeps it, and `metrics_long_with_ci` leaves it out.
 
 ## Files in this folder
 

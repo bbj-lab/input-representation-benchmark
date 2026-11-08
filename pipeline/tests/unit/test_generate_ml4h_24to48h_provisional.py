@@ -29,7 +29,7 @@ def test_provisional_renderer_uses_37_37_36_task_contract() -> None:
     assert tuple(map(len, renderer.outcome_contract("exp1"))) == (17, 20)
     assert tuple(map(len, renderer.outcome_contract("exp2"))) == (17, 20)
     assert tuple(map(len, renderer.outcome_contract("exp3"))) == (16, 20)
-    assert renderer.DEFAULT_OUTPUT_ROOT.name == "08_ML4H_provisional"
+    assert renderer.DEFAULT_OUTPUT_ROOT.parts[-3:] == ("runs", "ml4h_2026", "metric_bundle")
 
 
 def test_partial_render_skips_exp1_and_scales_metric_rows() -> None:

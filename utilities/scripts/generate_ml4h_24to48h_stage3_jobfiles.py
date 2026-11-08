@@ -36,7 +36,7 @@ EXPERIMENT_CONFIG = {
     "exp1": {
         "expected_runs": 72,
         "stage2_manifest": Path(
-            "outputs/runs/ml4h_2026/stage2_repaired_test/exp1_extract_manifest.json"
+            "outputs/runs/ml4h_2026/stage2/exp1_extract_manifest.json"
         ),
     },
     "exp2": {

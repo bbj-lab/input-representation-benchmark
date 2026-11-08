@@ -14,7 +14,8 @@ flowchart LR
     P --> E["Stage 2<br/>extraction"]
     E --> Q["Stage 3<br/>probes"]
     O --> Q
-    Q --> S["Statistics"]
+    Q --> MT["Metric tables"]
+    MT --> S["Statistics"]
     S --> F["Tables and figures"]
 ```
 
@@ -80,10 +81,21 @@ Experiment 3 labels come from the native MIMIC events for the two arms.
 
 | | |
 | :-- | :-- |
-| Launchers | `slurm/22_prepare_submit_ml4h_24to48h_probes.sh`, `slurm/22_submit_ml4h_24to48h_exp2_exp3_probes.sh` |
+| Launcher | `slurm/22_submit_ml4h_24to48h_probes.sh` (submitted by `21_*` after the outcome jobs) |
 | Jobfiles | `utilities/scripts/generate_ml4h_24to48h_stage3_jobfiles.py` |
 | Code | *fms-ehrs* `transfer_rep_based_preds.py` |
 | Output | `<data_version>_first_24h-tokenized/test/*-preds-*.pkl` |
+
+## Metric tables
+
+| | |
+| :-- | :-- |
+| Launcher | `slurm/23_build_ml4h_metric_tables.sh` (submitted by `22_*` after the probe jobs) |
+| Code | `paper/scripts/generate_ml4h_24to48h_provisional.py`, `utilities/scripts/validate_ml4h_24to48h_bundle.py` |
+| Bundle | `outputs/runs/ml4h_2026/metric_bundle/` |
+| Output | `metrics_long`, `run_registry`, `label_coverage_long`, and `outcome_coverage_summary` in `outputs/runs/ml4h_2026/metrics/` |
+
+The launcher always builds all three experiments, because it replaces the full tables in `metrics/`.
 
 ## Statistics
 
