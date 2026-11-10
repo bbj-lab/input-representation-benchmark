@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=irb-ml4h-star-tables
-#SBATCH --output=./outputs/runs/ml4h_2026/family_effect_bootstrap/logs/%j-star-tables.out
+#SBATCH --output=./outputs/runs/ml4h_2026/model_level_tests/logs/%j-star-tables.out
 #SBATCH --partition=tier2q
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
@@ -28,7 +28,7 @@ cd "${IRB_HOME}"
 PAPER_DIR="${IRB_HOME}/../ML4H2026/ML4H"
 python paper/scripts/generate_ml4h_appendix_result_tables.py \
   --metrics-long "${IRB_HOME}/outputs/runs/ml4h_2026/metrics/metrics_long.csv" \
-  --intervals "${IRB_HOME}/outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet" \
+  --intervals "${IRB_HOME}/outputs/runs/ml4h_2026/model_level_tests/family_tests.csv" \
   --output-dir "${PAPER_DIR}/generated"
 
 python - <<'PY'

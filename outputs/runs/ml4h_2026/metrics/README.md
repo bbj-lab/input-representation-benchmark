@@ -30,6 +30,16 @@ The paper does not report average precision. `metrics_long` keeps it, and `metri
 
 | Folder | Contents |
 | :-- | :-- |
-| `../model_level_tests/` | Six-pair *t*-tests (df = 5) with BH adjustment for the 136 family comparisons in the main tables (`family_tests.csv`) and at outcome level (`outcome_tests.csv`) |
-| `../patient_cluster_bootstrap/` | 1,000-draw patient-clustered bootstrap intervals, seed 42, and their agreement with the model-level tests |
-| `../family_effect_bootstrap/` | Paired admission-swap tests (1,000 draws, seed 42), an input to the model-level test table |
+| `../model_level_tests/` | Six-pair *t*-tests (`df = 5`), BH adjustment, and Llama-versus-Qwen Welch *t*-tests for the 136 family comparisons (`family_tests.csv`) and the 628 individual-outcome comparisons (`outcome_tests.csv`). |
+| `../patient_cluster_bootstrap/` | 1,000-draw patient-clustered bootstrap 95% intervals (seed 42) for the 136 family-mean differences, plus agreement summaries against `family_tests.csv`. |
+
+## Column notes for `../model_level_tests/`
+
+| Column | Tables | Meaning |
+| :-- | :-- | :-- |
+| `base`, `alt` | `outcome_tests.csv` | Six-model mean score for the baseline and alternative configurations on that clinical outcome. |
+| `delta`, `delta_min`, `delta_max`, `n_positive` | `family_tests.csv`, `outcome_tests.csv` | Mean, minimum, maximum, and positive count across the six architecture–seed paired differences. |
+| `ci_lo`, `ci_hi` | `family_tests.csv`, `outcome_tests.csv` | Unadjusted two-sided 95% *t*-interval (`df = 5`) around `delta`. |
+| `t`, `p_t`, `p_t_adj`, `star_t` | `family_tests.csv`, `outcome_tests.csv` | One-sample *t*-statistic, unadjusted *p*-value, BH-adjusted *p*-value (`q = 0.05`), and significance flag. `family_tests.csv` adjusts inside each printed table, and `outcome_tests.csv` adjusts across outcomes inside each contrast column. |
+| `delta_llama`, `delta_qwen` | `family_tests.csv`, `outcome_tests.csv` | Three-seed mean difference for the Llama-3.2-style and Qwen3-style decoders. |
+| `p_arch`, `p_arch_adj` | `family_tests.csv`, `outcome_tests.csv` (`p_arch` only) | Two-sided Welch *t*-test between the three Llama-3.2-style and three Qwen3-style differences, plus within-table BH adjustment in `family_tests.csv`. |

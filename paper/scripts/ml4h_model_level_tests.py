@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Model-level paired t-tests for the printed ML4H family-mean differences.
+"""Model-level paired t-tests and Welch architecture tests for ML4H comparisons.
 
-The admission-level prediction-swap test holds the six fitted models fixed.
 This script holds the test set fixed and treats the six fitted models as the
-replicates. It pairs each alternative with its baseline within architecture and
-seed, runs a two-sided one-sample t-test on the six paired differences (five
-degrees of freedom), and applies Benjamini-Hochberg adjustment inside each
-printed table, as the prediction-swap analysis does. It also writes
-outcome-level differences with agreement between architectures and experiments.
+replicates. Each alternative model pairs with its baseline on architecture and
+seed for a two-sided one-sample t-test on the six paired differences (five
+degrees of freedom), with Benjamini-Hochberg adjustment inside each printed
+table. A two-sided Welch t-test compares the three Llama-3.2-style and three
+Qwen3-style differences. The script writes family-level and outcome-level CSVs.
 """
 
 from __future__ import annotations
@@ -27,7 +26,6 @@ from generate_ml4h_appendix_result_tables import OUTCOME_FAMILIES  # noqa: E402
 
 RUN_ROOT = REPO_ROOT / "outputs/runs/ml4h_2026"
 METRICS = RUN_ROOT / "metrics/metrics_long.parquet"
-SWAP = RUN_ROOT / "family_effect_bootstrap/family_effect_intervals.parquet"
 OUTPUT = RUN_ROOT / "model_level_tests"
 Q = contrasts.BH_Q
 T_CRIT = float(stats.t.ppf(0.975, 5))
@@ -42,8 +40,8 @@ HEADLINE = {
 }
 FAMILY_COLUMNS = [
     "table", "level", "task_type", "family", "delta", "ci_lo", "ci_hi",
-    "delta_min", "delta_max", "n_positive", "p_swap", "p_t", "p_t_adj",
-    "star_swap", "star_t",
+    "delta_min", "delta_max", "n_positive", "t", "p_t", "p_t_adj", "star_t",
+    "p_arch", "p_arch_adj",
 ]
 
 
@@ -88,7 +86,7 @@ def summarize(diff: pd.Series) -> dict:
     }
 
 
-def family_table(metrics, swap) -> pd.DataFrame:
+def family_table(metrics) -> pd.DataFrame:
     cache, rows = {}, []
     for spec in contrasts.leaf_specs():
         condition = contrasts.find_condition(spec["experiment"], spec["condition"])
@@ -107,18 +105,23 @@ def family_table(metrics, swap) -> pd.DataFrame:
             }
         )
     fam = pd.DataFrame(rows)
-    keys = ["experiment", "condition", "level", "task_type", "family"]
-    swap = swap[keys + ["point", "p_value", "p_adj", "bh_significant"]].rename(
-        columns={"point": "delta_swap", "p_value": "p_swap", "p_adj": "p_swap_adj", "bh_significant": "star_swap"}
+    expected = np.asarray(
+        [
+            contrasts.unrounded_table_delta(
+                metrics,
+                experiment=str(r.experiment),
+                condition_key=str(r.condition),
+                level_label=str(r.level),
+                task_type=str(r.task_type),
+                family=str(r.family),
+            )
+            for r in fam.itertuples()
+        ]
     )
-    fam = fam.merge(swap, on=keys, how="left", validate="one_to_one")
-    if fam["star_swap"].isna().any():
-        raise ValueError("Some printed differences have no prediction-swap row")
-    gap = float((fam["delta"] - fam["delta_swap"]).abs().max())
-    print(f"max |delta here - delta in swap file| = {gap:.2e}")
+    gap = float(np.max(np.abs(fam["delta"].to_numpy() - expected)))
+    print(f"max |delta - unrounded_table_delta| = {gap:.2e}")
     if gap > 1e-9:
         raise ValueError("Paired differences do not reproduce the printed differences")
-    fam["star_swap"] = fam["star_swap"].astype(bool)
     for column in ("p_t_adj", "p_arch_adj"):
         fam[column] = np.nan
     for _, part in fam.groupby("table", sort=False):
@@ -165,30 +168,24 @@ def show(title: str, frame: pd.DataFrame, columns=None) -> None:
 
 
 def report_family(fam: pd.DataFrame) -> None:
-    fam["both"] = fam["star_swap"] & fam["star_t"]
-    fam["swap_only"] = fam["star_swap"] & ~fam["star_t"]
-    fam["t_only"] = ~fam["star_swap"] & fam["star_t"]
-    counts = fam.groupby("table", sort=False)[
-        ["star_swap", "star_t", "both", "swap_only", "t_only"]
+    counts = fam.assign(unadj=fam["p_t"] < 0.05).groupby("table", sort=False)[
+        ["unadj", "star_t"]
     ].sum()
     counts.insert(0, "tests", fam.groupby("table", sort=False).size())
     counts.loc["all"] = counts.sum()
-    print("\n== Stars by test (Benjamini-Hochberg within table, q = 0.05)")
+    print("\n== Six-pair t-test significance by table (Benjamini-Hochberg within table, q = 0.05)")
     print(counts.astype(int).to_string())
-    print(f"unadjusted model-level p < 0.05 in {int((fam['p_t'] < 0.05).sum())} of {len(fam)} tests")
 
     for task_type in ("binary", "regression"):
-        starred = fam[(fam["task_type"] == task_type) & fam["star_swap"]]
-        show(f"Smallest |delta| starred by the swap test, {task_type}",
+        starred = fam[(fam["task_type"] == task_type) & fam["star_t"]]
+        show(f"Smallest |delta| starred by the six-pair t-test, {task_type}",
              starred.assign(abs_delta=starred["delta"].abs()).nsmallest(4, "abs_delta"), FAMILY_COLUMNS)
     show("Fusion at matched deciles (Table 2, first column)",
          fam[(fam["condition"] == "fusion") & fam["level"].str.endswith("deciles")], FAMILY_COLUMNS)
-    show("Swap-starred, model-level not starred", fam[fam["swap_only"]].sort_values("delta", key=abs), FAMILY_COLUMNS)
-    show("Model-level starred, swap not starred", fam[fam["t_only"]], FAMILY_COLUMNS)
-    show("Code-normalized and affine xVal (Table 6)", fam[fam["level"].str.contains("xVal")], FAMILY_COLUMNS)
-    show("Soft discretization (Table 6)", fam[fam["level"] == "Soft discretization"], FAMILY_COLUMNS)
-    show("Temporal encodings (Table 7)", fam[fam["condition"] == "temporal"], FAMILY_COLUMNS)
-    show("CLIF versus native MIMIC (Table 3)", fam[fam["experiment"] == "exp3"], FAMILY_COLUMNS)
+    show("Code-normalized and affine xVal (Table 3)", fam[fam["level"].str.contains("xVal")], FAMILY_COLUMNS)
+    show("Soft discretization (Table 3)", fam[fam["level"] == "Soft discretization"], FAMILY_COLUMNS)
+    show("Temporal encodings (Table 3)", fam[fam["condition"] == "temporal"], FAMILY_COLUMNS)
+    show("CLIF versus native MIMIC (Table 4)", fam[fam["experiment"] == "exp3"], FAMILY_COLUMNS)
 
     fam["same_sign"] = np.sign(fam["delta_llama"]) == np.sign(fam["delta_qwen"])
     fam["llama_larger"] = fam["delta_llama"].abs() > fam["delta_qwen"].abs()
@@ -207,8 +204,8 @@ def report_family(fam: pd.DataFrame) -> None:
     )
     print("\n== Architecture agreement in the 136 family-level differences")
     print(arch.to_string(float_format=lambda v: f"{v:.3f}"))
-    both = fam[fam["both"]]
-    print(f"among {len(both)} tests starred by both tests: same sign in both architectures in {int(both['same_sign'].sum())}")
+    starred = fam[fam["star_t"]]
+    print(f"among {len(starred)} BH-starred tests: same sign in both architectures in {int(starred['same_sign'].sum())}")
 
 
 def report_outcomes(out: pd.DataFrame) -> None:
@@ -254,7 +251,7 @@ def main() -> None:
     pd.set_option("display.width", 250)
     pd.set_option("display.max_columns", 60)
     metrics = pd.read_parquet(METRICS)
-    fam = family_table(metrics, pd.read_parquet(SWAP))
+    fam = family_table(metrics)
     out = outcome_table(metrics)
     report_family(fam)
     report_outcomes(out)

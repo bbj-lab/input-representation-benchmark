@@ -70,7 +70,7 @@ Next-token training also made clinical reference ranges linearly decodable from 
 | Outcomes | Hours 24–48. 17 binary and 20 regression tasks (Exp. 1–2), 16 binary and 20 regression tasks (Exp. 3) |
 | Probes | Logistic regression (`C = 0.01`) and Ridge regression (`alpha = 100`) on standardized features |
 | Metrics | AUROC, Brier score, ECE (binary). Spearman ρ, R², MAE, RMSE (regression) |
-| Inference | Six-pair *t*-test (df = 5) with BH adjustment within each table, plus a 1,000-draw patient-clustered bootstrap |
+| Inference | Six-pair *t*-test (df = 5) and architecture Welch *t*-test with within-table BH adjustment, plus a 1,000-draw patient-clustered bootstrap |
 
 Parameter counts are for unfused deciles.
 
@@ -123,25 +123,28 @@ The launchers in [`slurm/`](slurm/) target the Randi cluster at the University o
 | 2 | Extract 24-hour hidden states | `11_submit_ml4h_exp{1,2,3}_stage2_opportunistic.sh` | fms-ehrs `extract_hidden_states.py` |
 | 3 | Fit linear probes | `22_submit_ml4h_24to48h_probes.sh` | fms-ehrs `transfer_rep_based_preds.py` |
 | Metrics | Build the metric tables | `23_build_ml4h_metric_tables.sh` | `generate_ml4h_24to48h_provisional.py` |
-| Stats | Model-level tests and bootstrap intervals | `28_*`, `34_*`, `35_*` | `bootstrap_ml4h_*.py`, `ml4h_model_level_tests.py` |
+| Stats | Model-level tests and bootstrap intervals | `28_*`, `35_*` | `bootstrap_ml4h_*.py`, `ml4h_model_level_tests.py` |
 | Paper | Tables and figures | `31_rerun_ml4h_pca_probe.sh`, `33_*`, `34_rebuild_ml4h_length_histograms.sh` | `paper/scripts/` |
 
 Stages 0.5, 3, and Metrics run as one chain. `21_*` submits `22_*` after the outcome jobs complete, and `22_*` submits `23_*` after the probe jobs complete.
 
 ## Result files
 
-The aggregated tables are in the repository. Model checkpoints, token timelines, and extracted features are not.
+All aggregated score and test tables under [`outputs/runs/ml4h_2026/`](outputs/runs/ml4h_2026/) are in git. Model checkpoints, token timelines, and extracted features are not.
 
-| File | Contents |
-| :-- | :-- |
-| [`metrics/metrics_long.parquet`](outputs/runs/ml4h_2026/metrics/) | Scores for every run, outcome, and metric (23,040 rows) |
-| [`metrics/metrics_long_with_ci.parquet`](outputs/runs/ml4h_2026/metrics/) | Same scores with 1,000-draw hospitalization bootstrap 95% intervals |
-| [`model_level_tests/family_tests.csv`](outputs/runs/ml4h_2026/model_level_tests/) | Six-pair *t*-tests and BH decisions for the 136 family comparisons in the main tables |
-| [`model_level_tests/outcome_tests.csv`](outputs/runs/ml4h_2026/model_level_tests/) | The same tests at outcome level |
-| [`patient_cluster_bootstrap/patient_cluster_intervals.parquet`](outputs/runs/ml4h_2026/patient_cluster_bootstrap/) | Patient-clustered bootstrap intervals |
-| [`family_effect_bootstrap/family_effect_intervals.parquet`](outputs/runs/ml4h_2026/family_effect_bootstrap/) | Paired admission-swap tests, an input to the model-level test table |
+| File | Rows | Contents |
+| :-- | --: | :-- |
+| [`metrics/metrics_long.parquet`](outputs/runs/ml4h_2026/metrics/metrics_long.parquet) ([`.csv`](outputs/runs/ml4h_2026/metrics/metrics_long.csv)) | 23,040 | Test-set point scores for all 156 trained runs across each clinical outcome and evaluation metric (four binary and four regression metrics). |
+| [`metrics/metrics_long_with_ci.parquet`](outputs/runs/ml4h_2026/metrics/metrics_long_with_ci.parquet) | 20,400 | Run-level scores with 1,000-draw hospitalization bootstrap 95% intervals (`ci_lo`, `ci_hi`) for the seven metrics in the paper. |
+| [`model_level_tests/family_tests.csv`](outputs/runs/ml4h_2026/model_level_tests/family_tests.csv) | 136 | Family-mean comparisons for Tables 1–4 (17 contrast columns × 8 outcome families). Each row gives the six-pair *t*-test (`t`, `p_t`, `p_t_adj`, `star_t`), unadjusted 95% *t*-interval (`ci_lo`, `ci_hi`), and Llama-versus-Qwen Welch *t*-test (`p_arch`, `p_arch_adj`). |
+| [`model_level_tests/outcome_tests.csv`](outputs/runs/ml4h_2026/model_level_tests/outcome_tests.csv) | 628 | Individual-outcome comparisons across the 17 contrast columns (16 Exp. 1–2 columns × 37 outcomes + 1 Exp. 3 column × 36 outcomes). Each row compares one clinical outcome rather than a family mean, with a six-pair *t*-test (`t`, `p_t`, `ci_lo`, `ci_hi`) and within-column BH adjustment (`p_t_adj`, `star_t`). Each row also gives an unadjusted Welch *t*-test between the two architectures (`delta_llama`, `delta_qwen`, `p_arch`). |
+| [`patient_cluster_bootstrap/patient_cluster_intervals.parquet`](outputs/runs/ml4h_2026/patient_cluster_bootstrap/patient_cluster_intervals.parquet) | 136 | 1,000-draw patient-clustered bootstrap 95% intervals (`ci_low`, `ci_high`) for the 136 family-mean differences. Each draw resamples test `subject_id`s with replacement and keeps all stays from each sampled patient. [`agreement_summary.json`](outputs/runs/ml4h_2026/patient_cluster_bootstrap/agreement_summary.json) compares these intervals with `family_tests.csv`. |
 
-All paths are relative to `outputs/runs/ml4h_2026/`. Column notes are in [`metrics/README.md`](outputs/runs/ml4h_2026/metrics/README.md).
+### Architecture sensitivity (Welch *t*-tests)
+
+[`family_tests.csv`](outputs/runs/ml4h_2026/model_level_tests/family_tests.csv) and [`outcome_tests.csv`](outputs/runs/ml4h_2026/model_level_tests/outcome_tests.csv) split each paired effect into Llama-3.2-style (`delta_llama`) and Qwen3-style (`delta_qwen`) three-seed means. Each row gives a two-sided Welch *t*-test (`p_arch`), and `family_tests.csv` adds within-table BH adjustment (`p_arch_adj`, all ≥ 0.56).
+
+Supplementary files (run registry, outcome label counts, training token totals, centile PCA coordinates, and clinical-boundary probe results) and column notes are in [`outputs/runs/ml4h_2026/metrics/README.md`](outputs/runs/ml4h_2026/metrics/README.md).
 
 ## Repository layout
 
@@ -151,7 +154,7 @@ input-representation-benchmark/
 ├── pipeline/
 │   ├── run_experiments.py              experiment grid and jobfile generation
 │   ├── task_registry.py                outcome task lists
-│   ├── scripts/                        cohorts, outcomes, bootstrap and permutation tests
+│   ├── scripts/                        cohorts, outcomes, and bootstrap intervals
 │   │   └── diagnostics/                embedding PCA, boundary probe, xVal and attention analyses
 │   └── tests/                          unit tests and dry-run contract checks
 ├── paper/scripts/                      manuscript tables and figures

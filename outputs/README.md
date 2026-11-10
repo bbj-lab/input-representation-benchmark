@@ -13,10 +13,9 @@ outputs/runs/
     ├── models/                            156 trained checkpoints
     ├── stage2*/, stage3_24to48h_*/        extraction and probe jobfiles and manifests
     ├── outcomes_24to48h/, probe_logs/     Stage 0.5 and Stage 3 jobfiles and logs
-    ├── metrics/                           aggregated scores           (in git)
-    ├── model_level_tests/                 six-pair t-tests            (in git)
-    ├── patient_cluster_bootstrap/         patient-clustered intervals (in git)
-    ├── family_effect_bootstrap/           admission-swap tests        (in git)
+    ├── metrics/                           aggregated scores                  (in git)
+    ├── model_level_tests/                 six-pair and Welch t-tests         (in git)
+    ├── patient_cluster_bootstrap/         patient-clustered intervals        (in git)
     └── bootstrap_24to48h_ci/              bootstrap shards
 ```
 

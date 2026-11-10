@@ -15,7 +15,6 @@ Batch scripts for the Randi cluster at the University of Chicago. The launchers 
 | 3 · Probes | `22_submit_ml4h_24to48h_probes.sh` | `11_run_stage3_tier2q_lr.sh` |
 | Metric tables | `23_build_ml4h_metric_tables.sh` | — |
 | Hospitalization bootstrap | `28_submit_ml4h_24to48h_bootstrap.sh` | `28_run_*`, `28_concat_*` |
-| Admission-swap tests | `34_submit_ml4h_family_effect_bootstrap.sh` | `34_run_*`, `34_concat_*` |
 | Patient-clustered bootstrap | `35_submit_ml4h_patient_clusters.sh` | `35_build_*`, `35_run_*`, `35_concat_*` |
 | Tables and boundary probe figure | `33_rebuild_ml4h_review_tables_and_compile.sh` | — |
 | Centile PCA figure | `31_rerun_ml4h_pca_probe.sh` | — |

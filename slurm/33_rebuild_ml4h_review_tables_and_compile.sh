@@ -30,11 +30,11 @@ cd "${IRB_HOME}"
 
 PAPER_DIR="${IRB_HOME}/../ML4H2026/ML4H"
 METRICS="${IRB_HOME}/outputs/runs/ml4h_2026/metrics/metrics_long.csv"
-INTERVALS="${IRB_HOME}/outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet"
+INTERVALS="${IRB_HOME}/outputs/runs/ml4h_2026/model_level_tests/family_tests.csv"
 PROBE_JSON="${IRB_HOME}/outputs/runs/ml4h_2026/metrics/clinical_boundary_probe_results.json"
 
 if [[ ! -s "${INTERVALS}" ]]; then
-  echo "ERROR: missing family-effect intervals: ${INTERVALS}" >&2
+  echo "ERROR: missing family test table: ${INTERVALS}" >&2
   exit 2
 fi
 
@@ -115,8 +115,6 @@ if "Code-normalized xVal" not in manuscript:
     raise SystemExit("ERROR: expected Code-normalized xVal in main.pdf")
 if "Benjamini" not in manuscript:
     raise SystemExit("ERROR: expected Benjamini-Hochberg caption in main.pdf")
-if "permutation" not in manuscript:
-    raise SystemExit("ERROR: expected permutation testing language in main.pdf")
 if "hierarchical" in manuscript:
     raise SystemExit("ERROR: leftover hierarchical testing language in main.pdf")
 if "unadjusted 95" in manuscript:

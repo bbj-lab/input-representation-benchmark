@@ -16,7 +16,7 @@ Scripts in [`scripts/`](scripts/) build the tables and figures of the paper from
 | Script | Output |
 | :-- | :-- |
 | `ml4h_main_table_contrasts.py` | Defines the 17 comparison columns and 136 family comparisons in the main tables |
-| `ml4h_model_level_tests.py` | Six-pair *t*-tests (df = 5) with BH adjustment, written to `model_level_tests/` |
+| `ml4h_model_level_tests.py` | Six-pair *t*-tests (`df = 5`), BH adjustment, and Welch architecture *t*-tests in `model_level_tests/` |
 | `summarize_ml4h_patient_clusters.py` | Compares patient-clustered bootstrap intervals with the model-level tests |
 
 ## Supporting scripts

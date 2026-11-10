@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_METRICS = REPO_ROOT / "outputs/runs/ml4h_2026/metrics/metrics_long.csv"
 DEFAULT_INTERVALS = (
     REPO_ROOT
-    / "outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet"
+    / "outputs/runs/ml4h_2026/model_level_tests/family_tests.csv"
 )
 DEFAULT_OUTPUT = REPO_ROOT.parent / "ML4H2026/ML4H/generated"
 
@@ -899,12 +899,22 @@ def write_main_exp3_table(
 
 def load_intervals(path: Path) -> pd.DataFrame:
     if not path.is_file():
-        raise FileNotFoundError(f"Missing family-effect intervals: {path}")
-    intervals = pd.read_parquet(path)
+        raise FileNotFoundError(f"Missing family test table: {path}")
+    intervals = (
+        pd.read_csv(path)
+        if path.suffix.lower() == ".csv"
+        else pd.read_parquet(path)
+    )
+    if "delta" in intervals.columns and "point" not in intervals.columns:
+        intervals = intervals.rename(columns={"delta": "point"})
+    if "p_t" in intervals.columns and "p_value" not in intervals.columns:
+        intervals = intervals.rename(columns={"p_t": "p_value"})
+    if "star_t" in intervals.columns and "bh_significant" not in intervals.columns:
+        intervals = intervals.rename(columns={"star_t": "bh_significant"})
     if len(intervals) != ROW_COUNT:
         raise ValueError(f"Expected {ROW_COUNT} interval rows, found {len(intervals)}")
     if "p_value" not in intervals.columns or intervals["p_value"].isna().any():
-        raise ValueError("Family-effect rows need two-sided permutation p-values")
+        raise ValueError("Family test rows need two-sided p-values")
     if "bh_significant" not in intervals.columns:
         intervals = attach_within_table_bh(intervals)
     for task in leaf_specs():

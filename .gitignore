@@ -72,10 +72,6 @@ outputs/runs/ml4h_2026/metrics/*
 !outputs/runs/ml4h_2026/metrics/**/*.json
 !outputs/runs/ml4h_2026/metrics/**/*.md
 !outputs/runs/ml4h_2026/metrics/**/*.parquet
-!outputs/runs/ml4h_2026/family_effect_bootstrap/
-outputs/runs/ml4h_2026/family_effect_bootstrap/*
-!outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.json
-!outputs/runs/ml4h_2026/family_effect_bootstrap/family_effect_intervals.parquet
 !outputs/runs/ml4h_2026/patient_cluster_bootstrap/
 outputs/runs/ml4h_2026/patient_cluster_bootstrap/*
 !outputs/runs/ml4h_2026/patient_cluster_bootstrap/agreement_discordant.csv

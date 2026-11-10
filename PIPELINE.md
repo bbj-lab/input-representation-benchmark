@@ -101,9 +101,8 @@ The launcher always builds all three experiments, because it replaces the full t
 | Analysis | Code | Launcher | Output |
 | :-- | :-- | :-- | :-- |
 | Hospitalization bootstrap intervals | `pipeline/scripts/bootstrap_ml4h_24to48h_metrics.py` | `slurm/28_submit_ml4h_24to48h_bootstrap.sh` | `metrics/metrics_long_with_ci.parquet` |
-| Paired admission-swap tests | `pipeline/scripts/bootstrap_ml4h_family_effects.py` | `slurm/34_submit_ml4h_family_effect_bootstrap.sh` | `family_effect_bootstrap/` |
 | Patient-clustered bootstrap | `pipeline/scripts/bootstrap_ml4h_patient_clusters.py` | `slurm/35_submit_ml4h_patient_clusters.sh` | `patient_cluster_bootstrap/` |
-| Six-pair model-level *t*-tests | `paper/scripts/ml4h_model_level_tests.py` | — | `model_level_tests/` |
+| Six-pair and Welch *t*-tests | `paper/scripts/ml4h_model_level_tests.py` | — | `model_level_tests/` |
 
 Output paths are relative to `outputs/runs/ml4h_2026/`.
 
