@@ -38,9 +38,8 @@ for name in (
     "main_exp1_quantization_table.tex",
     "main_exp1_fusion_table.tex",
     "main_exp2_numeric_table.tex",
-    "main_exp2_temporal_table.tex",
     "main_exp3_family_table.tex",
 ):
     text = (root / name).read_text(encoding="utf-8")
-    print(name, "stars", text.count(r"\textsuperscript{\textbf{\large *}}"))
+    print(name, "stars", text.count(r"\rlap{$^{*}$}"))
 PY

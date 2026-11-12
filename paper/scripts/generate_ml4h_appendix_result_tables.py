@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Write appendix family-mean and outcome-level six-model tables.
+"""Write main-text contrast tables and appendix six-model summary tables.
 
-Reads metrics_long.csv. Each cell is the mean across the six trained models
-(3 seeds × 2 architectures), with the min and max of those six values.
-Family means first average member outcomes on each model, then summarize
-the six family means. This matches the profile-plot point and whisker.
+Reads metrics_long.csv and family_tests.csv. Each appendix cell reports the mean
+across the six trained models (3 seeds × 2 architectures), with the min and max
+of those six values. Family means first average member outcomes on each model,
+then summarize the six family means.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ from pathlib import Path
 import pandas as pd
 
 from ml4h_main_table_contrasts import (
-    LEAF_COUNT,
     ROW_COUNT,
     attach_within_table_bh,
     leaf_specs,
@@ -23,12 +22,11 @@ from ml4h_main_table_contrasts import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_METRICS = REPO_ROOT / "outputs/runs/ml4h_2026/metrics/metrics_long.csv"
-DEFAULT_INTERVALS = (
-    REPO_ROOT
-    / "outputs/runs/ml4h_2026/model_level_tests/family_tests.csv"
+METRICS_CSV = REPO_ROOT / "outputs/runs/ml4h_2026/metrics/metrics_long.csv"
+INTERVALS_CSV = (
+    REPO_ROOT / "outputs/runs/ml4h_2026/model_level_tests/family_tests.csv"
 )
-DEFAULT_OUTPUT = REPO_ROOT.parent / "ML4H2026/ML4H/generated"
+OUTPUT_DIR = REPO_ROOT.parent / "ML4H2026/ML4H/generated"
 
 OUTCOME_FAMILIES = {
     "same_admission_death": "Hospital outcomes",
@@ -73,16 +71,25 @@ FAMILY_ORDER = {
     "binary": ("Hospital outcomes", "Organ support", "Laboratory", "Vitals"),
     "regression": ("Electrolytes", "Biomarkers", "Hematology", "Vitals"),
 }
+OUTCOME_FAMILY_DISPLAY = {
+    "Hospital outcomes": "Hospital",
+    "Organ support": "Organ support",
+    "Laboratory": "Laboratory",
+    "Vitals": "Vital signs",
+    "Electrolytes": "Electrolytes",
+    "Biomarkers": "Biomarkers",
+    "Hematology": "Hematology",
+}
 GRANULARITY_LABEL = {
     ("deciles", "none"): "Deciles · population",
     ("ventiles", "none"): "Ventiles · population",
-    ("ventiles", "5-10-5"): "Ventiles · 5-10-5 reference",
+    ("ventiles", "5-10-5"): "Ventiles · 5--10--5 reference",
     ("trentiles", "none"): "Trentiles · population",
-    ("trentiles", "10-10-10"): "Trentiles · 10-10-10 reference",
+    ("trentiles", "10-10-10"): "Trentiles · 10--10--10 reference",
     ("centiles", "none"): "Centiles · population",
 }
 REPRESENTATION_LABEL = {
-    "discrete": "Discrete",
+    "discrete": "Discrete deciles",
     "soft": "Soft discretization",
     "xval": "Code-normalized xVal",
     "xval_affine": "Affine xVal",
@@ -96,11 +103,11 @@ FAMILY_COLUMN = {
     ("binary", "Hospital outcomes"): "Hospital AUROC",
     ("binary", "Organ support"): "Organ-support AUROC",
     ("binary", "Laboratory"): "Laboratory AUROC",
-    ("binary", "Vitals"): "Vital-sign AUROC",
-    ("regression", "Electrolytes"): r"Electrolyte $\rho$",
-    ("regression", "Biomarkers"): r"Biomarker $\rho$",
+    ("binary", "Vitals"): "Vital signs AUROC",
+    ("regression", "Electrolytes"): r"Electrolytes $\rho$",
+    ("regression", "Biomarkers"): r"Biomarkers $\rho$",
     ("regression", "Hematology"): r"Hematology $\rho$",
-    ("regression", "Vitals"): r"Vital-sign $\rho$",
+    ("regression", "Vitals"): r"Vital signs $\rho$",
 }
 FAMILY_CAPTION_NOTE = (
     "Each cell reports the mean across six trained models "
@@ -117,6 +124,10 @@ OUTCOME_DISPLAY_LABELS = {
     "long_length_of_stay": "Still hospitalized at hour 48",
     "icu_admission": "First ICU admission in hours 24--48",
     "prolonged_icu_stay": "Still in ICU at hour 48",
+    "crrt_initiation": "Continuous renal replacement therapy initiation",
+    "peak_potassium": "Maximum potassium",
+    "peak_creatinine": "Maximum creatinine",
+    "peak_troponin": "Maximum troponin",
     "min_bnp": "Minimum NT-proBNP",
     "peak_bnp": "Maximum NT-proBNP",
 }
@@ -124,11 +135,11 @@ FAMILY_ROWS = [
     ("binary", "Hospital outcomes", "Hospital AUROC"),
     ("binary", "Organ support", "Organ-support AUROC"),
     ("binary", "Laboratory", "Laboratory AUROC"),
-    ("binary", "Vitals", "Vital-sign AUROC"),
-    ("regression", "Electrolytes", r"Electrolyte $\rho$"),
-    ("regression", "Biomarkers", r"Biomarker $\rho$"),
+    ("binary", "Vitals", "Vital signs AUROC"),
+    ("regression", "Electrolytes", r"Electrolytes $\rho$"),
+    ("regression", "Biomarkers", r"Biomarkers $\rho$"),
     ("regression", "Hematology", r"Hematology $\rho$"),
-    ("regression", "Vitals", r"Vital-sign $\rho$"),
+    ("regression", "Vitals", r"Vital signs $\rho$"),
 ]
 MAIN_FAMILY_LABELS = (
     "Hospital",
@@ -140,29 +151,13 @@ MAIN_FAMILY_LABELS = (
     "Hematology",
     "Vital signs",
 )
-POINT_COL = r"S[table-format=1.3]"
-STAR_MARK = r"{\textsuperscript{\textbf{\large *}}}"
-DELTA_COL = (
-    r"S[table-format=+1.3,"
-    r"table-space-text-post={\textsuperscript{\textbf{\large *}}}]"
-)
-MAIN_CELL_NOTE = (
-    r"Each cell is the six-model family mean "
-    r"(two architectures $\times$ three seeds). "
-    r"$\Delta$ uses unrounded means and is rounded once. "
-    r"An asterisk marks Benjamini--Hochberg significance at "
-    r"false-discovery-rate level $0.05$ (\sectionref{sec:hypothesis_tests}). "
-    r"Member outcomes are listed in \tableref{tab:outcomes_sources}."
-)
 
 
 def panel_line(n_cols: int, title: str) -> str:
     return rf"    \multicolumn{{{n_cols}}}{{@{{}}l}}{{\textit{{{title}}}}} \\"
 
 
-def append_family_panels(
-    lines: list[str], n_cols: int, write_row
-) -> None:
+def append_family_panels(lines: list[str], n_cols: int, write_row) -> None:
     if len(FAMILY_ROWS) != len(MAIN_FAMILY_LABELS):
         raise ValueError("Family label count mismatch")
     for index, ((task, family_name, _), short) in enumerate(
@@ -173,6 +168,7 @@ def append_family_panels(
         elif index == 4:
             lines.append(r"    \midrule")
             lines.append(panel_line(n_cols, r"Regression families, Spearman $\rho$"))
+        lines.append(r"    \addlinespace[1pt]")
         write_row(lines, task, family_name, short)
 
 
@@ -403,9 +399,10 @@ def write_outcome_table(
         if members.empty:
             continue
         metric = "AUROC" if task == "binary" else r"Spearman~$\rho$"
+        display_family = OUTCOME_FAMILY_DISPLAY[family_name]
         lines.append(
             r"  \multicolumn{5}{l}{\textbf{"
-            + f"{family_name} ({metric})"
+            + f"{display_family} ({metric})"
             + r"}} \\"
         )
         for outcome in members["outcome"].drop_duplicates():
@@ -461,14 +458,34 @@ def family_mean(family: pd.DataFrame, task: str, family_name: str, **attrs: str)
 
 
 def fmt_point(value: float) -> str:
-    return f"{value:.3f}"
+    return f"${value:.3f}$"
+
+
+def fmt_signed(value: float) -> str:
+    rounded = round(value, 3)
+    if abs(rounded) == 0.0:
+        return "0.000"
+    return f"{rounded:+.3f}"
 
 
 def fmt_delta(value: float, significant: bool = False) -> str:
-    text = f"{value:+.3f}"
+    text = fmt_signed(value)
     if significant:
-        return r"\bfseries " + text + STAR_MARK
-    return text
+        return rf"{{\boldmath${text}\rlap{{$^{{*}}$}}$}}"
+    return f"${text}$"
+
+
+def fmt_ci(ci_lo: float, ci_hi: float, significant: bool = False) -> str:
+    def fmt_bound(bound: float) -> str:
+        rounded = round(bound, 3)
+        if abs(rounded) == 0.0:
+            return "0.000"
+        if rounded < 0:
+            return rf"-\mkern-1.5mu {abs(rounded):.3f}"
+        return f"+{rounded:.3f}"
+
+    bold = r"\boldmath" if significant else ""
+    return rf"{{\scriptsize{bold}$({fmt_bound(ci_lo)}{{,}}{{{fmt_bound(ci_hi)}}})$}}"
 
 
 def interval_row(
@@ -501,6 +518,37 @@ def delta_significant(row: pd.Series) -> bool:
     if "bh_significant" not in row.index:
         raise ValueError("Interval row is missing the within-table BH decision")
     return bool(row["bh_significant"])
+
+
+def starred_delta_and_ci(
+    intervals: pd.DataFrame,
+    *,
+    experiment: str,
+    condition: str,
+    level: str,
+    task_type: str,
+    family: str,
+    value: float,
+) -> tuple[str, str]:
+    row = interval_row(
+        intervals,
+        experiment=experiment,
+        condition=condition,
+        level=level,
+        task_type=task_type,
+        family=family,
+    )
+    expected = float(row["point"])
+    if abs(expected - value) > 1e-12:
+        raise ValueError(
+            f"{experiment}/{condition}/{level}/{task_type}/{family}: "
+            f"table Δ {value} does not match interval point {expected}"
+        )
+    sig = delta_significant(row)
+    return (
+        fmt_delta(value, significant=sig),
+        fmt_ci(float(row["ci_lo"]), float(row["ci_hi"]), significant=sig),
+    )
 
 
 def starred_delta(
@@ -537,23 +585,15 @@ def write_main_exp1_quantization_table(
         r"\begin{table*}[t]",
         r"\floatconts",
         r"  {tab:exp1_quantization}",
-        r"  {\caption{Experiment~1 unfused quantization. "
-        r"Unfused population deciles are the reference; each $\Delta$ is the "
-        r"named unfused alternative minus that reference. "
-        r"Columns marked 5--10--5 and 10--10--10 are reference-range anchored. "
-        + MAIN_CELL_NOTE
-        + r" Ranges: \tableref{tab:appendix_family_means_exp1}.}}",
-        r"  {\small",
-        r"  \setlength{\tabcolsep}{4.5pt}",
-        r"  \begin{tabular}{@{}l" + POINT_COL + (DELTA_COL * 5) + r"@{}}",
+        r"  {\caption{Experiment~1: Unfused quantization relative to equal-frequency deciles. Across \tableref{tab:exp1_quantization}--\tableref{tab:exp3_family}, entries report six-model family means and signed differences ($\Delta$) with unadjusted 95\% confidence intervals ($n=6$, $\mathrm{df}=5$) in parentheses. Bold and {\boldmath$^{*}$} show BH-adjusted $p<0.05$.}}",
+        r"  {\footnotesize",
+        r"  \renewcommand{\arraystretch}{1.0}",
+        r"  \setlength{\tabcolsep}{4.0pt}",
+        r"  \begin{tabular}{@{}lcccccc@{}}",
         r"    \toprule",
-        r"    & {Reference} & \multicolumn{2}{c}{Ventiles}"
-        r" & \multicolumn{2}{c}{Trentiles} & {Centiles} \\",
-        r"    \cmidrule(lr){2-2} \cmidrule(lr){3-4} \cmidrule(lr){5-6}"
-        r" \cmidrule(lr){7-7}",
-        r"    Family & {Unfused deciles} & {$\Delta$ pop.}"
-        r" & {$\Delta$ 5--10--5} & {$\Delta$ pop.} & {$\Delta$ 10--10--10}"
-        r" & {$\Delta$ pop.} \\",
+        r"    & Reference & \multicolumn{2}{c}{Ventiles} & \multicolumn{2}{c}{Trentiles} & Centiles \\",
+        r"    \cmidrule(lr){2-2} \cmidrule(lr){3-4} \cmidrule(lr){5-6} \cmidrule(lr){7-7}",
+        r"    Family & Mean & $\Delta$ equal-frequency & $\Delta$ 5--10--5 & $\Delta$ equal-frequency & $\Delta$ 10--10--10 & $\Delta$ equal-frequency \\",
         r"    \midrule",
     ]
     alts = [
@@ -564,7 +604,7 @@ def write_main_exp1_quantization_table(
         (("centiles", "none"), "Centiles · population"),
     ]
 
-    def write_row(lines, task, family_name, short):
+    def write_row(lines: list[str], task: str, family_name: str, short: str) -> None:
         ref = family_mean(
             family,
             task,
@@ -573,7 +613,8 @@ def write_main_exp1_quantization_table(
             anchoring="none",
             fusion="unfused",
         )
-        cells = [short, fmt_point(ref)]
+        top_cells = [short, fmt_point(ref)]
+        ci_cells = []
         for (quantizer, anchoring), level in alts:
             alt = family_mean(
                 family,
@@ -583,18 +624,19 @@ def write_main_exp1_quantization_table(
                 anchoring=anchoring,
                 fusion="unfused",
             )
-            cells.append(
-                starred_delta(
-                    intervals,
-                    experiment="exp1",
-                    condition="granularity",
-                    level=level,
-                    task_type=task,
-                    family=family_name,
-                    value=alt - ref,
-                )
+            d_cell, ci_cell = starred_delta_and_ci(
+                intervals,
+                experiment="exp1",
+                condition="granularity",
+                level=level,
+                task_type=task,
+                family=family_name,
+                value=alt - ref,
             )
-        lines.append("    " + " & ".join(cells) + r" \\")
+            top_cells.append(d_cell)
+            ci_cells.append(ci_cell)
+        lines.append("    " + " & ".join(top_cells) + r" \\[-2pt]")
+        lines.append("    & & " + " & ".join(ci_cells) + r" \\")
 
     append_family_panels(lines, 7, write_row)
     lines.extend(
@@ -615,19 +657,13 @@ def write_main_exp1_fusion_table(
         r"\begin{table*}[t]",
         r"\floatconts",
         r"  {tab:exp1_fusion}",
-        r"  {\caption{Experiment~1 fused versus unfused tokenization at matched "
-        r"granularity and anchoring. Each $\Delta$ is fused minus unfused on the "
-        r"same six-model family mean. "
-        + MAIN_CELL_NOTE
-        + r" Ranges: \tableref{tab:appendix_family_means_exp1}.}}",
-        r"  {\small",
-        r"  \setlength{\tabcolsep}{5pt}",
-        r"  \begin{tabular}{@{}l" + (DELTA_COL * 6) + r"@{}}",
+        r"  {\caption{Experiment~1: Effect of code--value fusion ($\Delta$, fused minus unfused) at matched quantization granularity.}}",
+        r"  {\footnotesize",
+        r"  \renewcommand{\arraystretch}{1.0}",
+        r"  \setlength{\tabcolsep}{4.0pt}",
+        r"  \begin{tabular}{@{}lcccccc@{}}",
         r"    \toprule",
-        r"    & \multicolumn{6}{c}{$\Delta$ fused minus unfused} \\",
-        r"    \cmidrule(lr){2-7}",
-        r"    Family & {Deciles} & {Ventiles} & {5--10--5} & {Trentiles}"
-        r" & {10--10--10} & {Centiles} \\",
+        r"    Family & Deciles & Ventiles & 5--10--5 & Trentiles & 10--10--10 & Centiles \\",
         r"    \midrule",
     ]
     grains = [
@@ -639,8 +675,9 @@ def write_main_exp1_fusion_table(
         (("centiles", "none"), "Fused · centiles"),
     ]
 
-    def write_row(lines, task, family_name, short):
-        cells = [short]
+    def write_row(lines: list[str], task: str, family_name: str, short: str) -> None:
+        top_cells = [short]
+        ci_cells = []
         for (quantizer, anchoring), level in grains:
             unfused = family_mean(
                 family,
@@ -658,18 +695,19 @@ def write_main_exp1_fusion_table(
                 anchoring=anchoring,
                 fusion="fused",
             )
-            cells.append(
-                starred_delta(
-                    intervals,
-                    experiment="exp1",
-                    condition="fusion",
-                    level=level,
-                    task_type=task,
-                    family=family_name,
-                    value=fused - unfused,
-                )
+            d_cell, ci_cell = starred_delta_and_ci(
+                intervals,
+                experiment="exp1",
+                condition="fusion",
+                level=level,
+                task_type=task,
+                family=family_name,
+                value=fused - unfused,
             )
-        lines.append("    " + " & ".join(cells) + r" \\")
+            top_cells.append(d_cell)
+            ci_cells.append(ci_cell)
+        lines.append("    " + " & ".join(top_cells) + r" \\[-2pt]")
+        lines.append("    & " + " & ".join(ci_cells) + r" \\")
 
     append_family_panels(lines, 7, write_row)
     lines.extend(
@@ -683,10 +721,9 @@ def write_main_exp1_fusion_table(
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def write_main_exp2_tables(
+def write_main_exp2_table(
     family: pd.DataFrame,
-    path_numeric: Path,
-    path_temporal: Path,
+    path: Path,
     intervals: pd.DataFrame,
 ) -> None:
     numeric_specs = [
@@ -694,33 +731,28 @@ def write_main_exp2_tables(
         ("xval", "Code-normalized xVal"),
         ("xval_affine", "Affine xVal"),
     ]
-    numeric_lines = [
+    temporal_specs = [
+        ("event_order", "Event order"),
+        ("time_rope", "Admission-relative RoPE"),
+    ]
+    lines = [
         r"\begin{table*}[t]",
         r"\floatconts",
         r"  {tab:exp2_numeric}",
-        r"  {\caption{Experiment~2 numeric encodings with inserted time tokens. "
-        r"Discrete bins are the reference; each $\Delta$ is the named encoding "
-        r"minus discrete. "
-        + MAIN_CELL_NOTE
-        + r" The 4$\times$3 grid is in \tableref{tab:appendix_family_means_exp2}.}}",
-        r"  {\small",
-        r"  \setlength{\tabcolsep}{4.2pt}",
-        r"  \begin{tabular}{@{}l"
-        + POINT_COL
-        + (POINT_COL + DELTA_COL) * 3
-        + r"@{}}",
+        r"  {\caption{Experiment~2: Numeric and temporal encodings ($\Delta$ relative to discrete deciles with explicit time tokens). Numeric encoding columns vary the value representation with explicit time tokens fixed. Temporal encoding columns vary the time representation with discrete deciles fixed.}}",
+        r"  {\footnotesize",
+        r"  \renewcommand{\arraystretch}{1.0}",
+        r"  \setlength{\tabcolsep}{4.0pt}",
+        r"  \begin{tabular}{@{}lcccccc@{}}",
         r"    \toprule",
-        r"    & {Reference} & \multicolumn{2}{c}{Soft discretization}"
-        r" & \multicolumn{2}{c}{Code-normalized xVal}"
-        r" & \multicolumn{2}{c}{Affine xVal} \\",
-        r"    \cmidrule(lr){2-2} \cmidrule(lr){3-4} \cmidrule(lr){5-6}"
-        r" \cmidrule(lr){7-8}",
-        r"    Family & {Discrete} & {Mean} & {$\Delta$} & {Mean} & {$\Delta$}"
-        r" & {Mean} & {$\Delta$} \\",
+        r"    & Reference & \multicolumn{3}{c}{Numeric encoding $\Delta$} & \multicolumn{2}{c}{Temporal encoding $\Delta$} \\",
+        r"    \cmidrule(lr){2-2} \cmidrule(lr){3-5} \cmidrule(lr){6-7}",
+        r"    & & Soft & Code-normalized & Affine & Event & Admission-relative \\[-1pt]",
+        r"    Family & Mean & discretization & xVal & xVal & order & RoPE \\",
         r"    \midrule",
     ]
 
-    def write_numeric_row(lines, task, family_name, short):
+    def write_row(lines: list[str], task: str, family_name: str, short: str) -> None:
         ref = family_mean(
             family,
             task,
@@ -728,7 +760,8 @@ def write_main_exp2_tables(
             representation="discrete",
             temporal="time_tokens",
         )
-        cells = [short, fmt_point(ref)]
+        top_cells = [short, fmt_point(ref)]
+        ci_cells = []
         for representation, level in numeric_specs:
             value = family_mean(
                 family,
@@ -737,70 +770,17 @@ def write_main_exp2_tables(
                 representation=representation,
                 temporal="time_tokens",
             )
-            cells.extend(
-                [
-                    fmt_point(value),
-                    starred_delta(
-                        intervals,
-                        experiment="exp2",
-                        condition="numeric",
-                        level=level,
-                        task_type=task,
-                        family=family_name,
-                        value=value - ref,
-                    ),
-                ]
+            d_cell, ci_cell = starred_delta_and_ci(
+                intervals,
+                experiment="exp2",
+                condition="numeric",
+                level=level,
+                task_type=task,
+                family=family_name,
+                value=value - ref,
             )
-        lines.append("    " + " & ".join(cells) + r" \\")
-
-    append_family_panels(numeric_lines, 8, write_numeric_row)
-    numeric_lines.extend(
-        [
-            r"    \bottomrule",
-            r"  \end{tabular}}",
-            r"\end{table*}",
-            "",
-        ]
-    )
-    path_numeric.write_text("\n".join(numeric_lines), encoding="utf-8")
-
-    temporal_specs = [
-        ("event_order", "Event order"),
-        ("time_rope", "Admission-relative RoPE"),
-    ]
-    temporal_lines = [
-        r"\begin{table*}[t]",
-        r"\floatconts",
-        r"  {tab:exp2_temporal}",
-        r"  {\caption{Experiment~2 temporal encodings with discrete values. "
-        r"The time-token column is the discrete reference in "
-        r"\tableref{tab:exp2_numeric}; each $\Delta$ is the named encoding "
-        r"minus time tokens. "
-        + MAIN_CELL_NOTE
-        + r" The 4$\times$3 grid is in \tableref{tab:appendix_family_means_exp2}.}}",
-        r"  {\small",
-        r"  \setlength{\tabcolsep}{7pt}",
-        r"  \begin{tabular}{@{}l"
-        + POINT_COL
-        + (POINT_COL + DELTA_COL) * 2
-        + r"@{}}",
-        r"    \toprule",
-        r"    & {Reference} & \multicolumn{2}{c}{Event order}"
-        r" & \multicolumn{2}{c}{Admission-relative RoPE} \\",
-        r"    \cmidrule(lr){2-2} \cmidrule(lr){3-4} \cmidrule(lr){5-6}",
-        r"    Family & {Time tokens} & {Mean} & {$\Delta$} & {Mean} & {$\Delta$} \\",
-        r"    \midrule",
-    ]
-
-    def write_temporal_row(lines, task, family_name, short):
-        ref = family_mean(
-            family,
-            task,
-            family_name,
-            representation="discrete",
-            temporal="time_tokens",
-        )
-        cells = [short, fmt_point(ref)]
+            top_cells.append(d_cell)
+            ci_cells.append(ci_cell)
         for temporal, level in temporal_specs:
             value = family_mean(
                 family,
@@ -809,24 +789,22 @@ def write_main_exp2_tables(
                 representation="discrete",
                 temporal=temporal,
             )
-            cells.extend(
-                [
-                    fmt_point(value),
-                    starred_delta(
-                        intervals,
-                        experiment="exp2",
-                        condition="temporal",
-                        level=level,
-                        task_type=task,
-                        family=family_name,
-                        value=value - ref,
-                    ),
-                ]
+            d_cell, ci_cell = starred_delta_and_ci(
+                intervals,
+                experiment="exp2",
+                condition="temporal",
+                level=level,
+                task_type=task,
+                family=family_name,
+                value=value - ref,
             )
-        lines.append("    " + " & ".join(cells) + r" \\")
+            top_cells.append(d_cell)
+            ci_cells.append(ci_cell)
+        lines.append("    " + " & ".join(top_cells) + r" \\[-2pt]")
+        lines.append("    & & " + " & ".join(ci_cells) + r" \\")
 
-    append_family_panels(temporal_lines, 6, write_temporal_row)
-    temporal_lines.extend(
+    append_family_panels(lines, 7, write_row)
+    lines.extend(
         [
             r"    \bottomrule",
             r"  \end{tabular}}",
@@ -834,7 +812,7 @@ def write_main_exp2_tables(
             "",
         ]
     )
-    path_temporal.write_text("\n".join(temporal_lines), encoding="utf-8")
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def write_main_exp3_table(
@@ -844,48 +822,36 @@ def write_main_exp3_table(
         r"\begin{table}[t]",
         r"\floatconts",
         r"  {tab:exp3_family}",
-        r"  {\caption{Experiment~3 native MIMIC versus CLIF~2.1.0. "
-        r"$\Delta$ is CLIF minus native. Across 57{,}690 training admissions, "
-        r"full-hospitalization training-corpus tokens were "
-        r"684.7 million$\to$195.9 million (28.6\%); untruncated first-24h "
-        r"tokens used to construct representation-extraction inputs were "
-        r"108.5 million$\to$33.4 million (30.8\%); and tokenizer vocabulary "
-        r"was 17{,}752$\to$397 entries. "
-        + MAIN_CELL_NOTE
-        + r" Ranges: \tableref{tab:appendix_family_means_exp3}.}}",
-        r"  {\small",
-        r"  \setlength{\tabcolsep}{4pt}",
-        r"  \begin{tabular}{@{}l" + POINT_COL + POINT_COL + DELTA_COL + r"@{}}",
+        r"  {\caption{Experiment~3: Effect of schema remapping ($\Delta$, CLIF~2.1.0 minus native MIMIC).}}",
+        r"  {\footnotesize",
+        r"  \renewcommand{\arraystretch}{1.0}",
+        r"  \setlength{\tabcolsep}{7.0pt}",
+        r"  \begin{tabular}{@{}lcc@{}}",
         r"    \toprule",
-        r"    Family & {Native MIMIC} & {CLIF 2.1.0} & {$\Delta$} \\",
+        r"    & Reference & $\Delta$ \\",
+        r"    \cmidrule(lr){2-2} \cmidrule(lr){3-3}",
+        r"    Family & Native MIMIC & CLIF 2.1.0 \\",
         r"    \midrule",
     ]
 
-    def write_row(lines, task, family_name, short):
+    def write_row(lines: list[str], task: str, family_name: str, short: str) -> None:
         native = family_mean(family, task, family_name, config_label="Native MIMIC")
         clif = family_mean(family, task, family_name, config_label="CLIF harmonized")
-        lines.append(
-            "    "
-            + " & ".join(
-                [
-                    short,
-                    fmt_point(native),
-                    fmt_point(clif),
-                    starred_delta(
-                        intervals,
-                        experiment="exp3",
-                        condition="schema",
-                        level="CLIF 2.1.0",
-                        task_type=task,
-                        family=family_name,
-                        value=clif - native,
-                    ),
-                ]
-            )
-            + r" \\"
+        d_cell, ci_cell = starred_delta_and_ci(
+            intervals,
+            experiment="exp3",
+            condition="schema",
+            level="CLIF 2.1.0",
+            task_type=task,
+            family=family_name,
+            value=clif - native,
         )
+        lines.append(
+            "    " + " & ".join([short, fmt_point(native), d_cell]) + r" \\[-2pt]"
+        )
+        lines.append("    & & " + ci_cell + r" \\")
 
-    append_family_panels(lines, 4, write_row)
+    append_family_panels(lines, 3, write_row)
     lines.extend(
         [
             r"    \bottomrule",
@@ -915,6 +881,8 @@ def load_intervals(path: Path) -> pd.DataFrame:
         raise ValueError(f"Expected {ROW_COUNT} interval rows, found {len(intervals)}")
     if "p_value" not in intervals.columns or intervals["p_value"].isna().any():
         raise ValueError("Family test rows need two-sided p-values")
+    if "ci_lo" not in intervals.columns or "ci_hi" not in intervals.columns:
+        raise ValueError("Family test rows need ci_lo and ci_hi columns")
     if "bh_significant" not in intervals.columns:
         intervals = attach_within_table_bh(intervals)
     for task in leaf_specs():
@@ -964,10 +932,8 @@ def generate(
             written["exp1_main_fusion"] = str(fusion_path)
         elif experiment == "exp2":
             numeric_path = output_dir / "main_exp2_numeric_table.tex"
-            temporal_path = output_dir / "main_exp2_temporal_table.tex"
-            write_main_exp2_tables(family_attrs, numeric_path, temporal_path, intervals)
+            write_main_exp2_table(family_attrs, numeric_path, intervals)
             written["exp2_main_numeric"] = str(numeric_path)
-            written["exp2_main_temporal"] = str(temporal_path)
         else:
             main_path = output_dir / "main_exp3_family_table.tex"
             write_main_exp3_table(family_attrs, main_path, intervals)
@@ -977,9 +943,9 @@ def generate(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--metrics-long", type=Path, default=DEFAULT_METRICS)
-    parser.add_argument("--intervals", type=Path, default=DEFAULT_INTERVALS)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--metrics-long", type=Path, default=METRICS_CSV)
+    parser.add_argument("--intervals", type=Path, default=INTERVALS_CSV)
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     args = parser.parse_args()
     written = generate(
         metrics_path=args.metrics_long.expanduser().resolve(),

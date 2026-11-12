@@ -51,7 +51,6 @@ for path in \
     "${PAPER_DIR}/generated/main_exp1_quantization_table.tex" \
     "${PAPER_DIR}/generated/main_exp1_fusion_table.tex" \
     "${PAPER_DIR}/generated/main_exp2_numeric_table.tex" \
-    "${PAPER_DIR}/generated/main_exp2_temporal_table.tex" \
     "${PAPER_DIR}/generated/main_exp3_family_table.tex" \
     "${PAPER_DIR}/figures/clinical_boundary_probe.png"; do
   if [[ ! -s "${path}" ]]; then
@@ -117,19 +116,16 @@ if "Benjamini" not in manuscript:
     raise SystemExit("ERROR: expected Benjamini-Hochberg caption in main.pdf")
 if "hierarchical" in manuscript:
     raise SystemExit("ERROR: leftover hierarchical testing language in main.pdf")
-if "unadjusted 95" in manuscript:
-    raise SystemExit("ERROR: leftover unadjusted-interval starring language in main.pdf")
 table_text = "".join(
     (Path("generated") / name).read_text(encoding="utf-8")
     for name in (
         "main_exp1_quantization_table.tex",
         "main_exp1_fusion_table.tex",
         "main_exp2_numeric_table.tex",
-        "main_exp2_temporal_table.tex",
         "main_exp3_family_table.tex",
     )
 )
-if r"\textsuperscript{\textbf{\large *}}" not in table_text:
+if r"\rlap{$^{*}$}" not in table_text:
     raise SystemExit("ERROR: expected at least one starred Δ in the main-text tables")
 
 for line in text.splitlines():
