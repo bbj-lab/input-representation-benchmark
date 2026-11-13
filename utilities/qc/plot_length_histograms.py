@@ -247,7 +247,7 @@ def main() -> None:
             inside_paren, after_paren = rest.split(") ", 1)
             title_str = f"{before_paren} {after_paren}\n({inside_paren})"
         ax.set_title(title_str, fontsize=10.5, loc="left")
-        ax.set_xlabel("Tokenized length (tokens per admission)")
+        ax.set_xlabel("Tokenized length (tokens per hospitalization)")
         ax.set_ylabel("Probability mass")
         ax.grid(True, axis="y", alpha=0.25)
 
@@ -273,11 +273,11 @@ def main() -> None:
             "\n".join(
                 [
                     f"n={s.n:,}",
-                    f"P(L≤1024)={s.frac_le_1024:.3f}",
-                    f"P(L≤2048)={s.frac_le_2048:.3f}",
-                    f"P(L≤4096)={s.frac_le_4096:.6f}",
-                    f"P(L>4096)={1.0 - s.frac_le_4096:.6f}",
-                    f"P(L>{xmax})={overflow_mass:.6f}",
+                    f"P(L≤1024)={s.frac_le_1024:.4f}",
+                    f"P(L≤2048)={s.frac_le_2048:.4f}",
+                    f"P(L≤4096)={s.frac_le_4096:.4f}",
+                    f"P(L>4096)={1.0 - s.frac_le_4096:.4f}",
+                    f"P(L>{xmax})={overflow_mass:.4f}",
                     f"max={s.max_len:,}",
                 ]
             ),

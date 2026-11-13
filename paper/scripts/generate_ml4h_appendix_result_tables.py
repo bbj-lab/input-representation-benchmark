@@ -103,11 +103,11 @@ FAMILY_COLUMN = {
     ("binary", "Hospital outcomes"): "Hospital AUROC",
     ("binary", "Organ support"): "Organ-support AUROC",
     ("binary", "Laboratory"): "Laboratory AUROC",
-    ("binary", "Vitals"): "Vital signs AUROC",
+    ("binary", "Vitals"): "Vital-signs AUROC",
     ("regression", "Electrolytes"): r"Electrolytes $\rho$",
     ("regression", "Biomarkers"): r"Biomarkers $\rho$",
     ("regression", "Hematology"): r"Hematology $\rho$",
-    ("regression", "Vitals"): r"Vital signs $\rho$",
+    ("regression", "Vitals"): r"Vital-signs $\rho$",
 }
 FAMILY_CAPTION_NOTE = (
     "Each cell reports the mean across six trained models "
@@ -135,11 +135,11 @@ FAMILY_ROWS = [
     ("binary", "Hospital outcomes", "Hospital AUROC"),
     ("binary", "Organ support", "Organ-support AUROC"),
     ("binary", "Laboratory", "Laboratory AUROC"),
-    ("binary", "Vitals", "Vital signs AUROC"),
+    ("binary", "Vitals", "Vital-signs AUROC"),
     ("regression", "Electrolytes", r"Electrolytes $\rho$"),
     ("regression", "Biomarkers", r"Biomarkers $\rho$"),
     ("regression", "Hematology", r"Hematology $\rho$"),
-    ("regression", "Vitals", r"Vital signs $\rho$"),
+    ("regression", "Vitals", r"Vital-signs $\rho$"),
 ]
 MAIN_FAMILY_LABELS = (
     "Hospital",
@@ -585,7 +585,7 @@ def write_main_exp1_quantization_table(
         r"\begin{table*}[t]",
         r"\floatconts",
         r"  {tab:exp1_quantization}",
-        r"  {\caption{Experiment~1: Unfused quantization relative to equal-frequency deciles. Across \tableref{tab:exp1_quantization}--\tableref{tab:exp3_family}, entries report six-model family means and signed differences ($\Delta$) with unadjusted 95\% confidence intervals ($n=6$, $\mathrm{df}=5$) in parentheses. Bold and {\boldmath$^{*}$} show BH-adjusted $p<0.05$.}}",
+        r"  {\caption{Experiment~1: Unfused quantization relative to equal-frequency deciles. Across Tables~\ref{tab:exp1_quantization}--\ref{tab:exp3_family}, entries report six-model family means and signed differences ($\Delta$) with unadjusted 95\% confidence intervals ($n=6$, $\mathrm{df}=5$) in parentheses. Bold and {\boldmath$^{*}$} show BH-adjusted $p<0.05$.}}",
         r"  {\footnotesize",
         r"  \renewcommand{\arraystretch}{1.0}",
         r"  \setlength{\tabcolsep}{4.0pt}",
