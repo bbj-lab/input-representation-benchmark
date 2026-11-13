@@ -34,11 +34,14 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import gzip
 from pathlib import Path
+import pickle
 from typing import Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
+import polars as pl
 import pyarrow.parquet as pq
 
 
@@ -75,7 +78,90 @@ def _normalize_version_dir(base: Path, version: str) -> Path:
     raise FileNotFoundError(f"Could not resolve version under base={base}: {version}")
 
 
+def _load_trunc_token_id(parquet_path: Path) -> int | None:
+    vocab_path = parquet_path.parent.parent / "train" / "vocab.gzip"
+    if not vocab_path.is_file():
+        return None
+    with gzip.open(vocab_path, "rb") as f:
+        payload = pickle.load(f)
+    lookup = payload.get("lookup", {}) if isinstance(payload, dict) else {}
+    trunc_id = lookup.get("TRUNC")
+    return int(trunc_id) if trunc_id is not None else None
+
+
+def _parquet_has_trunc_tokens(
+    parquet_path: Path, trunc_id: int, *, batch_size: int = 8192
+) -> bool:
+    pf = pq.ParquetFile(parquet_path)
+    for batch in pf.iter_batches(columns=["tokens"], batch_size=batch_size):
+        arr = batch.column(0)
+        offsets = arr.offsets.to_numpy()
+        values = arr.values.to_numpy(zero_copy_only=False)
+        non_empty = offsets[1:] > offsets[:-1]
+        if np.any(non_empty):
+            last_positions = offsets[1:][non_empty] - 1
+            if np.any(values[last_positions] == trunc_id):
+                return True
+    return False
+
+
+def _paired_full_timeline_parquet(parquet_path: Path) -> Path | None:
+    version_dir = parquet_path.parent.parent
+    split = parquet_path.parent.name
+    suffix = "_first_24h-tokenized"
+    if not version_dir.name.endswith(suffix):
+        return None
+    stem = version_dir.name[: -len(suffix)]
+    cand = version_dir.parent / f"{stem}-tokenized" / split / parquet_path.name
+    return cand if cand.is_file() else None
+
+
+def _cut_24h_token_lengths(full_parquet_path: Path) -> list[int]:
+    """Recover untruncated first-24h lengths using the exact Tokenizer21.cut_at_time rule."""
+    duration = pl.duration(days=1)
+    tt = (
+        pl.scan_parquet(full_parquet_path)
+        .select("tokens", "times")
+        .with_columns(
+            first_fail_or_0=(
+                pl.col("times").list.eval(pl.element() - pl.col("").min() <= duration)
+            ).list.arg_min()
+        )
+        .with_columns(
+            valid_length=pl.when(pl.col("first_fail_or_0") == 0)
+            .then(pl.col("times").list.len())
+            .otherwise(pl.col("first_fail_or_0"))
+        )
+        .with_columns(
+            pl.col("times").list.head(pl.col("valid_length")).alias("times"),
+            pl.col("tokens").list.head(pl.col("valid_length")).alias("tokens"),
+        )
+        .filter(pl.col("times").list.max() - pl.col("times").list.min() <= duration)
+        .select(pl.col("tokens").list.len().alias("seq_len"))
+        .collect()
+    )
+    return [int(x) for x in tt["seq_len"].to_list()]
+
+
 def _iter_token_lengths(parquet_path: Path, *, batch_size: int = 8192) -> Iterable[int]:
+    trunc_id = _load_trunc_token_id(parquet_path)
+    if trunc_id is not None and _parquet_has_trunc_tokens(
+        parquet_path, trunc_id, batch_size=batch_size
+    ):
+        full_parquet = _paired_full_timeline_parquet(parquet_path)
+        if full_parquet is None:
+            raise ValueError(
+                f"{parquet_path} has TRUNC-capped sequences in 'tokens' and no paired "
+                "full-timeline Parquet to recover untruncated first-24h lengths."
+            )
+        if _parquet_has_trunc_tokens(full_parquet, trunc_id, batch_size=batch_size):
+            raise ValueError(
+                f"Paired full-timeline Parquet also has TRUNC-capped sequences in 'tokens': "
+                f"{full_parquet}"
+            )
+        yield from _cut_24h_token_lengths(full_parquet)
+        return
+
     pf = pq.ParquetFile(parquet_path)
     for batch in pf.iter_batches(columns=["tokens"], batch_size=batch_size):
         arr = batch.column(0)
@@ -92,13 +178,13 @@ class LengthSummary:
     frac_le_4096: float
 
 
-def summarize_lengths(parquet_path: Path) -> LengthSummary:
+def _summarize_length_iter(lengths: Iterable[int]) -> LengthSummary:
     n = 0
     max_len = 0
     le_1024 = 0
     le_2048 = 0
     le_4096 = 0
-    for L in _iter_token_lengths(parquet_path):
+    for L in lengths:
         n += 1
         if L > max_len:
             max_len = L
@@ -118,9 +204,13 @@ def summarize_lengths(parquet_path: Path) -> LengthSummary:
     )
 
 
-def histogram_counts(parquet_path: Path, bins: np.ndarray) -> np.ndarray:
+def summarize_lengths(parquet_path: Path) -> LengthSummary:
+    return _summarize_length_iter(_iter_token_lengths(parquet_path))
+
+
+def _histogram_counts_from_iter(lengths: Iterable[int], bins: np.ndarray) -> np.ndarray:
     counts = np.zeros(len(bins) - 1, dtype=np.int64)
-    for L in _iter_token_lengths(parquet_path):
+    for L in lengths:
         # Bin assignment: right-open intervals [bins[i], bins[i+1])
         j = int(np.searchsorted(bins, L, side="right") - 1)
         if 0 <= j < counts.size:
@@ -129,6 +219,10 @@ def histogram_counts(parquet_path: Path, bins: np.ndarray) -> np.ndarray:
             # Put out-of-range values into the last bin
             counts[-1] += 1
     return counts
+
+
+def histogram_counts(parquet_path: Path, bins: np.ndarray) -> np.ndarray:
+    return _histogram_counts_from_iter(_iter_token_lengths(parquet_path), bins)
 
 
 def _default_bins(max_len: int) -> np.ndarray:
@@ -196,8 +290,9 @@ def main() -> None:
     if explicit_labels is not None and len(explicit_labels) != len(versions):
         raise ValueError(f"--labels must match --versions count ({len(versions)}), got {len(explicit_labels)}")
 
-    # Resolve parquet paths and summaries
+    # Resolve parquet paths and load untruncated length arrays once per version
     paths = []
+    lengths_by_version: dict[str, list[int]] = {}
     summaries = {}
     max_overall = 0
     for v in versions:
@@ -206,7 +301,9 @@ def main() -> None:
         if not p.exists():
             raise FileNotFoundError(f"Missing tokens_timelines.parquet: {p}")
         paths.append((v, p))
-        s = summarize_lengths(p)
+        lengths = list(_iter_token_lengths(p))
+        lengths_by_version[v] = lengths
+        s = _summarize_length_iter(lengths)
         summaries[v] = s
         max_overall = max(max_overall, s.max_len)
 
@@ -221,8 +318,8 @@ def main() -> None:
 
     fig, axes = plt.subplots(2, 2, figsize=(8.5, 7.5), constrained_layout=True)
     axes = axes.flatten()
-    for panel_idx, (ax, (v, p)) in enumerate(zip(axes, paths)):
-        counts = histogram_counts(p, bins=bins)
+    for panel_idx, (ax, (v, _p)) in enumerate(zip(axes, paths)):
+        counts = _histogram_counts_from_iter(lengths_by_version[v], bins=bins)
         # Normalize to probability mass
         prob = counts / max(summaries[v].n, 1)
         # Use bar with bin widths. The final bin is an overflow bin [xmax, ∞).
