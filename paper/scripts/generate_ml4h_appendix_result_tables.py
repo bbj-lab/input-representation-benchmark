@@ -81,12 +81,12 @@ OUTCOME_FAMILY_DISPLAY = {
     "Hematology": "Hematology",
 }
 GRANULARITY_LABEL = {
-    ("deciles", "none"): "Deciles · population",
-    ("ventiles", "none"): "Ventiles · population",
-    ("ventiles", "5-10-5"): "Ventiles · 5--10--5 reference",
-    ("trentiles", "none"): "Trentiles · population",
-    ("trentiles", "10-10-10"): "Trentiles · 10--10--10 reference",
-    ("centiles", "none"): "Centiles · population",
+    ("deciles", "none"): "Deciles (population)",
+    ("ventiles", "none"): "Ventiles (population)",
+    ("ventiles", "5-10-5"): "Ventiles (5--10--5 reference)",
+    ("trentiles", "none"): "Trentiles (population)",
+    ("trentiles", "10-10-10"): "Trentiles (10--10--10 reference)",
+    ("centiles", "none"): "Centiles (population)",
 }
 REPRESENTATION_LABEL = {
     "discrete": "Discrete deciles",
@@ -242,7 +242,13 @@ def experiment_name(experiment: str) -> str:
 
 
 def format_cell(mean: float, lo: float, hi: float) -> str:
-    return rf"\shortstack[c]{{{mean:.3f}\\{{}}[{lo:.3f}, {hi:.3f}]}}"
+    return (
+        r"\begin{tabular}[c]{@{}c@{}}"
+        f"{mean:.3f}"
+        r"\\[-1pt]"
+        f"[{lo:.3f}, {hi:.3f}]"
+        r"\end{tabular}"
+    )
 
 
 def tex_escape(text: str) -> str:
@@ -322,12 +328,15 @@ def write_family_table(
         r"  {\resizebox{\linewidth}{!}{%",
         r"  \scriptsize",
         r"  \setlength{\tabcolsep}{3pt}",
-        r"  \begin{tabular}{l" + "c" * len(columns) + "}",
+        r"  \begin{tabular}{@{}l" + "c" * len(columns) + r"@{}}",
         r"    \toprule",
         "    Configuration & " + " & ".join(columns) + r" \\",
         r"    \midrule",
+        r"    \addlinespace[2pt]",
     ]
-    for config_id in order:
+    for row_index, config_id in enumerate(order):
+        if row_index > 0:
+            lines.append(r"    \addlinespace[3.5pt]")
         cells = [tex_escape(labels[config_id])]
         for task, families in FAMILY_ORDER.items():
             for family_name in families:
@@ -339,6 +348,7 @@ def write_family_table(
         lines.append("    " + " & ".join(cells) + r" \\")
     lines.extend(
         [
+            r"    \addlinespace[2pt]",
             r"    \bottomrule",
             r"  \end{tabular}}}",
             r"\end{table}",
@@ -371,8 +381,16 @@ def write_outcome_table(
         for family_name in families
     ]
     lines = [
-        r"\begin{longtable}{>{\raggedright\arraybackslash}p{0.20\textwidth}"
-        r">{\raggedright\arraybackslash}p{0.34\textwidth}ccc}",
+        r"\begingroup",
+        r"\small",
+        r"\setlength{\tabcolsep}{4pt}",
+        r"\setlength{\LTleft}{0pt}",
+        r"\setlength{\LTright}{0pt}",
+        r"\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.30\textwidth}"
+        r">{\raggedright\arraybackslash}p{\dimexpr\textwidth-0.30\textwidth-0.06\textwidth-0.06\textwidth-0.06\textwidth-8\tabcolsep\relax}"
+        r">{\centering\arraybackslash}p{0.06\textwidth}"
+        r">{\centering\arraybackslash}p{0.06\textwidth}"
+        r">{\centering\arraybackslash}p{0.06\textwidth}@{}}",
         r"  \caption{Outcome-level AUROC and Spearman~$\rho$ for every "
         f"{experiment_name(experiment)} configuration. "
         f"{OUTCOME_CAPTION_NOTE}"
@@ -381,17 +399,18 @@ def write_outcome_table(
         r"  Outcome & Configuration & Mean & Min & Max \\",
         r"  \midrule",
         r"  \endfirsthead",
-        r"  \multicolumn{5}{l}{\textbf{Table~\thetable\ continued from previous page}} \\",
+        r"  \multicolumn{5}{@{}l}{\textbf{Table~\thetable\ continued from previous page}} \\",
         r"  \toprule",
         r"  Outcome & Configuration & Mean & Min & Max \\",
         r"  \midrule",
         r"  \endhead",
         r"  \midrule",
-        r"  \multicolumn{5}{r}{\textit{Continued on next page}} \\",
+        r"  \multicolumn{5}{r@{}}{\textit{Continued on next page}} \\",
         r"  \endfoot",
         r"  \bottomrule",
         r"  \endlastfoot",
     ]
+    groups: list[tuple[str, str, list[tuple[str, list[pd.Series]]]]] = []
     for task, family_name in family_sequence:
         members = outcomes.loc[
             (outcomes["task_type"] == task) & (outcomes["outcome_family"] == family_name)
@@ -400,35 +419,59 @@ def write_outcome_table(
             continue
         metric = "AUROC" if task == "binary" else r"Spearman~$\rho$"
         display_family = OUTCOME_FAMILY_DISPLAY[family_name]
-        lines.append(
-            r"  \multicolumn{5}{l}{\textbf{"
-            + f"{display_family} ({metric})"
-            + r"}} \\"
-        )
+        outcome_blocks: list[tuple[str, list[pd.Series]]] = []
         for outcome in members["outcome"].drop_duplicates():
             block = members.loc[members["outcome"] == outcome]
             by_config = {str(row["config_id"]): row for _, row in block.iterrows()}
-            first = True
-            for config_id in order:
-                row = by_config.get(config_id)
-                if row is None:
-                    continue
-                outcome_cell = tex_escape(name[str(outcome)]) if first else ""
-                first = False
+            ordered_rows = [
+                by_config[config_id] for config_id in order if config_id in by_config
+            ]
+            if ordered_rows:
+                outcome_blocks.append((str(outcome), ordered_rows))
+        if outcome_blocks:
+            groups.append((display_family, metric, outcome_blocks))
+
+    for group_idx, (display_family, metric, outcome_blocks) in enumerate(groups):
+        lines.append(
+            r"  \multicolumn{5}{@{}l}{\textbf{"
+            + f"{display_family} ({metric})"
+            + r"}} \\*[2pt]"
+        )
+        is_last_group = group_idx == len(groups) - 1
+        for outcome_idx, (outcome_key, ordered_rows) in enumerate(outcome_blocks):
+            is_last_outcome_in_group = outcome_idx == len(outcome_blocks) - 1
+            is_very_last_outcome = is_last_group and is_last_outcome_in_group
+            for row_idx, row in enumerate(ordered_rows):
+                if row_idx == 0:
+                    escaped_name = tex_escape(name[outcome_key])
+                    outcome_cell = (
+                        rf"\smash{{\parbox[t]{{0.30\textwidth}}{{\raggedright {escaped_name}}}}}"
+                    )
+                else:
+                    outcome_cell = ""
+                is_last_row_of_outcome = row_idx == len(ordered_rows) - 1
+                if not is_last_row_of_outcome:
+                    row_end = r" \\*"
+                elif is_very_last_outcome:
+                    row_end = r" \\"
+                elif is_last_outcome_in_group:
+                    row_end = r" \\[5pt]"
+                else:
+                    row_end = r" \\[2.5pt]"
                 lines.append(
                     "  "
                     + " & ".join(
                         [
                             outcome_cell,
-                            tex_escape(labels[config_id]),
+                            tex_escape(labels[str(row["config_id"])]),
                             f"{row['mean']:.3f}",
                             f"{row['lo']:.3f}",
                             f"{row['hi']:.3f}",
                         ]
                     )
-                    + r" \\"
+                    + row_end
                 )
-    lines.extend([r"\end{longtable}", ""])
+    lines.extend([r"\end{longtable}", r"\endgroup", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
 
 

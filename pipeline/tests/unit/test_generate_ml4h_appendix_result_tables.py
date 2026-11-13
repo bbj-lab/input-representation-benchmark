@@ -83,3 +83,102 @@ def test_starred_delta_and_ci_requires_matching_point_and_bh_flag() -> None:
             family="Hospital outcomes",
             value=0.02,
         )
+
+
+def test_appendix_table_formatting_helpers(tmp_path: Path) -> None:
+    tables = load_module()
+    exp1_row = pd.Series(
+        {"quantizer": "trentiles", "anchoring": "10-10-10", "fusion": "unfused"}
+    )
+    assert (
+        tables.config_label("exp1", exp1_row)
+        == "Trentiles (10--10--10 reference), unfused"
+    )
+    assert tables.format_cell(0.884, 0.880, 0.887) == (
+        r"\begin{tabular}[c]{@{}c@{}}0.884\\[-1pt][0.880, 0.887]\end{tabular}"
+    )
+
+    selected = pd.DataFrame(
+        [
+            {
+                "config_id": "native",
+                "config_label": "Native MIMIC",
+                "task_type": "binary",
+                "outcome_family": "Hospital outcomes",
+                "outcome": "same_admission_death",
+                "outcome_label": "Same-admission death",
+            },
+            {
+                "config_id": "clif",
+                "config_label": "CLIF harmonized",
+                "task_type": "binary",
+                "outcome_family": "Hospital outcomes",
+                "outcome": "same_admission_death",
+                "outcome_label": "Same-admission death",
+            },
+            {
+                "config_id": "native",
+                "config_label": "Native MIMIC",
+                "task_type": "regression",
+                "outcome_family": "Vitals",
+                "outcome": "min_hr",
+                "outcome_label": "Minimum heart rate",
+            },
+            {
+                "config_id": "clif",
+                "config_label": "CLIF harmonized",
+                "task_type": "regression",
+                "outcome_family": "Vitals",
+                "outcome": "min_hr",
+                "outcome_label": "Minimum heart rate",
+            },
+        ]
+    )
+    outcomes = pd.DataFrame(
+        [
+            {
+                "config_id": "native",
+                "task_type": "binary",
+                "outcome_family": "Hospital outcomes",
+                "outcome": "same_admission_death",
+                "mean": 0.901,
+                "lo": 0.895,
+                "hi": 0.906,
+            },
+            {
+                "config_id": "clif",
+                "task_type": "binary",
+                "outcome_family": "Hospital outcomes",
+                "outcome": "same_admission_death",
+                "mean": 0.912,
+                "lo": 0.908,
+                "hi": 0.916,
+            },
+            {
+                "config_id": "native",
+                "task_type": "regression",
+                "outcome_family": "Vitals",
+                "outcome": "min_hr",
+                "mean": 0.510,
+                "lo": 0.502,
+                "hi": 0.518,
+            },
+            {
+                "config_id": "clif",
+                "task_type": "regression",
+                "outcome_family": "Vitals",
+                "outcome": "min_hr",
+                "mean": 0.667,
+                "lo": 0.660,
+                "hi": 0.674,
+            },
+        ]
+    )
+    out_path = tmp_path / "outcome_test.tex"
+    tables.write_outcome_table("exp3", selected, outcomes, out_path)
+    tex = out_path.read_text(encoding="utf-8")
+    assert r"\multicolumn{5}{@{}l}{\textbf{Hospital (AUROC)}} \\*[2pt]" in tex
+    assert r"\multicolumn{5}{@{}l}{\textbf{Vital signs (Spearman~$\rho$)}} \\*[2pt]" in tex
+    assert r"& Native MIMIC & 0.901 & 0.895 & 0.906 \\*" in tex
+    assert r"& CLIF 2.1.0 & 0.912 & 0.908 & 0.916 \\[5pt]" in tex
+    assert r"& CLIF 2.1.0 & 0.667 & 0.660 & 0.674 \\" in tex
